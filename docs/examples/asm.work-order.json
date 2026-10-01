@@ -1,0 +1,332 @@
+{
+  "briefVersion": 1,
+  "kind": "asm.execution-brief",
+  "goal": {
+    "id": "goal-faster-shared-narrative",
+    "statement": "Software teams without prior AI experience can move from product discussion to a shared, understandable product narrative and first useful delivery slice substantially faster.",
+    "slice": {
+      "id": "slice-outcome-thread",
+      "title": "Thread to “Export execution-ready work”"
+    }
+  },
+  "approvedContext": {
+    "approval": {
+      "revision": 3,
+      "approvedBy": "Maya (E2E)",
+      "approvedAt": "2026-10-01T22:13:12.309Z"
+    },
+    "selection": {
+      "candidateId": "slice-outcome-thread",
+      "selectedBy": "Maya (E2E)",
+      "selectedAt": "2026-10-01T22:13:12.709Z"
+    },
+    "whyThisSlice": [
+      "The last step “Export execution-ready work” (step-export-work) serves need-buildable-slice, need-stable-references; this slice is every step that serves one of those needs.",
+      "Primary persona relevance: Product Lead / Product Owner (persona-product-lead) takes part in 3 of the 4 included steps.",
+      "Persona overlap: 2 of the 4 included steps involve more than one persona.",
+      "Need relation: serves 4 of 7 needs (need-shared-narrative, need-approve-meaning, need-buildable-slice, need-stable-references).",
+      "Main-path completeness: reaches the end of the main path, “Export execution-ready work”.",
+      "Scope: 4 of 12 main-path steps, with 2 worst-case branch(es) to handle."
+    ],
+    "assumptions": [
+      "Assumes “Start product” [step-start-product] has already happened outside this slice.",
+      "Assumes the steps skipped between included steps are done by hand: [step-add-wcbc] [step-review-gaps] [step-approve-narrative] [step-walk-through-the-slice-with-the-team].",
+      "Assumes the included needs contribute to the goal [goal-faster-shared-narrative]; the map relates steps to needs, not needs to the goal."
+    ],
+    "decidedDecisions": [
+      {
+        "id": "dec-canonical-file",
+        "title": "The canonical product model is a YAML file inside the repository",
+        "rationale": "Given by the slice brief (no database, no graph server). A file is diffable, reviewable and readable by agents.",
+        "relatesTo": [
+          "asm"
+        ]
+      },
+      {
+        "id": "dec-position-not-semantics",
+        "title": "Visual position is never the sole source of semantics",
+        "rationale": "Narrative order lives in an explicit sequence field and relations in ids. Layout is stored separately and can change without touching meaning.",
+        "relatesTo": [
+          "step-main-path",
+          "need-stable-references"
+        ]
+      },
+      {
+        "id": "dec-human-approves",
+        "title": "Only an explicit human action approves a revision",
+        "rationale": "Narrative-first means humans define intent and approve meaning. Saving or editing never approves anything.",
+        "relatesTo": [
+          "step-approve-narrative",
+          "need-approve-meaning"
+        ]
+      }
+    ],
+    "verified": [],
+    "note": "Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested."
+  },
+  "inScope": [
+    {
+      "id": "step-main-path",
+      "sequence": 5,
+      "title": "Build main / best-case path",
+      "description": "The main narrative is laid out as an ordered sequence of steps.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-domain-ux",
+        "persona-developer"
+      ],
+      "needIds": [
+        "need-shared-narrative",
+        "need-stable-references"
+      ],
+      "branches": [
+        {
+          "id": "wcbc-coherent-story",
+          "kind": "best_case",
+          "title": "Main path reads as one story",
+          "description": "A newcomer can follow the narrative from start to export without explanation.",
+          "recovery": ""
+        }
+      ]
+    },
+    {
+      "id": "step-review-slices",
+      "sequence": 9,
+      "title": "Review first slice candidates",
+      "description": "Candidate first slices through the approved narrative are compared.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-developer"
+      ],
+      "needIds": [
+        "need-buildable-slice"
+      ],
+      "branches": []
+    },
+    {
+      "id": "step-select-slice",
+      "sequence": 10,
+      "title": "Human selects first slice",
+      "description": "A human picks the first slice to deliver.",
+      "personaIds": [
+        "persona-product-lead"
+      ],
+      "needIds": [
+        "need-approve-meaning",
+        "need-buildable-slice"
+      ],
+      "branches": [
+        {
+          "id": "wcbc-no-small-slice",
+          "kind": "worst_case",
+          "title": "No candidate slice is small enough",
+          "description": "Every candidate is too large to be a first delivery.",
+          "recovery": "Return to the main path and cut a thinner slice through it.",
+          "outcome": {
+            "kind": "recovery",
+            "resumeStepId": "step-main-path"
+          }
+        }
+      ]
+    },
+    {
+      "id": "step-export-work",
+      "sequence": 12,
+      "title": "Export execution-ready work",
+      "description": "The selected slice leaves ASM in a form a delivery team can execute.",
+      "personaIds": [
+        "persona-developer"
+      ],
+      "needIds": [
+        "need-buildable-slice",
+        "need-stable-references"
+      ],
+      "branches": [
+        {
+          "id": "wcbc-export-invalid",
+          "kind": "worst_case",
+          "title": "Exported file fails validation on import",
+          "description": "A product file was changed by hand and no longer validates.",
+          "recovery": "Validation names the exact path of each issue; an invalid file is never written."
+        }
+      ]
+    }
+  ],
+  "outOfScope": [
+    "[step-start-product] Start product",
+    "[step-describe-idea] Describe idea / provide discussion",
+    "[step-confirm-intent] Confirm product intent",
+    "[step-define-personas] Define personas and needs",
+    "[step-add-wcbc] Add relevant WCBC / recovery paths",
+    "[step-review-gaps] Review gaps and unresolved decisions",
+    "[step-approve-narrative] Human approves narrative",
+    "[step-walk-through-the-slice-with-the-team] Walk through the slice with the team",
+    "[need-real-situations] Need not served by this slice: See real user situations, including failure and recovery, represented in the narrative.",
+    "[need-see-gaps] Need not served by this slice: Spot gaps and unresolved decisions before anything is built on them.",
+    "[need-trace-a-customer-problem-back-to-the-nar] Need not served by this slice: Trace a customer problem back to the narrative step it belongs to."
+  ],
+  "personas": [
+    {
+      "id": "persona-product-lead",
+      "name": "Product Lead / Product Owner",
+      "description": "Owns product intent and approves what the narrative means."
+    },
+    {
+      "id": "persona-domain-ux",
+      "name": "Domain or UX Expert",
+      "description": "Knows the real user situations, including where things go wrong."
+    },
+    {
+      "id": "persona-developer",
+      "name": "Developer",
+      "description": "Turns the approved narrative into a first delivery slice."
+    }
+  ],
+  "needs": [
+    {
+      "id": "need-shared-narrative",
+      "personaId": "persona-product-lead",
+      "statement": "Turn a product discussion into one narrative the whole team understands, without prior AI experience."
+    },
+    {
+      "id": "need-approve-meaning",
+      "personaId": "persona-product-lead",
+      "statement": "Remain the one who approves meaning; nothing counts as agreed until I approve it."
+    },
+    {
+      "id": "need-buildable-slice",
+      "personaId": "persona-developer",
+      "statement": "Receive a first slice that is small, unambiguous and ready to execute."
+    },
+    {
+      "id": "need-stable-references",
+      "personaId": "persona-developer",
+      "statement": "Rely on stable ids and explicit relations rather than on where a card happens to sit."
+    }
+  ],
+  "acceptanceCriteriaDraft": [
+    {
+      "id": "ac-1",
+      "text": "[step-main-path] Product Lead / Product Owner / Domain or UX Expert / Developer can complete “Build main / best-case path”: The main narrative is laid out as an ordered sequence of steps.",
+      "refs": [
+        "step-main-path",
+        "persona-product-lead",
+        "persona-domain-ux",
+        "persona-developer"
+      ]
+    },
+    {
+      "id": "ac-2",
+      "text": "[step-review-slices] Product Lead / Product Owner / Developer can complete “Review first slice candidates”: Candidate first slices through the approved narrative are compared.",
+      "refs": [
+        "step-review-slices",
+        "persona-product-lead",
+        "persona-developer"
+      ]
+    },
+    {
+      "id": "ac-3",
+      "text": "[step-select-slice] Product Lead / Product Owner can complete “Human selects first slice”: A human picks the first slice to deliver.",
+      "refs": [
+        "step-select-slice",
+        "persona-product-lead"
+      ]
+    },
+    {
+      "id": "ac-4",
+      "text": "[wcbc-no-small-slice] When “No candidate slice is small enough”, then: Return to the main path and cut a thinner slice through it.",
+      "refs": [
+        "wcbc-no-small-slice",
+        "step-select-slice"
+      ]
+    },
+    {
+      "id": "ac-5",
+      "text": "[step-export-work] Developer can complete “Export execution-ready work”: The selected slice leaves ASM in a form a delivery team can execute.",
+      "refs": [
+        "step-export-work",
+        "persona-developer"
+      ]
+    },
+    {
+      "id": "ac-6",
+      "text": "[wcbc-export-invalid] When “Exported file fails validation on import”, then: Validation names the exact path of each issue; an invalid file is never written.",
+      "refs": [
+        "wcbc-export-invalid",
+        "step-export-work"
+      ]
+    }
+  ],
+  "verificationExpectations": [
+    {
+      "criterionId": "ac-1",
+      "expectation": "Show step-main-path working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-2",
+      "expectation": "Show step-review-slices working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-3",
+      "expectation": "Show step-select-slice working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-4",
+      "expectation": "Provoke the situation of wcbc-no-small-slice and show, with a recorded run, that what follows matches the criterion."
+    },
+    {
+      "criterionId": "ac-5",
+      "expectation": "Show step-export-work working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-6",
+      "expectation": "Provoke the situation of wcbc-export-invalid and show, with a recorded run, that what follows matches the criterion."
+    }
+  ],
+  "openHumanDecisions": [
+    {
+      "id": "dec-measure-faster",
+      "kind": "open_decision",
+      "text": "What does \"substantially faster\" mean in measurable terms?",
+      "relatesTo": [
+        "goal-faster-shared-narrative"
+      ]
+    },
+    {
+      "id": "dec-slice-criteria",
+      "kind": "open_decision",
+      "text": "What makes a slice candidate a \"first useful\" slice?",
+      "relatesTo": [
+        "step-review-slices",
+        "step-select-slice"
+      ]
+    },
+    {
+      "id": "dec-export-format",
+      "kind": "open_decision",
+      "text": "What form does \"execution-ready work\" take on export?",
+      "relatesTo": [
+        "step-export-work"
+      ]
+    },
+    {
+      "id": "wcbc_without_outcome:wcbc-export-invalid",
+      "kind": "review_gap",
+      "text": "Worst case “Exported file fails validation on import” does not say where it leads: no recovery step, termination or escalation is referenced.",
+      "relatesTo": [
+        "wcbc-export-invalid",
+        "step-export-work"
+      ]
+    }
+  ],
+  "sourceMapRevision": {
+    "productId": "asm",
+    "productName": "ASM – Agentic Story Mapping",
+    "schemaVersion": 1,
+    "revision": 3,
+    "status": "approved",
+    "approvedBy": "Maya (E2E)",
+    "approvedAt": "2026-10-01T22:13:12.309Z",
+    "mapFingerprint": "0e12d1e9"
+  }
+}

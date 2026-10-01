@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ID_PREFIX, hasPrefix, makeId, type IdKind } from "./ids";
-import { IdSchema, type ProductDocument, type Provenance } from "./schema";
-import { fingerprint } from "./serialize";
+import { fingerprint } from "./fingerprint";
+import { IdSchema, WcbcKindSchema, WcbcOutcomeSchema, type ProductDocument, type Provenance } from "./schema";
 import { validateProduct, type ValidationIssue } from "./validate";
 
 /**
@@ -19,7 +19,7 @@ import { validateProduct, type ValidationIssue } from "./validate";
 
 // ---------------------------------------------------------------- agent output
 
-const AgentSource = z.strictObject({
+export const AgentSource = z.strictObject({
   /** Verbatim quote from the pasted text that this item is based on. */
   snippet: z.string(),
   /** Why the agent proposes this. */
@@ -28,7 +28,7 @@ const AgentSource = z.strictObject({
   confidence: z.number(),
 });
 
-const AgentPlacement = z.strictObject({
+export const AgentPlacement = z.strictObject({
   kind: z.enum(["start", "end", "after"]),
   /** Step id or `new:` ref when kind is "after"; otherwise null. */
   step: z.string().nullable(),
@@ -116,6 +116,17 @@ export const PatchOperationSchema = z.discriminatedUnion("op", [
     question: Text,
     relatesTo: z.array(IdSchema),
   }),
+  z.strictObject({
+    ...opBase,
+    op: z.literal("add_wcbc"),
+    id: IdSchema,
+    stepId: IdSchema,
+    kind: WcbcKindSchema,
+    title: Text,
+    description: OptionalText,
+    recovery: OptionalText,
+    outcome: WcbcOutcomeSchema.optional(),
+  }),
 ]);
 
 export const MapPatchSchema = z.strictObject({
@@ -141,13 +152,14 @@ export const EDITABLE_OP_FIELDS: Record<PatchOperation["op"], readonly string[]>
   assign_persona: [],
   move_step: [],
   add_question: ["question"],
+  add_wcbc: ["title", "description", "recovery"],
 };
 
 // --------------------------------------------------------------------- helpers
 
 type Issues = ValidationIssue[];
 
-function zodIssues(prefix: string, error: z.ZodError): Issues {
+export function zodIssues(prefix: string, error: z.ZodError): Issues {
   return error.issues.map((issue) => ({
     code: `${prefix}_${issue.code}`,
     path: issue.path.map(String).join(".") || "(root)",
@@ -161,7 +173,7 @@ function sorted(issues: Issues): Issues {
 
 const normalizeSpace = (text: string) => text.replace(/\s+/g, " ").trim();
 
-function allIds(p: ProductDocument): Set<string> {
+export function allIds(p: ProductDocument): Set<string> {
   return new Set([
     p.product.id,
     p.goal.id,
@@ -226,6 +238,7 @@ export function resolveProposal(
     need: new Set(product.needs.map((e) => e.id)),
     step: new Set(product.narrative.map((e) => e.id)),
     decision: new Set(product.decisions.map((e) => e.id)),
+    wcbc: new Set(product.wcbc.map((e) => e.id)),
   };
   const refs: Record<"persona" | "need" | "step", Map<string, string>> = {
     persona: new Map(),
@@ -443,6 +456,7 @@ export function applyMapPatch(product: ProductDocument, patchInput: unknown): Ap
   const personas = [...product.personas];
   const needs = [...product.needs];
   const decisions = [...product.decisions];
+  const wcbc = [...product.wcbc];
   const steps = new Map(product.narrative.map((s) => [s.id, { ...s, personaIds: [...s.personaIds] }]));
   let order = [...product.narrative].sort((a, b) => a.sequence - b.sequence).map((s) => s.id);
 
@@ -555,18 +569,42 @@ export function applyMapPatch(product: ProductDocument, patchInput: unknown): Ap
         }
         record(operation.id, "added", "added");
         break;
+      case "add_wcbc": {
+        fresh("wcbc", operation.id);
+        known(steps, "stepId", operation.stepId, "step");
+        const outcome = operation.outcome;
+        if (outcome?.kind === "recovery") known(steps, "outcome.resumeStepId", outcome.resumeStepId, "step");
+        if (outcome?.kind === "escalation") known(personas, "outcome.toPersonaId", outcome.toPersonaId, "persona");
+        if (issues.length === failuresBefore) {
+          wcbc.push({
+            id: operation.id,
+            stepId: operation.stepId,
+            kind: operation.kind,
+            title: operation.title,
+            description: operation.description,
+            recovery: operation.recovery,
+            ...(outcome ? { outcome } : {}),
+          });
+          ids.add(operation.id);
+        }
+        record(operation.id, "added", "added");
+        break;
+      }
     }
   });
 
   if (issues.length > 0) return { ok: false, issues: sorted(issues) };
 
+  // A change of meaning ends any slice selection made on the previous map.
+  const { selectedSlice: _selectedSlice, ...base } = product;
   const next: ProductDocument = {
-    ...product,
+    ...base,
     revision: { number: revision, status: "proposed" },
     goal,
     personas,
     needs,
     narrative: order.map((id, index) => ({ ...steps.get(id)!, sequence: index + 1 })),
+    wcbc,
     decisions,
     provenance,
   };
@@ -586,6 +624,17 @@ export interface DiffEntry {
   before?: string;
   after?: string;
   source: MapPatch["operations"][number]["source"];
+}
+
+function describeOutcome(
+  outcome: z.infer<typeof WcbcOutcomeSchema> | undefined,
+  step: (id: string) => string,
+  persona: (id: string) => string,
+): string {
+  if (!outcome) return "";
+  if (outcome.kind === "recovery") return `Leads back to step ${step(outcome.resumeStepId)}.`;
+  if (outcome.kind === "escalation") return `Escalates to ${persona(outcome.toPersonaId)}.`;
+  return "The path ends here.";
 }
 
 /** One plain-language line per operation, for the human who has to decide. */
@@ -653,6 +702,15 @@ export function describePatch(product: ProductDocument, patch: MapPatch): DiffEn
           targetId: operation.id,
           headline: "Unresolved question (becomes an open decision)",
           after: operation.question,
+        };
+      case "add_wcbc":
+        return {
+          ...base,
+          targetId: operation.id,
+          headline: `Add ${operation.kind === "worst_case" ? "worst case" : "best case"} “${operation.title}” to step ${step(operation.stepId)}`,
+          after: [operation.description, operation.recovery && `Recovery: ${operation.recovery}`, describeOutcome(operation.outcome, step, persona)]
+            .filter(Boolean)
+            .join(" "),
         };
     }
   });

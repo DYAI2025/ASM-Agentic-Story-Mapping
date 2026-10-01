@@ -1,6 +1,7 @@
 import type { AgentOutput } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
-import type { AgentProvider, StructureInput } from "./provider";
+import { reviewWithRules } from "./fake-review";
+import type { AgentProvider, ReviewInput, ReviewProvider, StructureInput } from "./provider";
 
 /**
  * Deterministic provider without any model. It only understands explicit
@@ -169,10 +170,14 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
   return out;
 }
 
-export class FakeProvider implements AgentProvider {
+export class FakeProvider implements AgentProvider, ReviewProvider {
   readonly name = "fake (deterministic marker parser, no model)";
 
   async structure({ transcript, product }: StructureInput): Promise<unknown> {
     return structureWithMarkers(transcript, product);
+  }
+
+  async review({ product }: ReviewInput): Promise<unknown> {
+    return reviewWithRules(product);
   }
 }

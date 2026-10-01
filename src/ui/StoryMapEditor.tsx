@@ -11,8 +11,11 @@ import {
   type CardKind,
 } from "../domain/operations";
 import { buildStoryMap } from "../domain/projection";
+import { reviewNarrative } from "../domain/review";
 import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
+import { ReviewPanel } from "./ReviewPanel";
+import { SliceDrawer } from "./SliceDrawer";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
 
 type ApiResult = { product?: ProductDocument; issues?: ValidationIssue[] };
@@ -31,7 +34,9 @@ const CardContext = createContext<{
   readOnly: boolean;
   touched: Record<string, Touch>;
   provenance: Provenance[];
-}>({ readOnly: false, touched: {}, provenance: [] });
+  /** Review mode only: how many findings are about each card. */
+  findingCounts: Record<string, number>;
+}>({ readOnly: false, touched: {}, provenance: [], findingCounts: {} });
 
 const TOUCH_LABEL: Record<Touch, string> = { added: "New", changed: "Changed", moved: "Moved" };
 
@@ -55,16 +60,22 @@ function EditableCard({
   const context = useContext(CardContext);
   const touch = context.touched[id];
   const sources = context.provenance.filter((entry) => entry.targetId === id);
+  const findingCount = context.findingCounts[id] ?? 0;
 
   if (!editing || context.readOnly) {
     return (
       <article
-        className={`card ${className} ${touch ? `diff-${touch}` : ""}`}
+        className={`card ${className} ${touch ? `diff-${touch}` : ""} ${findingCount > 0 ? "has-finding" : ""}`}
         data-testid={`card-${id}`}
         data-kind={kind}
         data-diff={touch}
       >
         {touch && <span className="diff-flag">{TOUCH_LABEL[touch]}</span>}
+        {findingCount > 0 && (
+          <span className="finding-flag" data-testid={`finding-flag-${id}`}>
+            {findingCount} finding{findingCount === 1 ? "" : "s"}
+          </span>
+        )}
         {children}
         {sources.length > 0 && (
           <details className="provenance" data-testid={`provenance-${id}`}>
@@ -145,13 +156,22 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
   // canonical `product` stays untouched until the proposal is accepted.
   const [preview, setPreview] = useState<ProposalPreview | null>(null);
   const [reviewing, setReviewing] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [slicesOpen, setSlicesOpen] = useState(false);
   const shown = preview?.product ?? product;
+  const findings = useMemo(() => reviewNarrative(product), [product]);
+  const sliceSteps = useMemo(() => new Set(product.selectedSlice?.stepIds ?? []), [product]);
 
   const view = useMemo(() => buildStoryMap(shown, personaFilter), [shown, personaFilter]);
-  const cardContext = useMemo(
-    () => ({ readOnly: reviewing, touched: preview?.touched ?? {}, provenance: shown.provenance }),
-    [reviewing, preview, shown],
-  );
+  const cardContext = useMemo(() => {
+    const findingCounts: Record<string, number> = {};
+    if (reviewMode && !reviewing)
+      for (const finding of findings) {
+        const target = finding.relatesTo[0];
+        if (target) findingCounts[target] = (findingCounts[target] ?? 0) + 1;
+      }
+    return { readOnly: reviewing, touched: preview?.touched ?? {}, provenance: shown.provenance, findingCounts };
+  }, [reviewing, reviewMode, findings, preview, shown]);
   const validation = useMemo(() => validateProduct(product), [product]);
   const approved = product.revision.status === "approved";
 
@@ -246,6 +266,32 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
           </select>
         </label>
         <div className="row">
+          <button
+            type="button"
+            className={reviewMode ? "" : "secondary"}
+            data-testid="review-toggle"
+            aria-pressed={reviewMode}
+            disabled={reviewing}
+            onClick={() => setReviewMode(!reviewMode)}
+          >
+            {reviewMode ? "Leave review mode" : "Review mode"}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            data-testid="slices-open"
+            disabled={reviewing}
+            onClick={() => setSlicesOpen(true)}
+          >
+            Slices
+          </button>
+          {product.selectedSlice && (
+            <span className="badge approved" data-testid="selected-slice-badge">
+              Slice: {product.selectedSlice.title}
+            </span>
+          )}
+        </div>
+        <div className="row">
           <a className="button secondary" href="/api/product?format=yaml" data-testid="export-yaml">
             Export YAML
           </a>
@@ -284,6 +330,29 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
           setIssues([]);
         }}
       />
+
+      {reviewMode && !reviewing && (
+        <ReviewPanel
+          product={product}
+          findings={findings}
+          onApply={apply}
+          onAccepted={(next) => {
+            setProduct(next);
+            setIssues([]);
+          }}
+        />
+      )}
+
+      {slicesOpen && !reviewing && (
+        <SliceDrawer
+          product={product}
+          onClose={() => setSlicesOpen(false)}
+          onSelected={(next) => {
+            setProduct(next);
+            setIssues([]);
+          }}
+        />
+      )}
 
       {reviewing && (
         <p className="preview-banner" data-testid="preview-banner">
@@ -355,8 +424,9 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
           {view.columns.map((column, index) => (
             <div
               key={column.step.id}
-              className={`column ${column.inFocus ? "" : "dimmed"}`}
+              className={`column ${column.inFocus ? "" : "dimmed"} ${sliceSteps.has(column.step.id) ? "in-slice" : ""}`}
               data-testid={`column-${column.step.id}`}
+              data-in-slice={sliceSteps.has(column.step.id)}
               data-in-focus={column.inFocus}
               style={{ paddingTop: column.row * 28 }}
             >
@@ -444,6 +514,22 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
                     {branch.recovery && (
                       <p className="recovery">
                         <strong>Recovery:</strong> {branch.recovery}
+                      </p>
+                    )}
+                    {branch.outcome && (
+                      <p className="outcome" data-testid={`outcome-${branch.id}`}>
+                        <strong>Leads to:</strong>{" "}
+                        {branch.outcome.kind === "recovery" ? (
+                          <>
+                            recovery at <code>{branch.outcome.resumeStepId}</code>
+                          </>
+                        ) : branch.outcome.kind === "escalation" ? (
+                          <>
+                            escalation to <code>{branch.outcome.toPersonaId}</code>
+                          </>
+                        ) : (
+                          "termination"
+                        )}
                       </p>
                     )}
                   </EditableCard>

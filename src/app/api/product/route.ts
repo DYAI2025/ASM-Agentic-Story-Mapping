@@ -22,8 +22,10 @@ export async function GET(request: Request) {
 }
 
 /**
- * Editor save. Never approves: a save that would turn a proposed revision
- * into an approved one is rejected. Approval has its own endpoint.
+ * Editor save. Never approves and never selects a slice: a save that would
+ * turn a proposed revision into an approved one, or that carries a slice
+ * selection the stored file does not have, is rejected. Both have their own
+ * endpoints.
  */
 export async function PUT(request: Request) {
   const incoming = parseProductText(await request.text());
@@ -45,6 +47,26 @@ export async function PUT(request: Request) {
               code: "implicit_approval",
               path: "revision.status",
               message: "saving cannot approve a revision; use the explicit approve action",
+            },
+          ],
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  if (incoming.product.selectedSlice) {
+    const stored = await loadProduct();
+    const sameSelection =
+      stored.ok && JSON.stringify(stored.product.selectedSlice) === JSON.stringify(incoming.product.selectedSlice);
+    if (!sameSelection) {
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "implicit_selection",
+              path: "selectedSlice",
+              message: "saving cannot select a slice; use the explicit select action",
             },
           ],
         },

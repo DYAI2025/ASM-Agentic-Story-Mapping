@@ -1,3 +1,4 @@
+import { fingerprint } from "./fingerprint";
 import { ProductDocumentSchema, type ProductDocument } from "./schema";
 
 export interface ValidationIssue {
@@ -77,6 +78,11 @@ function checkSemantics(p: ProductDocument): ValidationIssue[] {
   p.wcbc.forEach((branch, i) => {
     if (!stepIds.has(branch.stepId))
       add("unknown_step", `wcbc[${i}].stepId`, `narrative step "${branch.stepId}" does not exist`);
+    const outcome = branch.outcome;
+    if (outcome?.kind === "recovery" && !stepIds.has(outcome.resumeStepId))
+      add("unknown_step", `wcbc[${i}].outcome.resumeStepId`, `narrative step "${outcome.resumeStepId}" does not exist`);
+    if (outcome?.kind === "escalation" && !personaIds.has(outcome.toPersonaId))
+      add("unknown_persona", `wcbc[${i}].outcome.toPersonaId`, `persona "${outcome.toPersonaId}" does not exist`);
   });
 
   p.decisions.forEach((decision, i) => {
@@ -103,6 +109,27 @@ function checkSemantics(p: ProductDocument): ValidationIssue[] {
     add("approval_missing", "revision.approval", "an approved revision must record who approved it and when");
   if (status === "proposed" && approval)
     add("approval_unexpected", "revision.approval", "a proposed revision must not carry an approval record");
+
+  const selection = p.selectedSlice;
+  if (selection) {
+    const refs = [
+      ["stepIds", "unknown_step", stepIds, "narrative step"],
+      ["personaIds", "unknown_persona", personaIds, "persona"],
+      ["needIds", "unknown_need", needIds, "need"],
+    ] as const;
+    for (const [field, code, known, what] of refs)
+      selection[field].forEach((id, i) => {
+        if (!known.has(id)) add(code, `selectedSlice.${field}[${i}]`, `${what} "${id}" does not exist`);
+      });
+    if (status !== "approved" || selection.revision !== p.revision.number)
+      add(
+        "selection_requires_approval",
+        "selectedSlice.revision",
+        "a slice can only be selected on the approved revision it names",
+      );
+    if (selection.mapFingerprint !== fingerprint(p))
+      add("stale_selection", "selectedSlice.mapFingerprint", "the map has changed since this slice was selected");
+  }
 
   return issues;
 }

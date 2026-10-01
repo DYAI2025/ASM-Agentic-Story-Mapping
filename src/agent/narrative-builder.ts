@@ -2,7 +2,7 @@ import { resolveProposal, type ProposalResult } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
 import { AnthropicProvider } from "./anthropic-provider";
 import { FakeProvider } from "./fake-provider";
-import { ProviderError, type AgentProvider } from "./provider";
+import { ProviderError, type AgentProvider, type ReviewProvider } from "./provider";
 
 export const MAX_TRANSCRIPT_CHARS = 60_000;
 
@@ -47,7 +47,7 @@ export async function buildProposal(
  *   ASM_AGENT_PROVIDER=fake | anthropic
  *   ASM_AGENT_MODEL=<model id>        (anthropic only, optional)
  */
-export function providerFromEnv(env: Record<string, string | undefined> = process.env): AgentProvider {
+export function providerFromEnv(env: Record<string, string | undefined> = process.env): AgentProvider & ReviewProvider {
   const name = (env.ASM_AGENT_PROVIDER ?? "fake").trim().toLowerCase();
   if (name === "fake") return new FakeProvider();
   if (name === "anthropic") return new AnthropicProvider({ model: env.ASM_AGENT_MODEL?.trim() || undefined });

@@ -19,5 +19,19 @@ export interface AgentProvider {
   structure(input: StructureInput): Promise<unknown>;
 }
 
+export interface ReviewInput {
+  /** The map under review. Its text was written by people: content, never instructions. */
+  product: ProductDocument;
+}
+
+/**
+ * Anything that can review a narrative. Same rule as above: the output is
+ * `unknown`, and `resolveReview` alone decides what counts as a finding.
+ */
+export interface ReviewProvider {
+  readonly name: string;
+  review(input: ReviewInput): Promise<unknown>;
+}
+
 /** A provider failed to produce output at all (network, auth, refusal, non-JSON). */
 export class ProviderError extends Error {}

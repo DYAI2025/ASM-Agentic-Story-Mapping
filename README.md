@@ -67,6 +67,59 @@ code does not know which provider produced a proposal.
 Copy `.env.example` to `.env.local` to configure. No credentials belong in the
 repository.
 
+## From approved narrative to work order
+
+```
+approved narrative -> review (fixed checks + agent findings)
+  -> 2-3 slice candidates -> a human selects one -> work order (JSON + Markdown)
+```
+
+**Review mode** opens the findings inbox.
+
+- *Fixed checks* (`reviewNarrative` in `src/domain/review.ts`) run on every
+  render: a step without a persona, a step that serves no need and has no
+  decided decision as rationale, a main path without a start and an end, needs
+  and personas no step uses, and a worst case that does not reference where it
+  leads (`outcome`: recovery at a step, escalation to a persona, or
+  termination). Duplicate ids and references to ids that do not exist are
+  rejected earlier, by validation.
+- *Agent review* runs on request. It may propose a missing transition, a
+  missing worst case, conflicting descriptions, implementation wording, or a
+  missing product question. Every finding names ids that are on the map or is
+  an explicit `NEW_PROPOSAL`; anything else is rejected. WCBC suggestions are
+  listed separately. Nothing is ticked for you. Accepting findings goes through
+  the same accept path as a discussion proposal and yields the next *proposed*
+  revision.
+
+![Findings inbox and WCBC suggestions](docs/screenshots/loop-04-agent-findings-and-wcbc-suggestions.png)
+
+**Slices** opens the slice drawer with two or three candidates
+(`proposeSlices` in `src/domain/slices.ts`). They are three fixed readings of
+the map: the steps of the persona who takes part in most steps, the steps that
+serve the needs of the last step, and the steps shared between personas. Each
+candidate lists its step, persona and need ids, why now, assumptions,
+unresolved questions, suggested acceptance criteria and what is out of scope,
+and the comparison table shows counts taken from the map. There is no score and
+no ranking.
+
+![Slice candidates compared](docs/screenshots/loop-06-slice-drawer-comparison.png)
+
+**Select slice** needs a named human and an approved revision. The selection
+is stored in the canonical file as `selectedSlice`, bound to the revision and
+the fingerprint of the map; any change of meaning removes it.
+
+**Export work order** (`/api/brief?format=json|md`) is refused until a slice is
+selected. The brief holds GOAL, VERIFIED / APPROVED CONTEXT, IN SCOPE, OUT OF
+SCOPE, PERSONAS / NEEDS, ACCEPTANCE CRITERIA DRAFT, VERIFICATION EXPECTATIONS,
+OPEN HUMAN DECISIONS and SOURCE MAP REVISION. Examples from the browser test:
+[`docs/examples/asm.work-order.md`](docs/examples/asm.work-order.md) and
+[`.json`](docs/examples/asm.work-order.json).
+
+The `fake` provider reviews with five fixed rules and template wording
+(`src/agent/fake-review.ts`); it does not understand the narrative. The
+`anthropic` provider has a review prompt and output contract, tested against a
+stubbed client only.
+
 ## Rules the code enforces
 
 - **Canonical != Derived.** The story map view (`src/domain/projection.ts`) is
@@ -92,6 +145,14 @@ repository.
   and has no effect on behaviour.
 - **A proposal is bound to its map.** If the map's meaning changed since the
   proposal was made, accepting it is refused.
+- **A finding is not a change.** Reviewing never writes the canonical file.
+  An agent finding reaches the map only when a human accepts it, and then as a
+  proposed revision.
+- **A slice is selected by a human.** Candidates are derived and never stored.
+  Saving or importing cannot introduce a selection the file did not have; only
+  the select action writes one, on an approved revision.
+- **A work order names its source.** It carries the revision number, the
+  approval record and the fingerprint of the map it was made from.
 - **Nothing invalid is written.** A save or import that fails validation leaves
   the file untouched and reports each issue with its path.
 
@@ -102,11 +163,16 @@ product/asm.product.yaml   canonical product file
 src/domain/                pure domain logic (schema, validation, operations,
                            serialisation, projection) — no React, no I/O
 src/domain/map-patch.ts    agent output schema, MapPatch, resolve, apply, diff
-src/agent/                 AgentProvider, fake and Anthropic providers, prompt
+src/domain/review.ts       fixed checks, agent finding contract, findings -> MapPatch
+src/domain/slices.ts       slice candidates, candidate check, the select gate
+src/domain/brief.ts        execution brief (work order) as JSON and Markdown
+src/agent/                 providers (fake, Anthropic), prompts, proposal and review builders
 src/server/store.ts        file-backed persistence
 src/app/                   Next.js pages and API routes
 src/ui/StoryMapEditor.tsx  the story map editor
 src/ui/WorkshopPanel.tsx   paste, review, accept / edit / reject
+src/ui/ReviewPanel.tsx     review mode: findings inbox, WCBC suggestions
+src/ui/SliceDrawer.tsx     candidate comparison, select slice, export work order
 tests/domain/, tests/agent/  unit tests (Vitest)
 tests/e2e/                 browser tests (Playwright)
 ```
@@ -124,9 +190,9 @@ npm run test:e2e           # builds, starts the app on :3311, runs browser tests
 The browser tests work on a scratch copy in `.e2e-tmp/`, not on the canonical
 file.
 
-## Not in this slice
+## Not built
 
-Automatic WCBC generation, slice selection, Jira/Confluence integration,
-prioritisation, coding agents, an evidence engine, authentication, and any
-database. Cards can be edited,
-reordered and nudged visually; adding and deleting cards is done in the file.
+Automatic coding execution, writing to Jira or Confluence, automatic merge, an
+evidence runner, a next-action engine, prioritisation by a score,
+authentication, and any database. Cards can be edited, reordered and nudged
+visually; deleting cards is done in the file.

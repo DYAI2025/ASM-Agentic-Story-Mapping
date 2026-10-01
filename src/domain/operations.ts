@@ -1,4 +1,4 @@
-import { MAX_LAYOUT_ROW, type ProductDocument } from "./schema";
+import { MAX_LAYOUT_ROW, type ProductDocument, type WcbcOutcome } from "./schema";
 import { validateProduct } from "./validate";
 
 export class DomainError extends Error {}
@@ -42,6 +42,12 @@ function reopenIfApproved(p: ProductDocument): ProductDocument["revision"] {
   return { number: p.revision.number + 1, status: "proposed" };
 }
 
+/** A slice selection is bound to the meaning it was made on and never survives a change of it. */
+export function withoutSelection(p: ProductDocument): ProductDocument {
+  const { selectedSlice: _selectedSlice, ...rest } = p;
+  return rest;
+}
+
 function assertValid(p: ProductDocument): ProductDocument {
   const result = validateProduct(p);
   if (!result.ok)
@@ -66,7 +72,7 @@ export function updateCard(
   }
   const apply = <T extends { id: string }>(e: T): T => (e.id === id ? { ...e, ...patch } : e);
   return assertValid({
-    ...p,
+    ...withoutSelection(p),
     revision: reopenIfApproved(p),
     goal: apply(p.goal),
     personas: p.personas.map(apply),
@@ -84,12 +90,26 @@ export function moveStep(p: ProductDocument, stepId: string, direction: -1 | 1):
   const neighbour = p.narrative.find((s) => s.sequence === step.sequence + direction);
   if (!neighbour) throw new DomainError(`step "${stepId}" cannot move further in that direction`);
   return assertValid({
-    ...p,
+    ...withoutSelection(p),
     revision: reopenIfApproved(p),
     narrative: p.narrative.map((s) => {
       if (s.id === step.id) return { ...s, sequence: neighbour.sequence };
       if (s.id === neighbour.id) return { ...s, sequence: step.sequence };
       return s;
+    }),
+  });
+}
+
+/** Says where a WCBC branch leads. A semantic change; `null` removes the outcome. */
+export function setWcbcOutcome(p: ProductDocument, wcbcId: string, outcome: WcbcOutcome | null): ProductDocument {
+  if (!p.wcbc.some((b) => b.id === wcbcId)) throw new DomainError(`no WCBC branch with id "${wcbcId}"`);
+  return assertValid({
+    ...withoutSelection(p),
+    revision: reopenIfApproved(p),
+    wcbc: p.wcbc.map((b) => {
+      if (b.id !== wcbcId) return b;
+      const { outcome: _outcome, ...rest } = b;
+      return outcome ? { ...rest, outcome } : rest;
     }),
   });
 }

@@ -489,3 +489,173 @@ textarea {
   cursor: pointer;
   color: var(--accent);
 }
+
+/* Review mode: findings inbox */
+
+.findings {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.finding {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--proposed);
+  border-radius: 6px;
+}
+
+.finding.note {
+  border-left-color: var(--line);
+}
+
+.finding.agent {
+  border-left-color: var(--added);
+}
+
+.finding.selected {
+  background: var(--added-bg);
+}
+
+.tag {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.tag.gap {
+  color: var(--proposed);
+  border-color: var(--proposed);
+}
+
+.tag.new-proposal {
+  color: var(--added);
+  border-color: var(--added);
+}
+
+.subhead {
+  margin: 14px 0 0;
+  color: var(--muted);
+}
+
+.outcome-form {
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.review h2 + .actions {
+  margin-top: 0;
+}
+
+.card.has-finding {
+  box-shadow: 0 0 0 3px var(--proposed-bg);
+  border-color: var(--proposed);
+}
+
+.finding-flag {
+  float: right;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--proposed);
+}
+
+/* Slice drawer */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  width: min(1100px, 94vw);
+  padding: 16px 20px 40px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.drawer-head {
+  justify-content: space-between;
+}
+
+.drawer-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.gate {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.comparison {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.comparison th,
+.comparison td {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.comparison tbody th {
+  width: 170px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.comparison .chosen,
+.candidate.chosen {
+  background: var(--approved-bg);
+  border-color: var(--approved);
+}
+
+.candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.candidate details {
+  margin-top: 6px;
+}
+
+.candidate summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.candidate ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.flagged {
+  color: var(--worst);
+}
+
+.column.in-slice > .card.step {
+  border-top-color: var(--approved);
+  background: var(--approved-bg);
+}
