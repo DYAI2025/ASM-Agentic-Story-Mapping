@@ -1,0 +1,430 @@
+"use client";
+
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  DomainError,
+  EDITABLE_FIELDS,
+  moveStep,
+  setCardRow,
+  updateCard,
+  type CardKind,
+} from "../domain/operations";
+import { buildStoryMap } from "../domain/projection";
+import { MAX_LAYOUT_ROW, type ProductDocument } from "../domain/schema";
+import { validateProduct, type ValidationIssue } from "../domain/validate";
+
+type ApiResult = { product?: ProductDocument; issues?: ValidationIssue[] };
+
+const KIND_LABEL: Record<CardKind, string> = {
+  goal: "Goal",
+  persona: "Persona",
+  need: "Need",
+  step: "Step",
+  wcbc: "WCBC",
+  decision: "Decision",
+};
+
+function EditableCard({
+  id,
+  kind,
+  values,
+  className = "",
+  onSave,
+  children,
+}: {
+  id: string;
+  kind: CardKind;
+  values: Record<string, string>;
+  className?: string;
+  onSave: (id: string, patch: Record<string, string>) => Promise<boolean>;
+  children: ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(values);
+
+  if (!editing) {
+    return (
+      <article className={`card ${className}`} data-testid={`card-${id}`} data-kind={kind}>
+        {children}
+        <footer className="card-footer">
+          <code className="card-id">{id}</code>
+          <button
+            type="button"
+            className="link"
+            aria-label={`Edit ${KIND_LABEL[kind]} ${id}`}
+            onClick={() => {
+              setDraft(values);
+              setEditing(true);
+            }}
+          >
+            Edit
+          </button>
+        </footer>
+      </article>
+    );
+  }
+
+  return (
+    <article className={`card editing ${className}`} data-testid={`card-${id}`} data-kind={kind}>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (await onSave(id, draft)) setEditing(false);
+        }}
+      >
+        {EDITABLE_FIELDS[kind].map((field) => (
+          <label key={field} className="field">
+            <span>{field}</span>
+            <textarea
+              name={field}
+              rows={field === "title" || field === "name" ? 2 : 4}
+              value={draft[field] ?? ""}
+              onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+            />
+          </label>
+        ))}
+        <div className="row">
+          <button type="submit">Save</button>
+          <button type="button" className="secondary" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
+export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
+  const [product, setProduct] = useState(initial);
+  const [personaFilter, setPersonaFilter] = useState<string | null>(null);
+  const [issues, setIssues] = useState<ValidationIssue[]>([]);
+  const [approver, setApprover] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const view = useMemo(() => buildStoryMap(product, personaFilter), [product, personaFilter]);
+  const validation = useMemo(() => validateProduct(product), [product]);
+  const approved = product.revision.status === "approved";
+
+  async function send(url: string, method: string, body: string): Promise<boolean> {
+    let result: ApiResult;
+    try {
+      const response = await fetch(url, { method, body });
+      result = (await response.json()) as ApiResult;
+    } catch (error) {
+      setIssues([
+        { code: "request_failed", path: url, message: error instanceof Error ? error.message : String(error) },
+      ]);
+      return false;
+    }
+    if (!result.product) {
+      setIssues(result.issues ?? [{ code: "unknown_error", path: url, message: "request failed" }]);
+      return false;
+    }
+    setProduct(result.product);
+    setIssues([]);
+    return true;
+  }
+
+  async function apply(operation: (current: ProductDocument) => ProductDocument): Promise<boolean> {
+    let next: ProductDocument;
+    try {
+      next = operation(product);
+    } catch (error) {
+      if (!(error instanceof DomainError)) throw error;
+      setIssues([{ code: "operation_rejected", path: "(editor)", message: error.message }]);
+      return false;
+    }
+    return send("/api/product", "PUT", JSON.stringify(next));
+  }
+
+  const saveCard = (id: string, patch: Record<string, string>) =>
+    apply((current) => updateCard(current, id, patch));
+
+  return (
+    <main className="page">
+      <header className="topbar">
+        <div>
+          <h1 data-testid="product-name">{product.product.name}</h1>
+          <p className="muted">{product.product.summary}</p>
+        </div>
+        <div className="revision">
+          <span className="muted">Revision {product.revision.number}</span>
+          <span className={`badge ${product.revision.status}`} data-testid="revision-status">
+            {product.revision.status}
+          </span>
+          {approved && product.revision.approval ? (
+            <span className="muted" data-testid="approval-record">
+              by {product.revision.approval.approvedBy} · {product.revision.approval.approvedAt}
+            </span>
+          ) : (
+            <form
+              className="row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void send("/api/product/approve", "POST", JSON.stringify({ approvedBy: approver }));
+              }}
+            >
+              <input
+                aria-label="Approver name"
+                placeholder="Your name"
+                value={approver}
+                onChange={(event) => setApprover(event.target.value)}
+              />
+              <button type="submit" data-testid="approve-button">
+                Approve revision
+              </button>
+            </form>
+          )}
+        </div>
+      </header>
+
+      <section className="toolbar">
+        <label className="row">
+          <span>Persona</span>
+          <select
+            data-testid="persona-filter"
+            value={personaFilter ?? ""}
+            onChange={(event) => setPersonaFilter(event.target.value || null)}
+          >
+            <option value="">All personas</option>
+            {product.personas.map((persona) => (
+              <option key={persona.id} value={persona.id}>
+                {persona.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="row">
+          <a className="button secondary" href="/api/product?format=yaml" data-testid="export-yaml">
+            Export YAML
+          </a>
+          <a className="button secondary" href="/api/product?format=json" data-testid="export-json">
+            Export JSON
+          </a>
+          <button type="button" className="secondary" onClick={() => fileInput.current?.click()}>
+            Import file…
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".yaml,.yml,.json"
+            hidden
+            data-testid="import-input"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) await send("/api/product/import", "POST", await file.text());
+            }}
+          />
+        </div>
+      </section>
+
+      {issues.length > 0 && (
+        <section className="panel error" role="alert" data-testid="issues">
+          <strong>Not saved.</strong>
+          <ul>
+            {issues.map((issue, i) => (
+              <li key={i}>
+                <code>{issue.path}</code> — {issue.message} <small>({issue.code})</small>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section aria-label="Product goal">
+        <h2>Product goal</h2>
+        <EditableCard
+          id={product.goal.id}
+          kind="goal"
+          className="goal"
+          values={{ statement: product.goal.statement }}
+          onSave={saveCard}
+        >
+          <p className="goal-statement" data-testid="goal-statement">
+            {product.goal.statement}
+          </p>
+        </EditableCard>
+      </section>
+
+      <section aria-label="Personas">
+        <h2>Personas</h2>
+        <div className="grid">
+          {product.personas.map((persona) => (
+            <EditableCard
+              key={persona.id}
+              id={persona.id}
+              kind="persona"
+              className={personaFilter && personaFilter !== persona.id ? "dimmed" : ""}
+              values={{ name: persona.name, description: persona.description }}
+              onSave={saveCard}
+            >
+              <h3>{persona.name}</h3>
+              <p>{persona.description}</p>
+              <ul className="needs">
+                {product.needs
+                  .filter((need) => need.personaId === persona.id)
+                  .map((need) => (
+                    <li key={need.id}>{need.statement}</li>
+                  ))}
+              </ul>
+            </EditableCard>
+          ))}
+        </div>
+      </section>
+
+      <section aria-label="Story map">
+        <h2>
+          Main narrative <span className="muted">→ in sequence; WCBC branches hang below each step</span>
+        </h2>
+        <div className="map" data-testid="story-map">
+          {view.columns.map((column, index) => (
+            <div
+              key={column.step.id}
+              className={`column ${column.inFocus ? "" : "dimmed"}`}
+              data-testid={`column-${column.step.id}`}
+              data-in-focus={column.inFocus}
+              style={{ paddingTop: column.row * 28 }}
+            >
+              <EditableCard
+                id={column.step.id}
+                kind="step"
+                className="step"
+                values={{ title: column.step.title, description: column.step.description }}
+                onSave={saveCard}
+              >
+                <span className="sequence">{column.step.sequence}</span>
+                <h3>{column.step.title}</h3>
+                <p>{column.step.description}</p>
+                <div className="chips">
+                  {column.personas.map((persona) => (
+                    <span key={persona.id} className="chip">
+                      {persona.name}
+                    </span>
+                  ))}
+                </div>
+                <div className="controls">
+                  <span title="Changes the narrative order (semantic)">
+                    <button
+                      type="button"
+                      className="icon"
+                      aria-label={`Move ${column.step.id} earlier in narrative`}
+                      disabled={index === 0}
+                      onClick={() => void apply((current) => moveStep(current, column.step.id, -1))}
+                    >
+                      ◀
+                    </button>
+                    <button
+                      type="button"
+                      className="icon"
+                      aria-label={`Move ${column.step.id} later in narrative`}
+                      disabled={index === view.columns.length - 1}
+                      onClick={() => void apply((current) => moveStep(current, column.step.id, 1))}
+                    >
+                      ▶
+                    </button>
+                  </span>
+                  <span title="Changes only where the card sits (visual, no meaning)">
+                    <button
+                      type="button"
+                      className="icon"
+                      aria-label={`Nudge ${column.step.id} up visually`}
+                      disabled={column.row === 0}
+                      onClick={() =>
+                        void apply((current) => setCardRow(current, column.step.id, column.row - 1))
+                      }
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="icon"
+                      aria-label={`Nudge ${column.step.id} down visually`}
+                      disabled={column.row === MAX_LAYOUT_ROW}
+                      onClick={() =>
+                        void apply((current) => setCardRow(current, column.step.id, column.row + 1))
+                      }
+                    >
+                      ↓
+                    </button>
+                  </span>
+                </div>
+              </EditableCard>
+
+              {column.branches.map((branch) => (
+                <div key={branch.id} className="branch">
+                  <EditableCard
+                    id={branch.id}
+                    kind="wcbc"
+                    className={`wcbc ${branch.kind}`}
+                    values={{
+                      title: branch.title,
+                      description: branch.description,
+                      recovery: branch.recovery,
+                    }}
+                    onSave={saveCard}
+                  >
+                    <span className="kind">{branch.kind === "worst_case" ? "Worst case" : "Best case"}</span>
+                    <h4>{branch.title}</h4>
+                    <p>{branch.description}</p>
+                    {branch.recovery && (
+                      <p className="recovery">
+                        <strong>Recovery:</strong> {branch.recovery}
+                      </p>
+                    )}
+                  </EditableCard>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section aria-label="Decisions">
+        <h2>
+          Decisions and rationale{" "}
+          <span className="muted" data-testid="open-decisions">
+            {view.openDecisionCount} open
+          </span>
+        </h2>
+        <div className="grid">
+          {view.decisions.map((decision) => (
+            <EditableCard
+              key={decision.id}
+              id={decision.id}
+              kind="decision"
+              className={`decision ${decision.status}`}
+              values={{ title: decision.title, rationale: decision.rationale }}
+              onSave={saveCard}
+            >
+              <span className={`badge ${decision.status}`}>{decision.status}</span>
+              <h3>{decision.title}</h3>
+              {decision.rationale ? <p>{decision.rationale}</p> : <p className="muted">No rationale yet.</p>}
+              <p className="muted">
+                Relates to:{" "}
+                {decision.relatesTo.map((id) => (
+                  <code key={id}>{id} </code>
+                ))}
+              </p>
+            </EditableCard>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel" aria-label="Validation" data-testid="validation">
+        <h2>Validation</h2>
+        {validation.ok ? (
+          <p>Canonical document is valid: all ids are unique and all references resolve.</p>
+        ) : (
+          <ul>
+            {validation.issues.map((issue, i) => (
+              <li key={i}>
+                <code>{issue.path}</code> — {issue.message}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
+  );
+}
