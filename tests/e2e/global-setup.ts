@@ -2,7 +2,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { E2E_PRODUCT_FILE } from "../../playwright.config";
 
-export default async function globalSetup() {
+export const FIXTURE_FILE = path.join(__dirname, "..", "..", "product", "asm.product.yaml");
+
+/** Put a pristine copy of the canonical fixture where the app under test reads it. */
+export async function resetProductFile() {
   await fs.mkdir(path.dirname(E2E_PRODUCT_FILE), { recursive: true });
-  await fs.copyFile(path.join(__dirname, "..", "..", "product", "asm.product.yaml"), E2E_PRODUCT_FILE);
+  await fs.copyFile(FIXTURE_FILE, E2E_PRODUCT_FILE);
 }
+
+export default resetProductFile;

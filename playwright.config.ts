@@ -21,6 +21,7 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: false,
     timeout: 240_000,
-    env: { ASM_PRODUCT_FILE: E2E_PRODUCT_FILE },
+    // The fake provider is forced so the browser tests never call a model.
+    env: { ASM_PRODUCT_FILE: E2E_PRODUCT_FILE, ASM_AGENT_PROVIDER: "fake" },
   },
 });

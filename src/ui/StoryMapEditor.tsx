@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Touch } from "../domain/map-patch";
 import {
   DomainError,
   EDITABLE_FIELDS,
@@ -10,8 +11,9 @@ import {
   type CardKind,
 } from "../domain/operations";
 import { buildStoryMap } from "../domain/projection";
-import { MAX_LAYOUT_ROW, type ProductDocument } from "../domain/schema";
+import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
+import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
 
 type ApiResult = { product?: ProductDocument; issues?: ValidationIssue[] };
 
@@ -23,6 +25,15 @@ const KIND_LABEL: Record<CardKind, string> = {
   wcbc: "WCBC",
   decision: "Decision",
 };
+
+/** What every card needs to know about the document it is shown in. */
+const CardContext = createContext<{
+  readOnly: boolean;
+  touched: Record<string, Touch>;
+  provenance: Provenance[];
+}>({ readOnly: false, touched: {}, provenance: [] });
+
+const TOUCH_LABEL: Record<Touch, string> = { added: "New", changed: "Changed", moved: "Moved" };
 
 function EditableCard({
   id,
@@ -41,24 +52,54 @@ function EditableCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(values);
+  const context = useContext(CardContext);
+  const touch = context.touched[id];
+  const sources = context.provenance.filter((entry) => entry.targetId === id);
 
-  if (!editing) {
+  if (!editing || context.readOnly) {
     return (
-      <article className={`card ${className}`} data-testid={`card-${id}`} data-kind={kind}>
+      <article
+        className={`card ${className} ${touch ? `diff-${touch}` : ""}`}
+        data-testid={`card-${id}`}
+        data-kind={kind}
+        data-diff={touch}
+      >
+        {touch && <span className="diff-flag">{TOUCH_LABEL[touch]}</span>}
         {children}
+        {sources.length > 0 && (
+          <details className="provenance" data-testid={`provenance-${id}`}>
+            <summary>
+              Source ({sources.length})
+            </summary>
+            {sources.map((entry, i) => (
+              <blockquote key={i} className="source">
+                “{entry.snippet}”
+                <footer>
+                  {entry.rationale}{" "}
+                  <span className="muted">
+                    · {entry.change} in revision {entry.revision} · {entry.provider} · confidence{" "}
+                    {entry.confidence.toFixed(2)} (advisory only)
+                  </span>
+                </footer>
+              </blockquote>
+            ))}
+          </details>
+        )}
         <footer className="card-footer">
           <code className="card-id">{id}</code>
-          <button
-            type="button"
-            className="link"
-            aria-label={`Edit ${KIND_LABEL[kind]} ${id}`}
-            onClick={() => {
-              setDraft(values);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </button>
+          {!context.readOnly && (
+            <button
+              type="button"
+              className="link"
+              aria-label={`Edit ${KIND_LABEL[kind]} ${id}`}
+              onClick={() => {
+                setDraft(values);
+                setEditing(true);
+              }}
+            >
+              Edit
+            </button>
+          )}
         </footer>
       </article>
     );
@@ -100,8 +141,17 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [approver, setApprover] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  // A proposal under review. `preview` is what the map would become; the
+  // canonical `product` stays untouched until the proposal is accepted.
+  const [preview, setPreview] = useState<ProposalPreview | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const shown = preview?.product ?? product;
 
-  const view = useMemo(() => buildStoryMap(product, personaFilter), [product, personaFilter]);
+  const view = useMemo(() => buildStoryMap(shown, personaFilter), [shown, personaFilter]);
+  const cardContext = useMemo(
+    () => ({ readOnly: reviewing, touched: preview?.touched ?? {}, provenance: shown.provenance }),
+    [reviewing, preview, shown],
+  );
   const validation = useMemo(() => validateProduct(product), [product]);
   const approved = product.revision.status === "approved";
 
@@ -141,6 +191,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
     apply((current) => updateCard(current, id, patch));
 
   return (
+    <CardContext.Provider value={cardContext}>
     <main className="page">
       <header className="topbar">
         <div>
@@ -170,7 +221,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
                 value={approver}
                 onChange={(event) => setApprover(event.target.value)}
               />
-              <button type="submit" data-testid="approve-button">
+              <button type="submit" data-testid="approve-button" disabled={reviewing}>
                 Approve revision
               </button>
             </form>
@@ -187,7 +238,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
             onChange={(event) => setPersonaFilter(event.target.value || null)}
           >
             <option value="">All personas</option>
-            {product.personas.map((persona) => (
+            {shown.personas.map((persona) => (
               <option key={persona.id} value={persona.id}>
                 {persona.name}
               </option>
@@ -201,7 +252,12 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
           <a className="button secondary" href="/api/product?format=json" data-testid="export-json">
             Export JSON
           </a>
-          <button type="button" className="secondary" onClick={() => fileInput.current?.click()}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={reviewing}
+            onClick={() => fileInput.current?.click()}
+          >
             Import file…
           </button>
           <input
@@ -219,6 +275,24 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
         </div>
       </section>
 
+      <WorkshopPanel
+        product={product}
+        onPreview={setPreview}
+        onReviewing={setReviewing}
+        onAccepted={(next) => {
+          setProduct(next);
+          setIssues([]);
+        }}
+      />
+
+      {reviewing && (
+        <p className="preview-banner" data-testid="preview-banner">
+          {preview
+            ? "Previewing the proposal on the map below. Highlighted cards are new, changed or moved. Nothing is saved until you accept."
+            : "The proposal as edited is not valid, so the map below shows the current state."}
+        </p>
+      )}
+
       {issues.length > 0 && (
         <section className="panel error" role="alert" data-testid="issues">
           <strong>Not saved.</strong>
@@ -235,14 +309,14 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
       <section aria-label="Product goal">
         <h2>Product goal</h2>
         <EditableCard
-          id={product.goal.id}
+          id={shown.goal.id}
           kind="goal"
           className="goal"
-          values={{ statement: product.goal.statement }}
+          values={{ statement: shown.goal.statement }}
           onSave={saveCard}
         >
           <p className="goal-statement" data-testid="goal-statement">
-            {product.goal.statement}
+            {shown.goal.statement}
           </p>
         </EditableCard>
       </section>
@@ -250,7 +324,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
       <section aria-label="Personas">
         <h2>Personas</h2>
         <div className="grid">
-          {product.personas.map((persona) => (
+          {shown.personas.map((persona) => (
             <EditableCard
               key={persona.id}
               id={persona.id}
@@ -262,7 +336,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
               <h3>{persona.name}</h3>
               <p>{persona.description}</p>
               <ul className="needs">
-                {product.needs
+                {shown.needs
                   .filter((need) => need.personaId === persona.id)
                   .map((need) => (
                     <li key={need.id}>{need.statement}</li>
@@ -309,7 +383,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
                       type="button"
                       className="icon"
                       aria-label={`Move ${column.step.id} earlier in narrative`}
-                      disabled={index === 0}
+                      disabled={reviewing || index === 0}
                       onClick={() => void apply((current) => moveStep(current, column.step.id, -1))}
                     >
                       ◀
@@ -318,7 +392,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
                       type="button"
                       className="icon"
                       aria-label={`Move ${column.step.id} later in narrative`}
-                      disabled={index === view.columns.length - 1}
+                      disabled={reviewing || index === view.columns.length - 1}
                       onClick={() => void apply((current) => moveStep(current, column.step.id, 1))}
                     >
                       ▶
@@ -329,7 +403,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
                       type="button"
                       className="icon"
                       aria-label={`Nudge ${column.step.id} up visually`}
-                      disabled={column.row === 0}
+                      disabled={reviewing || column.row === 0}
                       onClick={() =>
                         void apply((current) => setCardRow(current, column.step.id, column.row - 1))
                       }
@@ -340,7 +414,7 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
                       type="button"
                       className="icon"
                       aria-label={`Nudge ${column.step.id} down visually`}
-                      disabled={column.row === MAX_LAYOUT_ROW}
+                      disabled={reviewing || column.row === MAX_LAYOUT_ROW}
                       onClick={() =>
                         void apply((current) => setCardRow(current, column.step.id, column.row + 1))
                       }
@@ -426,5 +500,6 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
         )}
       </section>
     </main>
+    </CardContext.Provider>
   );
 }

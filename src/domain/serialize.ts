@@ -74,8 +74,33 @@ export function canonicalize(p: ProductDocument): ProductDocument {
       rationale: e.rationale,
       relatesTo: [...e.relatesTo],
     })),
+    provenance: p.provenance.map((e) => ({
+      targetId: e.targetId,
+      change: e.change,
+      snippet: e.snippet,
+      rationale: e.rationale,
+      confidence: e.confidence,
+      provider: e.provider,
+      revision: e.revision,
+    })),
     layout: { cards: layoutCards },
   };
+}
+
+/**
+ * Short, deterministic fingerprint of a document's meaning (layout excluded).
+ * Used to detect that a proposal was built against a map that has since
+ * changed. Not a security feature.
+ */
+export function fingerprint(p: ProductDocument): string {
+  const { layout: _layout, ...semantics } = canonicalize(p);
+  const text = JSON.stringify(semantics);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 export function exportProductYaml(p: ProductDocument): string {

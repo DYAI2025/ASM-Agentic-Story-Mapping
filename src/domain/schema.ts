@@ -92,6 +92,20 @@ export const LayoutSchema = z.strictObject({
   ),
 });
 
+/**
+ * Where an accepted change came from. Written only when a human accepts a
+ * proposal; `confidence` is advisory metadata and never drives behaviour.
+ */
+export const ProvenanceSchema = z.strictObject({
+  targetId: IdSchema,
+  change: z.enum(["added", "changed", "assigned", "moved"]),
+  snippet: Text,
+  rationale: z.string(),
+  confidence: z.number().min(0).max(1),
+  provider: Text,
+  revision: z.number().int().min(1),
+});
+
 export const ProductDocumentSchema = z.strictObject({
   schemaVersion: z.literal(SCHEMA_VERSION),
   product: ProductInfoSchema,
@@ -102,6 +116,7 @@ export const ProductDocumentSchema = z.strictObject({
   narrative: z.array(NarrativeStepSchema),
   wcbc: z.array(WcbcSchema),
   decisions: z.array(DecisionSchema),
+  provenance: z.array(ProvenanceSchema).default([]),
   layout: LayoutSchema,
 });
 
@@ -110,5 +125,6 @@ export type Persona = z.infer<typeof PersonaSchema>;
 export type Need = z.infer<typeof NeedSchema>;
 export type NarrativeStep = z.infer<typeof NarrativeStepSchema>;
 export type Wcbc = z.infer<typeof WcbcSchema>;
+export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type Decision = z.infer<typeof DecisionSchema>;
 export type ProductDocument = z.infer<typeof ProductDocumentSchema>;

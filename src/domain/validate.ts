@@ -88,6 +88,11 @@ function checkSemantics(p: ProductDocument): ValidationIssue[] {
       add("missing_rationale", `decisions[${i}].rationale`, "a decided decision needs a rationale");
   });
 
+  p.provenance.forEach((entry, i) => {
+    if (!seen.has(entry.targetId))
+      add("unknown_provenance_target", `provenance[${i}].targetId`, `"${entry.targetId}" does not exist`);
+  });
+
   for (const id of Object.keys(p.layout.cards)) {
     if (!seen.has(id))
       add("unknown_layout_target", `layout.cards.${id}`, `"${id}" does not exist`);
