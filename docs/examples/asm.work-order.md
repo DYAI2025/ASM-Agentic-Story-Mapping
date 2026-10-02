@@ -1,8 +1,8 @@
 # Work order: Thread to “Export execution-ready work”
 
-Slice `slice-outcome-thread` of ASM – Agentic Story Mapping, revision 3 (`01f81928`).
+Slice `slice-outcome-thread` of ASM – Agentic Story Mapping, revision 3 (`2b95423e`).
 
-Work order contract: `asm.execution-brief`, briefVersion 2.
+Work order contract: `asm.execution-brief`, briefVersion 3.
 
 ## GOAL
 
@@ -10,8 +10,9 @@ Software teams without prior AI experience can move from product discussion to a
 
 ## VERIFIED / APPROVED CONTEXT
 
-- Approved: revision 3 by Maya (E2E) at 2026-10-02T22:08:50.341Z.
-- Slice selected by Maya (E2E) at 2026-10-02T22:08:50.989Z (candidate `ef5f52e6`, derivation rules version 1).
+- Approved: revision 3 by Maya (E2E) at 2026-10-02T22:21:38.836Z.
+- Who else matters: considered by Maya (E2E) at 2026-10-02T22:21:39.185Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
+- Slice selected by Maya (E2E) at 2026-10-02T22:21:39.469Z (candidate `ef5f52e6`, derivation rules version 2).
 - Value: VALUE_RESOLVED (`need-shared-narrative`, `need-approve-meaning`, `need-buildable-slice`, `need-stable-references`). The slice references at least one need on the map. ASM has not measured any business value.
 - Verified: nothing. Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested.
 
@@ -62,11 +63,11 @@ Decided:
 
 ## PERSONAS / NEEDS
 
-- **Product Lead / Product Owner** (`persona-product-lead`) — Owns product intent and approves what the narrative means.
+- **Product Lead / Product Owner** (`persona-product-lead`, role not stated) — Owns product intent and approves what the narrative means.
   - `need-shared-narrative` Turn a product discussion into one narrative the whole team understands, without prior AI experience.
   - `need-approve-meaning` Remain the one who approves meaning; nothing counts as agreed until I approve it.
-- **Domain or UX Expert** (`persona-domain-ux`) — Knows the real user situations, including where things go wrong.
-- **Developer** (`persona-developer`) — Turns the approved narrative into a first delivery slice.
+- **Domain or UX Expert** (`persona-domain-ux`, role not stated) — Knows the real user situations, including where things go wrong.
+- **Developer** (`persona-developer`, role not stated) — Turns the approved narrative into a first delivery slice.
   - `need-buildable-slice` Receive a first slice that is small, unambiguous and ready to execute.
   - `need-stable-references` Rely on stable ids and explicit relations rather than on where a card happens to sit.
 
@@ -101,5 +102,5 @@ A draft derived from the map. A human has to confirm it before it binds anyone.
 
 - Product: ASM – Agentic Story Mapping (`asm`), schema version 1
 - Revision: 3 (approved)
-- Approved by: Maya (E2E) at 2026-10-02T22:08:50.341Z
-- Map fingerprint: `01f81928`
+- Approved by: Maya (E2E) at 2026-10-02T22:21:38.836Z
+- Map fingerprint: `2b95423e`

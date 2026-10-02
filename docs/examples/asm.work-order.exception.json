@@ -1,5 +1,5 @@
 {
-  "briefVersion": 2,
+  "briefVersion": 3,
   "kind": "asm.execution-brief",
   "goal": {
     "id": "goal-faster-shared-narrative",
@@ -13,14 +13,19 @@
     "approval": {
       "revision": 1,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-02T22:08:52.280Z"
+      "approvedAt": "2026-10-02T22:21:40.846Z"
     },
     "selection": {
       "candidateId": "slice-shared-steps",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-02T22:08:52.495Z",
+      "selectedAt": "2026-10-02T22:21:41.047Z",
       "candidateFingerprint": "f66ec7d4",
-      "derivationVersion": 1
+      "derivationVersion": 2
+    },
+    "peopleConsidered": {
+      "confirmedBy": "Maya (E2E)",
+      "confirmedAt": "2026-10-02T22:21:40.963Z",
+      "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
     },
     "value": {
       "status": "VALUE_EXCEPTION_ACCEPTED",
@@ -28,7 +33,7 @@
       "exception": {
         "rationale": "The hand-over points have to work before we can observe which need they serve.",
         "acceptedBy": "Maya (E2E)",
-        "acceptedAt": "2026-10-02T22:08:52.844Z"
+        "acceptedAt": "2026-10-02T22:21:41.362Z"
       },
       "note": "No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value."
     },
@@ -190,17 +195,23 @@
     {
       "id": "persona-product-lead",
       "name": "Product Lead / Product Owner",
-      "description": "Owns product intent and approves what the narrative means."
+      "description": "Owns product intent and approves what the narrative means.",
+      "roles": [],
+      "persona": true
     },
     {
       "id": "persona-domain-ux",
       "name": "Domain or UX Expert",
-      "description": "Knows the real user situations, including where things go wrong."
+      "description": "Knows the real user situations, including where things go wrong.",
+      "roles": [],
+      "persona": true
     },
     {
       "id": "persona-developer",
       "name": "Developer",
-      "description": "Turns the approved narrative into a first delivery slice."
+      "description": "Turns the approved narrative into a first delivery slice.",
+      "roles": [],
+      "persona": true
     }
   ],
   "needs": [],
@@ -411,7 +422,7 @@
     "revision": 1,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-02T22:08:52.280Z",
-    "mapFingerprint": "ee5071eb"
+    "approvedAt": "2026-10-02T22:21:40.846Z",
+    "mapFingerprint": "61269173"
   }
 }

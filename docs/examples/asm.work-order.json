@@ -1,5 +1,5 @@
 {
-  "briefVersion": 2,
+  "briefVersion": 3,
   "kind": "asm.execution-brief",
   "goal": {
     "id": "goal-faster-shared-narrative",
@@ -13,14 +13,19 @@
     "approval": {
       "revision": 3,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-02T22:08:50.341Z"
+      "approvedAt": "2026-10-02T22:21:38.836Z"
     },
     "selection": {
       "candidateId": "slice-outcome-thread",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-02T22:08:50.989Z",
+      "selectedAt": "2026-10-02T22:21:39.469Z",
       "candidateFingerprint": "ef5f52e6",
-      "derivationVersion": 1
+      "derivationVersion": 2
+    },
+    "peopleConsidered": {
+      "confirmedBy": "Maya (E2E)",
+      "confirmedAt": "2026-10-02T22:21:39.185Z",
+      "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
     },
     "value": {
       "status": "VALUE_RESOLVED",
@@ -181,17 +186,23 @@
     {
       "id": "persona-product-lead",
       "name": "Product Lead / Product Owner",
-      "description": "Owns product intent and approves what the narrative means."
+      "description": "Owns product intent and approves what the narrative means.",
+      "roles": [],
+      "persona": true
     },
     {
       "id": "persona-domain-ux",
       "name": "Domain or UX Expert",
-      "description": "Knows the real user situations, including where things go wrong."
+      "description": "Knows the real user situations, including where things go wrong.",
+      "roles": [],
+      "persona": true
     },
     {
       "id": "persona-developer",
       "name": "Developer",
-      "description": "Turns the approved narrative into a first delivery slice."
+      "description": "Turns the approved narrative into a first delivery slice.",
+      "roles": [],
+      "persona": true
     }
   ],
   "needs": [
@@ -338,7 +349,7 @@
     "revision": 3,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-02T22:08:50.341Z",
-    "mapFingerprint": "01f81928"
+    "approvedAt": "2026-10-02T22:21:38.836Z",
+    "mapFingerprint": "2b95423e"
   }
 }
