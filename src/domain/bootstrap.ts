@@ -21,10 +21,11 @@ export type BootstrapResult = { ok: true; product: ProductDocument } | { ok: fal
 /** The draft a first proposal is built against. Deterministic: the same name always gives the same draft. */
 export function blankProduct(nameInput: string): BlankResult {
   const name = nameInput.trim();
-  if (name === "" || name.length > MAX_NAME_LENGTH)
+  // One line of ordinary text: no line breaks or other control characters.
+  if (name === "" || name.length > MAX_NAME_LENGTH || /[\u0000-\u001f\u007f]/.test(name))
     return {
       ok: false,
-      issues: [{ code: "invalid_name", path: "name", message: `give the product a name of at most ${MAX_NAME_LENGTH} characters` }],
+      issues: [{ code: "invalid_name", path: "name", message: `give the product a name: one line of at most ${MAX_NAME_LENGTH} characters` }],
     };
   const slug = slugify(name);
   return {
@@ -54,9 +55,9 @@ export const GOAL_REQUIRED: ValidationIssue = {
     "The text does not say what the product is for. Add one sentence that does, and structure it again. Nothing was created.",
 };
 
-/** Whether a refusal came from the draft still having no goal. */
+/** Whether a refusal came from the draft still having no goal: the statement is empty, not merely unacceptable. */
 export function lacksGoal(issues: readonly ValidationIssue[]): boolean {
-  return issues.some((issue) => issue.path === "goal.statement");
+  return issues.some((issue) => issue.path === "goal.statement" && issue.code === "schema_too_small");
 }
 
 /**

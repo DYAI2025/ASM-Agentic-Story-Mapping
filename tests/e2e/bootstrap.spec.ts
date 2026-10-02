@@ -40,9 +40,12 @@ test("no product yet: a start screen, not an error, and the guide is at its firs
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "intent");
   await expect(page.getByTestId("guide-progress")).toHaveText("0 of 6 steps done");
   await expect(page.getByTestId("guide-hide")).toHaveCount(0);
-  // Nothing to write on before the product has a name.
-  await expect(page.getByTestId("name-needed")).toBeVisible();
-  await expect(page.getByTestId("transcript-input")).toHaveCount(0);
+  // The text can be written before the product has a name; a proposal cannot be asked for yet.
+  await page.getByTestId("transcript-input").fill("Goal: Something.");
+  await expect(page.getByTestId("structure-button")).toBeDisabled();
+  await expect(page.getByTestId("proposal-blocked")).toHaveText("Give the product a name first.");
+  // The format is shown from the start, not behind a click, because no model is connected in this run.
+  await expect(page.getByTestId("marker-hint")).toContainText("One item per line");
   // The guide's button leads to the first thing to fill in.
   await page.getByTestId("guide-cta").click();
   await expect(page.getByTestId("product-name-input")).toBeFocused();
@@ -54,6 +57,18 @@ test("text that cannot become a map creates nothing", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("product-name-input").fill(NAME);
   await expect(page.getByTestId("structure-button")).toBeDisabled();
+
+  // Plain sentences, with no model connected: the message says what to do instead.
+  const plain = "We want residents to get their parcels. Couriers lose time.";
+  await page.getByTestId("transcript-input").fill(plain);
+  await page.getByTestId("structure-button").click();
+  await expect(page.getByTestId("proposal-issues")).toContainText("each item needs its own line starting with Goal:");
+  expect(await exists()).toBe(false);
+  // Changing the name does not throw the text away.
+  await page.getByTestId("product-name-input").fill("");
+  await expect(page.getByTestId("transcript-input")).toHaveValue(plain);
+  await page.getByTestId("product-name-input").fill(NAME);
+  await expect(page.getByTestId("transcript-input")).toHaveValue(plain);
 
   // Text that does not say what the product is for.
   await page.getByTestId("transcript-input").fill("Persona: Resident — Lives in the building.\nNeed (Resident): Get my parcel.");
@@ -71,6 +86,20 @@ test("text that cannot become a map creates nothing", async ({ page }) => {
   expect((await page.request.post("/api/bootstrap", { data: { name: NAME } })).status()).toBe(400);
   for (const patch of [null, "approve", { operations: [{ op: "approve" }] }])
     expect((await page.request.post("/api/bootstrap/accept", { data: { name: NAME, patch } })).status()).toBe(422);
+  expect(await exists()).toBe(false);
+
+  // Saving and importing change a product; with none there they refuse, also for a valid, even an approved, file.
+  const valid = await fs.readFile(FIXTURE_FILE, "utf8");
+  const approved = YAML.parse(valid);
+  approved.revision = { number: 1, status: "approved", approval: { approvedBy: "Nobody", approvedAt: "2026-10-01T10:00:00.000Z" } };
+  for (const body of [valid, YAML.stringify(approved)]) {
+    const put = await page.request.put("/api/product", { data: body });
+    expect(put.status()).toBe(409);
+    expect((await put.json()).issues[0].code).toBe("no_product");
+    const imported = await page.request.post("/api/product/import", { data: body });
+    expect(imported.status()).toBe(409);
+    expect((await imported.json()).issues[0].code).toBe("no_product");
+  }
   expect(await exists()).toBe(false);
 });
 

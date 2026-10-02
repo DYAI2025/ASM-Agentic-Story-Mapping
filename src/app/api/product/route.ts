@@ -1,5 +1,5 @@
 import { exportProductJson, exportProductYaml, parseProductText } from "../../../domain/serialize";
-import { loadProduct, saveProduct } from "../../../server/store";
+import { loadProduct, productFileExists, productFilePath, saveProduct } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,12 @@ export async function GET(request: Request) {
  * of the product document, so a document carrying one fails validation.
  */
 export async function PUT(request: Request) {
+  // Saving edits a product; it does not start one. A first product is created by accepting a proposal.
+  if (!(await productFileExists()))
+    return Response.json(
+      { issues: [{ code: "no_product", path: productFilePath(), message: "there is no product to save to; start one from the start screen" }] },
+      { status: 409 },
+    );
   const incoming = parseProductText(await request.text());
   if (!incoming.ok) return Response.json({ issues: incoming.issues }, { status: 422 });
 

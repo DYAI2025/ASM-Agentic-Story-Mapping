@@ -56,9 +56,12 @@ name + own words -> proposal against a blank draft -> preview -> accept
   never saved.
 - Nothing is written until the human accepts. Rejecting leaves no file.
 - `POST /api/bootstrap/accept` is the only route that creates a product file,
-  and it only creates: the file is opened for exclusive creation, so where a
-  file exists the request is refused (409) and the file is untouched. Both
-  bootstrap routes refuse while a product exists.
+  and it only creates: the document is written to a temporary file and linked
+  into place, which fails where a file exists, so the request is refused (409)
+  and the file is untouched. Both bootstrap routes refuse while a product
+  exists. Editor save (`PUT /api/product`) and import refuse while none
+  exists (`no_product`): they change a product, they do not start one. To
+  bring an existing product file, put it at the configured path.
 - A proposal that does not say what the product is for is refused
   (`goal_required`). The accepted goal also becomes the product's summary line.
 - The result is always proposed. Approval stays the separate human action.

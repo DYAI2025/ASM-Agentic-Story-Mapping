@@ -1,5 +1,5 @@
 import { parseProductText } from "../../../../domain/serialize";
-import { saveProduct } from "../../../../server/store";
+import { productFileExists, productFilePath, saveProduct } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -7,8 +7,17 @@ export const dynamic = "force-dynamic";
  * Replace the canonical product with an uploaded YAML or JSON file.
  * The file is taken as the record it claims to be, including a recorded
  * approval, but only if it validates completely.
+ *
+ * Import replaces a product; it does not start one. Where no product exists,
+ * the only way to create one is to accept a proposal on the start screen (or
+ * to put a file at the configured path by hand).
  */
 export async function POST(request: Request) {
+  if (!(await productFileExists()))
+    return Response.json(
+      { issues: [{ code: "no_product", path: productFilePath(), message: "there is no product to replace; start one from the start screen" }] },
+      { status: 409 },
+    );
   const incoming = parseProductText(await request.text());
   if (!incoming.ok) return Response.json({ issues: incoming.issues }, { status: 422 });
   const saved = await saveProduct(incoming.product);

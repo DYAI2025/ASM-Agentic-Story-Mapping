@@ -50,6 +50,20 @@ export async function startProposal(name: string, transcript: string, provider: 
   if (!blank.ok) return blank;
   const result = await buildProposal(blank.product, transcript, provider);
   if (!result.ok && lacksGoal(result.issues)) return { ok: false, issues: [GOAL_REQUIRED] };
+  if (!result.ok && result.issues.some((issue) => issue.code === "empty_proposal"))
+    return {
+      ok: false,
+      issues: [
+        {
+          code: "nothing_structured",
+          path: "transcript",
+          message:
+            provider instanceof FakeProvider
+              ? "Nothing in the text could be turned into a map. No language model is connected, so each item needs its own line starting with Goal:, Persona:, Actor:, Need (name): or Step: — see the example above the text field. Nothing was created."
+              : "Nothing in the text could be turned into a map. Say what the product is for, who is involved and what they do, then try again. Nothing was created.",
+        },
+      ],
+    };
   return result;
 }
 

@@ -39,23 +39,27 @@ export async function productFileExists(): Promise<boolean> {
 }
 
 /**
- * Validates, then creates the product file. Never replaces one: the file is
- * opened for exclusive creation, so if anything is there, at any moment, the
- * write fails and the existing file is untouched.
+ * Validates, then creates the product file. Never replaces one, and never
+ * leaves half a file: the document is written to a temporary file and then
+ * hard-linked into place, which fails if anything is there, at any moment.
  */
 export async function createProduct(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
   const file = productFilePath();
   await fs.mkdir(/* turbopackIgnore: true */ path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.${Date.now()}.new`;
+  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), { encoding: "utf8", flag: "wx" });
   try {
-    await fs.writeFile(/* turbopackIgnore: true */ file, exportProductYaml(result.product), { encoding: "utf8", flag: "wx" });
+    await fs.link(/* turbopackIgnore: true */ tmp, file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     return {
       ok: false,
       issues: [{ code: "product_exists", path: file, message: "a product file already exists; it was not changed" }],
     };
+  } finally {
+    await fs.rm(/* turbopackIgnore: true */ tmp, { force: true });
   }
   return result;
 }

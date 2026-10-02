@@ -37,6 +37,12 @@ const blankOf = (name: string) => {
 };
 const returning = (output: unknown): AgentProvider => ({ name: "stub", structure: async () => output });
 const codes = (result: { ok: boolean; issues?: { code: string }[] }) => (result.issues ?? []).map((i) => i.code);
+/** Refused, with at least one issue, and every issue of that kind. An accepted input has no issues and fails this. */
+function expectRefused(result: { ok: boolean; issues?: { code: string }[] }, prefix: string) {
+  expect(result.ok).toBe(false);
+  expect(codes(result).length).toBeGreaterThan(0);
+  expect(codes(result).filter((c) => !c.startsWith(prefix))).toEqual([]);
+}
 
 async function proposal(name = NAME, intent = INTENT): Promise<MapPatch> {
   const result = await startProposal(name, intent, provider);
@@ -64,7 +70,9 @@ describe("the blank draft a first product starts from", () => {
   });
 
   it("needs a name", () => {
-    for (const name of ["", "   ", "x".repeat(121)]) expect(codes(blankProduct(name))).toEqual(["invalid_name"]);
+    for (const name of ["", "   ", "x".repeat(121), "Line one\nLine two", "a\u0000b", "tab\there"])
+      expect(codes(blankProduct(name)), JSON.stringify(name)).toEqual(["invalid_name"]);
+    expect(blankProduct("x".repeat(120)).ok).toBe(true);
   });
 });
 
@@ -86,11 +94,31 @@ describe("free text -> proposal for a first map", () => {
     expect(result.ok === false && result.issues[0].message).toContain("what the product is for");
   });
 
+  it("a goal that is there but too long is refused for what it is, not as a missing goal", async () => {
+    const result = await startProposal(NAME, `Goal: ${"g".repeat(601)}`, provider);
+    // The statement and the quoted line are both over the limit.
+    expect(new Set(codes(result))).toEqual(new Set(["text_too_long"]));
+  });
+
+  it("plain sentences without a model: nothing is structured, and the message says what to do", async () => {
+    const result = await startProposal(NAME, "We want residents to get their parcels. Couriers lose time. It should be simple.", provider);
+    expect(codes(result)).toEqual(["nothing_structured"]);
+    const message = result.ok ? "" : result.issues[0].message;
+    expect(message).toContain("No language model is connected");
+    expect(message).toContain("Goal:");
+    expect(message).toContain("Nothing was created");
+    // With a model the same refusal does not talk about line formats.
+    const empty = { summary: "", goal: null, personas: [], needs: [], steps: [], assignments: [], moves: [], unresolvedQuestions: [] };
+    const withModel = await startProposal(NAME, "Plain text.", returning(empty));
+    expect(codes(withModel)).toEqual(["nothing_structured"]);
+    expect(withModel.ok ? "" : withModel.issues[0].message).not.toContain("language model");
+  });
+
   it("refuses empty text, a missing name and unusable provider output", async () => {
     expect(codes(await startProposal(NAME, "   ", provider))).toEqual(["empty_transcript"]);
     expect(codes(await startProposal("", INTENT, provider))).toEqual(["invalid_name"]);
     for (const output of ["garbage", null, { summary: "x" }, { operations: [{ op: "approve" }] }])
-      expect(codes(await startProposal(NAME, INTENT, returning(output))).every((c) => c.startsWith("agent_output_"))).toBe(true);
+      expectRefused(await startProposal(NAME, INTENT, returning(output)), "agent_output_");
   });
 });
 
@@ -154,7 +182,7 @@ describe("accepting the proposal creates the first revision", () => {
       { ...patch, revision: { number: 1, status: "approved" } },
       { ...patch, operations: [...patch.operations, { opId: "op-99", op: "approve", source: patch.operations[0].source }] },
     ])
-      expect(codes(bootstrapProduct(NAME, forged)).every((c) => c.startsWith("patch_"))).toBe(true);
+      expectRefused(bootstrapProduct(NAME, forged), "patch_");
     const ok = bootstrapProduct(NAME, patch);
     expect(ok.ok && ok.product.revision.status).toBe("proposed");
   });
@@ -178,7 +206,7 @@ describe("text that tries to give orders", () => {
       { ...(honest as object), revision: { number: 1, status: "approved" } },
       { ...(honest as object), product: { id: "asm", name: "Overwritten", summary: "x" } },
     ])
-      expect(codes(await startProposal(NAME, HOSTILE, returning(output))).every((c) => c.startsWith("agent_output_"))).toBe(true);
+      expectRefused(await startProposal(NAME, HOSTILE, returning(output)), "agent_output_");
   });
 });
 
@@ -226,6 +254,24 @@ describe("the store creates a first product and never replaces one", () => {
     const blank = blankProduct(NAME);
     expect(blank.ok && (await createProduct(blank.product)).ok).toBe(false);
     expect(await productFileExists()).toBe(false);
+  });
+
+  it("leaves nothing but the product file behind, whether it created or refused", async () => {
+    const result = bootstrapProduct(NAME, await proposal());
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect((await createProduct(result.product)).ok).toBe(true);
+    expect(codes(await createProduct(result.product))).toEqual(["product_exists"]);
+    expect(await fs.readdir(path.dirname(file))).toEqual(["first.product.yaml"]);
+  });
+
+  it("of two creations at the same moment exactly one wins, and the file is whole", async () => {
+    const result = bootstrapProduct(NAME, await proposal());
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    const outcomes = await Promise.all(Array.from({ length: 8 }, () => createProduct(result.product)));
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
+    expect(outcomes.filter((o) => !o.ok).map(codes)).toEqual(Array.from({ length: 7 }, () => ["product_exists"]));
+    expect((await loadProduct()).ok).toBe(true);
+    expect(await fs.readdir(path.dirname(file))).toEqual(["first.product.yaml"]);
   });
 });
 

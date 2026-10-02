@@ -55,6 +55,7 @@ export function WorkshopPanel({
   extra = NO_EXTRA,
   labels,
   hint,
+  blocked,
 }: {
   product: ProductDocument;
   onPreview: (preview: ProposalPreview | null) => void;
@@ -65,6 +66,8 @@ export function WorkshopPanel({
   extra?: Record<string, unknown>;
   labels?: { heading: string; intro: string; placeholder: string; button: string; busy: string; acceptNote: string };
   hint?: ReactNode;
+  /** Why a proposal cannot be asked for yet. The text can still be written. */
+  blocked?: string;
 }) {
   const [transcript, setTranscript] = useState("");
   const [busy, setBusy] = useState(false);
@@ -168,11 +171,16 @@ export function WorkshopPanel({
             <button
               type="button"
               data-testid="structure-button"
-              disabled={busy || transcript.trim() === ""}
+              disabled={busy || transcript.trim() === "" || blocked !== undefined}
               onClick={() => void structure()}
             >
               {busy ? (labels?.busy ?? "Structuring…") : (labels?.button ?? "Structure discussion")}
             </button>
+            {blocked && (
+              <span className="muted" data-testid="proposal-blocked">
+                {blocked}
+              </span>
+            )}
             {status && (
               <span className="muted" data-testid="proposal-status">
                 {status}

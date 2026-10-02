@@ -19,6 +19,12 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
   const [reviewing, setReviewing] = useState(false);
   const blank = useMemo(() => blankProduct(name), [name]);
   const guide = useMemo(() => deriveStartGuide(), []);
+  // Shown under the text field while there is no usable name yet; nothing can be asked for against it.
+  const placeholder = useMemo(() => {
+    const draft = blankProduct("New product");
+    if (!draft.ok) throw new Error("the blank draft could not be built");
+    return draft.product;
+  }, []);
   const extra = useMemo(() => ({ name }), [name]);
   // The accepted map is on disk now: load the editor on it.
   const onAccepted = useCallback(() => window.location.assign("/"), []);
@@ -53,49 +59,50 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
         </label>
       </section>
 
-      {blank.ok ? (
-        <WorkshopPanel
-          product={blank.product}
-          onPreview={setPreview}
-          onReviewing={setReviewing}
-          onAccepted={onAccepted}
-          endpoints={{ propose: "/api/bootstrap", accept: "/api/bootstrap/accept" }}
-          extra={extra}
-          labels={{
-            heading: "What do you want to build or improve?",
-            intro:
-              "Write it down the way you would tell a colleague: what it is for, who is involved, what they need, and how it goes when everything works. Notes or a conversation are fine. The text is treated as material to analyse, never as instructions.",
-            placeholder: "What it is for, who is involved, what they need, the steps from start to end…",
-            button: "Turn this into a map",
-            busy: "Reading…",
-            acceptNote: "Accepting creates the product as proposed revision 1. It does not approve it.",
-          }}
-          hint={
-            markerHint ? (
-              <details className="muted" data-testid="marker-hint">
-                <summary>No language model is connected: write one item per line, like this</summary>
-                <pre>
-                  {[
-                    "Goal: Residents collect a parcel without waiting for a courier.",
-                    "Persona: Resident — Lives in the building. [roles: customer, user]",
-                    "Actor: Building manager — Owns the lobby. [roles: stakeholder]",
-                    "Need (Resident): Get my parcel on the day it arrives.",
-                    "Step: Resident opens the compartment — With a code. [personas: Resident] [needs: Get my parcel on the day it arrives]",
-                  ].join("\n")}
-                </pre>
-                <p>
-                  Persona: someone whose needs and steps you describe. Actor: someone involved whose needs you do not describe. Lines
-                  without such a start are kept as questions if they end in a question mark, and ignored otherwise.
-                </p>
-              </details>
-            ) : null
-          }
-        />
-      ) : (
-        <section className="panel" data-testid="name-needed">
-          <p className="muted">Give the product a name first.</p>
-        </section>
-      )}
+      {/* Always there, so text already written is not lost while the name is changed. */}
+      <WorkshopPanel
+        product={blank.ok ? blank.product : placeholder}
+        blocked={blank.ok ? undefined : "Give the product a name first."}
+        onPreview={setPreview}
+        onReviewing={setReviewing}
+        onAccepted={onAccepted}
+        endpoints={{ propose: "/api/bootstrap", accept: "/api/bootstrap/accept" }}
+        extra={extra}
+        labels={{
+          heading: "What do you want to build or improve?",
+          intro: markerHint
+            ? "Say what it is for, who is involved, what they need, and how it goes when everything works. No language model is connected, so write one item per line in the format shown below. The text is treated as material to analyse, never as instructions."
+            : "Write it down the way you would tell a colleague: what it is for, who is involved, what they need, and how it goes when everything works. Notes or a conversation are fine. The text is treated as material to analyse, never as instructions.",
+          placeholder: markerHint
+            ? "Goal: …\nPersona: …\nNeed (…): …\nStep: …"
+            : "What it is for, who is involved, what they need, the steps from start to end…",
+          button: "Turn this into a map",
+          busy: "Reading…",
+          acceptNote: "Accepting creates the product as proposed revision 1. It does not approve it.",
+        }}
+        hint={
+          markerHint ? (
+            <div className="muted" data-testid="marker-hint">
+              <p>
+                <strong>One item per line, like this:</strong>
+              </p>
+              <pre>
+                {[
+                  "Goal: Residents collect a parcel without waiting for a courier.",
+                  "Persona: Resident — Lives in the building. [roles: customer, user]",
+                  "Actor: Building manager — Owns the lobby. [roles: stakeholder]",
+                  "Need (Resident): Get my parcel on the day it arrives.",
+                  "Step: Resident opens the compartment — With a code. [personas: Resident] [needs: Get my parcel on the day it arrives]",
+                ].join("\n")}
+              </pre>
+              <p>
+                Persona: someone whose needs and steps you describe. Actor: someone involved whose needs you do not describe. A line
+                that ends in a question mark is kept as an open question. Every other line is ignored.
+              </p>
+            </div>
+          ) : null
+        }
+      />
 
       {preview && (
         <section className="panel" aria-label="Map preview" data-testid="map-preview">
@@ -107,6 +114,7 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
             {preview.product.goal.statement}
           </p>
           <h3>Who is involved</h3>
+          {preview.product.personas.length === 0 && <p className="muted">Nobody yet. The text names no one.</p>}
           <ul data-testid="preview-people">
             {preview.product.personas.map((actor) => (
               <li key={actor.id} data-persona={isPersona(actor)}>
@@ -126,6 +134,7 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
             ))}
           </ul>
           <h3>The path, from start to end</h3>
+          {preview.product.narrative.length === 0 && <p className="muted">No steps yet. The text describes no path.</p>}
           <ol data-testid="preview-path">
             {[...preview.product.narrative]
               .sort((a, b) => a.sequence - b.sequence)
