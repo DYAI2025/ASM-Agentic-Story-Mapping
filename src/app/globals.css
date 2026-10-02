@@ -811,3 +811,12 @@ html[data-guide="off"] .guide {
   margin: 6px 0 10px;
   padding-left: 18px;
 }
+
+/* Stale summary under the toolbar */
+
+.stale-summary {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 4px solid var(--worst);
+  background: var(--surface);
+}

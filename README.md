@@ -136,7 +136,8 @@ own.
   done. It never writes: approving, selecting and accepting stay where they
   were, behind the same gates.
 - An earlier selection or confirmation that no longer matches the map is shown
-  as stale on its step. Nothing is deleted or selected again.
+  as stale on its step, with the way back. The toolbar shows the same as
+  badges and a one-line summary, so it is visible with the guide hidden. Nothing is deleted or selected again.
 - Three markers appear when their state is reached: a readable map (step 3),
   an approved story with the approver's name (step 4), a work order (step 7).
 - *Hide guide* / *Show guide* is a per-browser preference in `localStorage`

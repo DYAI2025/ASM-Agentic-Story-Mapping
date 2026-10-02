@@ -414,6 +414,19 @@ export function StoryMapEditor({
         </div>
       </section>
 
+      {(selectionStale || personaCheckStale) && (
+        <p className="stale-summary" role="status" data-testid="stale-summary">
+          <strong>The map has changed since you last {selectionStale ? "picked a slice" : "confirmed who else matters"}.</strong>{" "}
+          {personaCheckStale && selectionStale
+            ? "The confirmation and the slice selection are kept, shown as stale, and nothing is chosen for you. "
+            : personaCheckStale
+              ? "The confirmation is kept, shown as stale, and nothing is confirmed for you. "
+              : "The selection is kept, shown as stale, and nothing is chosen for you. "}
+          The way back starts at the earliest step that has to be redone:{" "}
+          {approved ? "" : "approve the story, then "}confirm who else matters{selectionStale ? ", then pick a slice again" : ""}.
+        </p>
+      )}
+
       <WorkshopPanel
         product={product}
         onPreview={setPreview}
