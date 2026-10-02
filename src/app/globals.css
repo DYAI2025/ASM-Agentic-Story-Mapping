@@ -651,6 +651,14 @@ textarea {
   padding-left: 18px;
 }
 
+.exception {
+  margin-top: 8px;
+}
+
+.exception textarea {
+  width: 100%;
+}
+
 .flagged {
   color: var(--worst);
 }

@@ -5,6 +5,8 @@ const PORT = 3311;
 
 /** The browser tests edit a scratch copy, never the canonical fixture. */
 export const E2E_PRODUCT_FILE = path.join(__dirname, ".e2e-tmp", "asm.product.yaml");
+/** Where the app keeps the work state for that copy: beside it, by the store's default rule. */
+export const E2E_WORK_STATE_FILE = path.join(__dirname, ".e2e-tmp", "asm.work-state.json");
 
 export default defineConfig({
   testDir: "tests/e2e",

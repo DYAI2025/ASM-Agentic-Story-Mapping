@@ -64,39 +64,27 @@ export function canonicalize(p: ProductDocument): ProductDocument {
       provider: e.provider,
       revision: e.revision,
     })),
-    ...(p.selectedSlice
-      ? {
-          selectedSlice: {
-            candidateId: p.selectedSlice.candidateId,
-            title: p.selectedSlice.title,
-            stepIds: [...p.selectedSlice.stepIds],
-            personaIds: [...p.selectedSlice.personaIds],
-            needIds: [...p.selectedSlice.needIds],
-            selectedBy: p.selectedSlice.selectedBy,
-            selectedAt: p.selectedSlice.selectedAt,
-            revision: p.selectedSlice.revision,
-            mapFingerprint: p.selectedSlice.mapFingerprint,
-          },
-        }
-      : {}),
     layout: { cards: layoutCards },
   };
 }
 
-/**
- * Short, deterministic fingerprint of a document's meaning. Layout and the
- * slice selection are excluded: neither changes what the map says, and the
- * selection itself is bound to this fingerprint.
- * Used to detect that a proposal, a review or a selection was built against a
- * map that has since changed. Not a security feature.
- */
-export function fingerprint(p: ProductDocument): string {
-  const { layout: _layout, selectedSlice: _selectedSlice, ...semantics } = canonicalize(p);
-  const text = JSON.stringify(semantics);
+/** FNV-1a over a string, as eight hex digits. Not a security feature. */
+export function hashText(text: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Short, deterministic fingerprint of a document's meaning. Layout is
+ * excluded: it does not change what the map says.
+ * Used to detect that a proposal, a review or a slice selection was built
+ * against a map that has since changed. Not a security feature.
+ */
+export function fingerprint(p: ProductDocument): string {
+  const { layout: _layout, ...semantics } = canonicalize(p);
+  return hashText(JSON.stringify(semantics));
 }

@@ -5,6 +5,8 @@ next-env.d.ts
 test-results/
 playwright-report/
 .e2e-tmp/
+# Work state (which slice a human selected) is runtime state, not product canon.
+*.work-state.json
 .DS_Store
 .env
 .env.*

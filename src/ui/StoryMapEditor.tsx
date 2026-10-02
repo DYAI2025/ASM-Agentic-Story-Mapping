@@ -14,6 +14,7 @@ import { buildStoryMap } from "../domain/projection";
 import { reviewNarrative } from "../domain/review";
 import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
+import { resolveSelection, type SliceSelection } from "../domain/work-state";
 import { ReviewPanel } from "./ReviewPanel";
 import { SliceDrawer } from "./SliceDrawer";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
@@ -146,8 +147,16 @@ function EditableCard({
   );
 }
 
-export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
+export function StoryMapEditor({
+  initial,
+  initialSelection,
+}: {
+  initial: ProductDocument;
+  initialSelection: SliceSelection | null;
+}) {
   const [product, setProduct] = useState(initial);
+  // Work state, not part of the product: which slice a human selected.
+  const [selection, setSelection] = useState(initialSelection);
   const [personaFilter, setPersonaFilter] = useState<string | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [approver, setApprover] = useState("");
@@ -160,7 +169,12 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
   const [slicesOpen, setSlicesOpen] = useState(false);
   const shown = preview?.product ?? product;
   const findings = useMemo(() => reviewNarrative(product), [product]);
-  const sliceSteps = useMemo(() => new Set(product.selectedSlice?.stepIds ?? []), [product]);
+  // A selection counts only while it still matches this exact map; otherwise it is stale and shown nowhere.
+  const selectedCandidate = useMemo(() => {
+    const resolved = selection ? resolveSelection(product, selection) : null;
+    return resolved?.ok ? resolved.candidate : null;
+  }, [product, selection]);
+  const sliceSteps = useMemo(() => new Set(selectedCandidate?.stepIds ?? []), [selectedCandidate]);
 
   const view = useMemo(() => buildStoryMap(shown, personaFilter), [shown, personaFilter]);
   const cardContext = useMemo(() => {
@@ -285,9 +299,9 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
           >
             Slices
           </button>
-          {product.selectedSlice && (
+          {selectedCandidate && (
             <span className="badge approved" data-testid="selected-slice-badge">
-              Slice: {product.selectedSlice.title}
+              Slice: {selectedCandidate.title}
             </span>
           )}
         </div>
@@ -346,9 +360,10 @@ export function StoryMapEditor({ initial }: { initial: ProductDocument }) {
       {slicesOpen && !reviewing && (
         <SliceDrawer
           product={product}
+          selection={selectedCandidate ? selection : null}
           onClose={() => setSlicesOpen(false)}
-          onSelected={(next) => {
-            setProduct(next);
+          onSelection={(next) => {
+            setSelection(next);
             setIssues([]);
           }}
         />

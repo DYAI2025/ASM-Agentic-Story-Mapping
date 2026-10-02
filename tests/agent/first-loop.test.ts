@@ -11,8 +11,9 @@ import { applyMapPatch } from "../../src/domain/map-patch";
 import { approveRevision } from "../../src/domain/operations";
 import { buildReviewPatch, reviewNarrative } from "../../src/domain/review";
 import type { ProductDocument } from "../../src/domain/schema";
-import { proposeSlices, selectSlice } from "../../src/domain/slices";
-import { loadProduct, saveProduct } from "../../src/server/store";
+import { proposeSlices } from "../../src/domain/slices";
+import { WORK_STATE_VERSION, selectSlice } from "../../src/domain/work-state";
+import { loadProduct, loadWorkState, saveProduct, saveWorkState, workStateFilePath } from "../../src/server/store";
 import { fixtureText } from "../domain/helpers";
 
 const TRANSCRIPT = readFileSync(path.join(__dirname, "..", "fixtures", "workshop-transcript.txt"), "utf8");
@@ -86,22 +87,33 @@ describe("transcript to work order", () => {
     if (!proposed.ok) throw new Error(JSON.stringify(proposed.issues));
     expect(proposed.candidates.length).toBeGreaterThanOrEqual(2);
     expect(proposed.candidates.length).toBeLessThanOrEqual(3);
-    expect((await canon()).selectedSlice).toBeUndefined();
+    expect((await loadWorkState())).toEqual({ ok: true, state: { workStateVersion: WORK_STATE_VERSION } });
     const choice = { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z" };
     await expect(async () => selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()) })).rejects.toThrow(/not approved/);
-    expect(buildExecutionBrief(await canon())).toMatchObject({ ok: false, issues: [{ code: "selection_required" }] });
+    expect(buildExecutionBrief(await canon(), undefined)).toMatchObject({ ok: false, issues: [{ code: "selection_required" }] });
 
     await save(approveRevision(await canon(), { approvedBy: "Maya", approvedAt: "2026-10-02T08:30:00.000Z" }));
-    expect(buildExecutionBrief(await canon())).toMatchObject({ ok: false, issues: [{ code: "selection_required" }] });
+    expect(buildExecutionBrief(await canon(), undefined)).toMatchObject({ ok: false, issues: [{ code: "selection_required" }] });
 
-    // 6. A human selects a slice.
-    await save(selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()) }));
+    // 6. A human selects a slice. The selection goes to the work state; the product file keeps its bytes.
+    const beforeSelect = await text();
+    const written = await saveWorkState({
+      workStateVersion: WORK_STATE_VERSION,
+      selection: selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()) }),
+    });
+    if (!written.ok) throw new Error(JSON.stringify(written.issues));
+    expect(await text()).toBe(beforeSelect);
+    expect(beforeSelect).not.toMatch(/selectedSlice|selectedBy|candidateFingerprint|mapFingerprint/);
+    expect(workStateFilePath()).toBe(path.join(dir, "asm.work-state.json"));
     const final = await canon();
-    expect(final.selectedSlice).toMatchObject({ candidateId: "slice-outcome-thread", selectedBy: "Maya", revision: 3 });
+    const work = await loadWorkState();
+    if (!work.ok) throw new Error(JSON.stringify(work.issues));
+    expect(work.state.selection).toMatchObject({ candidateId: "slice-outcome-thread", selectedBy: "Maya", revision: 3, mapFingerprint: fingerprint(final) });
 
-    // 7. Export. The brief names the exact revision of the map it came from.
-    const result = buildExecutionBrief(final);
+    // 7. Export, from the approved canon plus the selection. The brief names the exact revision of the map it came from.
+    const result = buildExecutionBrief(final, work.state.selection);
     if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.brief.approvedContext.value).toMatchObject({ status: "VALUE_RESOLVED" });
     expect(result.brief.sourceMapRevision).toMatchObject({
       revision: 3,
       status: "approved",

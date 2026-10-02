@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { exportProductYaml, parseProductText } from "../domain/serialize";
 import { validateProduct, type ValidationResult } from "../domain/validate";
+import { EMPTY_WORK_STATE, exportWorkStateJson, validateWorkState, type WorkStateResult } from "../domain/work-state";
 
 /** The canonical product file. Overridable so tests never write to the fixture. */
 export function productFilePath(): string {
@@ -34,6 +35,50 @@ export async function saveProduct(input: unknown): Promise<ValidationResult> {
   const file = productFilePath();
   const tmp = `${file}.${process.pid}.tmp`;
   await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
+  await fs.rename(/* turbopackIgnore: true */ tmp, file);
+  return result;
+}
+
+/**
+ * The work-state file: which slice a human selected. It sits beside the
+ * product file and is never part of it (`asm.product.yaml` -> `asm.work-state.json`).
+ */
+export function workStateFilePath(): string {
+  if (process.env.ASM_WORK_STATE_FILE) return process.env.ASM_WORK_STATE_FILE;
+  return `${productFilePath().replace(/(\.product)?\.(ya?ml|json)$/, "")}.work-state.json`;
+}
+
+/** A missing file is an empty work state. An unreadable or invalid one is an issue. */
+export async function loadWorkState(): Promise<WorkStateResult> {
+  let text: string;
+  try {
+    text = await fs.readFile(/* turbopackIgnore: true */ workStateFilePath(), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, state: EMPTY_WORK_STATE };
+    return {
+      ok: false,
+      issues: [{ code: "file_unreadable", path: workStateFilePath(), message: error instanceof Error ? error.message : String(error) }],
+    };
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    return {
+      ok: false,
+      issues: [{ code: "work_state_unparseable", path: workStateFilePath(), message: error instanceof Error ? error.message : String(error) }],
+    };
+  }
+  return validateWorkState(data);
+}
+
+/** Validates, then replaces the work-state file atomically. Never touches the product file. */
+export async function saveWorkState(input: unknown): Promise<WorkStateResult> {
+  const result = validateWorkState(input);
+  if (!result.ok) return result;
+  const file = workStateFilePath();
+  const tmp = `${file}.${process.pid}.tmp`;
+  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
   await fs.rename(/* turbopackIgnore: true */ tmp, file);
   return result;
 }

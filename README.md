@@ -105,15 +105,38 @@ no ranking.
 ![Slice candidates compared](docs/screenshots/loop-06-slice-drawer-comparison.png)
 
 **Select slice** needs a named human and an approved revision. The selection
-is stored in the canonical file as `selectedSlice`, bound to the revision and
-the fingerprint of the map; any change of meaning removes it.
+is work state, not product canon: it is written to its own file beside the
+product file (`product/asm.work-state.json`, or `ASM_WORK_STATE_FILE`; not
+checked in), and selecting never changes the product document
+(`src/domain/work-state.ts`). The selection stores no copy of the slice. It
+names the candidate and binds itself to the product revision, the map
+fingerprint, a fingerprint of the candidate (`candidateFingerprint`) and the
+version of the derivation rules (`SLICE_DERIVATION_VERSION`). If any of them
+no longer matches, the selection is stale: it is ignored by the map view and
+refused by the export. Nothing deletes it.
 
-**Export work order** (`/api/brief?format=json|md`) is refused until a slice is
-selected. The brief holds GOAL, VERIFIED / APPROVED CONTEXT, IN SCOPE, OUT OF
-SCOPE, PERSONAS / NEEDS, ACCEPTANCE CRITERIA DRAFT, VERIFICATION EXPECTATIONS,
-OPEN HUMAN DECISIONS and SOURCE MAP REVISION. Examples from the browser test:
-[`docs/examples/asm.work-order.md`](docs/examples/asm.work-order.md) and
-[`.json`](docs/examples/asm.work-order.json).
+Each candidate carries a value status. It is a label, not a number:
+
+- `VALUE_RESOLVED`: at least one included step references a need on the map.
+- `VALUE_UNRESOLVED`: no need is referenced. The candidate can be viewed,
+  compared and selected, but no work order can be exported from it.
+- `VALUE_EXCEPTION_ACCEPTED`: no need is referenced, and after selecting, a
+  named human accepted that with a written rationale
+  (`/api/slices/exception`). This authorizes the work under uncertainty. It is
+  not evidence that the slice has business value, and the work order says so.
+
+![A selected slice without a need cannot be exported](docs/screenshots/loop-09-value-unresolved-no-export.png)
+
+**Export work order** (`/api/brief?format=json|md`) is built from the approved
+product document plus a selection that is not stale, and is refused without
+one or while the value is unresolved. The brief holds GOAL, VERIFIED /
+APPROVED CONTEXT (including the value status and any exception), IN SCOPE, OUT
+OF SCOPE, PERSONAS / NEEDS, ACCEPTANCE CRITERIA DRAFT, VERIFICATION
+EXPECTATIONS, OPEN HUMAN DECISIONS and SOURCE MAP REVISION. Examples from the
+browser tests: [`docs/examples/asm.work-order.md`](docs/examples/asm.work-order.md)
+and [`.json`](docs/examples/asm.work-order.json); with an accepted exception,
+[`docs/examples/asm.work-order.exception.md`](docs/examples/asm.work-order.exception.md)
+and [`.json`](docs/examples/asm.work-order.exception.json).
 
 The `fake` provider reviews with five fixed rules and template wording
 (`src/agent/fake-review.ts`); it does not understand the narrative. The

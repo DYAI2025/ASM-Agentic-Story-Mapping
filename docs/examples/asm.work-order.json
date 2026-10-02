@@ -13,12 +13,24 @@
     "approval": {
       "revision": 3,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-01T22:13:12.309Z"
+      "approvedAt": "2026-10-02T00:43:21.964Z"
     },
     "selection": {
       "candidateId": "slice-outcome-thread",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-01T22:13:12.709Z"
+      "selectedAt": "2026-10-02T00:43:22.312Z",
+      "candidateFingerprint": "ef5f52e6",
+      "derivationVersion": 1
+    },
+    "value": {
+      "status": "VALUE_RESOLVED",
+      "needIds": [
+        "need-shared-narrative",
+        "need-approve-meaning",
+        "need-buildable-slice",
+        "need-stable-references"
+      ],
+      "note": "The slice references at least one need on the map. ASM has not measured any business value."
     },
     "whyThisSlice": [
       "The last step “Export execution-ready work” (step-export-work) serves need-buildable-slice, need-stable-references; this slice is every step that serves one of those needs.",
@@ -326,7 +338,7 @@
     "revision": 3,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-01T22:13:12.309Z",
-    "mapFingerprint": "0e12d1e9"
+    "approvedAt": "2026-10-02T00:43:21.964Z",
+    "mapFingerprint": "12ae5548"
   }
 }

@@ -120,23 +120,6 @@ export const ProvenanceSchema = z.strictObject({
   revision: z.number().int().min(1),
 });
 
-/**
- * The first product slice a human selected. Written only by the explicit
- * select action, on an approved revision, and bound to the exact map it was
- * selected on: any change of meaning removes it.
- */
-export const SliceSelectionSchema = z.strictObject({
-  candidateId: IdSchema,
-  title: Text,
-  stepIds: z.array(IdSchema).min(1),
-  personaIds: z.array(IdSchema),
-  needIds: z.array(IdSchema),
-  selectedBy: Text,
-  selectedAt: z.iso.datetime(),
-  revision: z.number().int().min(1),
-  mapFingerprint: z.string().regex(/^[0-9a-f]{8}$/),
-});
-
 export const ProductDocumentSchema = z.strictObject({
   schemaVersion: z.literal(SCHEMA_VERSION),
   product: ProductInfoSchema,
@@ -148,7 +131,6 @@ export const ProductDocumentSchema = z.strictObject({
   wcbc: z.array(WcbcSchema),
   decisions: z.array(DecisionSchema),
   provenance: z.array(ProvenanceSchema).default([]),
-  selectedSlice: SliceSelectionSchema.optional(),
   layout: LayoutSchema,
 });
 
@@ -158,7 +140,6 @@ export type Need = z.infer<typeof NeedSchema>;
 export type NarrativeStep = z.infer<typeof NarrativeStepSchema>;
 export type Wcbc = z.infer<typeof WcbcSchema>;
 export type WcbcOutcome = z.infer<typeof WcbcOutcomeSchema>;
-export type SliceSelection = z.infer<typeof SliceSelectionSchema>;
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type Decision = z.infer<typeof DecisionSchema>;
 export type ProductDocument = z.infer<typeof ProductDocumentSchema>;

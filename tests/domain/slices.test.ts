@@ -4,9 +4,10 @@ import { fingerprint } from "../../src/domain/fingerprint";
 import { allIds } from "../../src/domain/map-patch";
 import { approveRevision, moveStep, setCardRow, updateCard } from "../../src/domain/operations";
 import type { ProductDocument } from "../../src/domain/schema";
-import { exportProductYaml, parseProductText } from "../../src/domain/serialize";
-import { checkSliceCandidate, proposeSlices, selectSlice, type SliceCandidate } from "../../src/domain/slices";
+import { exportProductYaml } from "../../src/domain/serialize";
+import { SLICE_DERIVATION_VERSION, candidateFingerprint, checkSliceCandidate, proposeSlices, type SliceCandidate } from "../../src/domain/slices";
 import { validateProduct } from "../../src/domain/validate";
+import { resolveSelection, selectSlice, type SliceSelection } from "../../src/domain/work-state";
 import { loadFixture, mutableFixture } from "./helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
@@ -127,8 +128,7 @@ describe("the human gate", () => {
     const before = exportProductYaml(product);
     candidates(product);
     expect(exportProductYaml(product)).toBe(before);
-    expect(product.selectedSlice).toBeUndefined();
-    expect(codes(buildExecutionBrief(product))).toEqual(["selection_required"]);
+    expect(codes(buildExecutionBrief(product, undefined))).toEqual(["selection_required"]);
   });
 
   it("selection needs a named human", () => {
@@ -150,72 +150,63 @@ describe("the human gate", () => {
     expect(() => choose(approved(), "slice-made-up")).toThrow(/not a slice candidate/);
   });
 
-  it("records who selected what, on which revision", () => {
-    const product = choose(approved());
-    expect(product.selectedSlice).toEqual({
+  it("records who selected what, on which revision, map, candidate and derivation rules", () => {
+    const product = approved();
+    const candidate = candidates(product).find((c) => c.id === "slice-outcome-thread")!;
+    expect(choose(product)).toEqual({
       candidateId: "slice-outcome-thread",
-      title: "Thread to “Export execution-ready work”",
-      stepIds: ["step-main-path", "step-review-slices", "step-select-slice", "step-export-work"],
-      personaIds: ["persona-product-lead", "persona-domain-ux", "persona-developer"],
-      needIds: ["need-shared-narrative", "need-approve-meaning", "need-buildable-slice", "need-stable-references"],
-      selectedBy: "Maya",
-      selectedAt: "2026-10-02T09:00:00.000Z",
+      productId: "asm",
       revision: 1,
       mapFingerprint: fingerprint(product),
+      candidateFingerprint: candidateFingerprint(candidate),
+      derivationVersion: SLICE_DERIVATION_VERSION,
+      selectedBy: "Maya",
+      selectedAt: "2026-10-02T09:00:00.000Z",
     });
-    expect(product.revision.status).toBe("approved");
-    const back = parseProductText(exportProductYaml(product));
-    expect(back.ok && back.product).toEqual(product);
   });
 
-  it("selecting does not change the meaning of the map; a layout change keeps the selection", () => {
-    const before = approved();
-    const selected = choose(before);
-    expect(fingerprint(selected)).toBe(fingerprint(before));
-    expect(setCardRow(selected, "step-main-path", 1).selectedSlice).toEqual(selected.selectedSlice);
+  it("a layout change keeps the selection current", () => {
+    const product = approved();
+    const selection = choose(product);
+    const nudged = setCardRow(product, "step-main-path", 1);
+    expect(fingerprint(nudged)).toBe(fingerprint(product));
+    expect(resolveSelection(nudged, selection)).toMatchObject({ ok: true, candidate: { id: "slice-outcome-thread" } });
   });
 
-  it("a change of meaning ends the selection along with the approval", () => {
-    const selected = choose(approved());
-    for (const changed of [updateCard(selected, "step-main-path", { title: "Lay out the path" }), moveStep(selected, "step-main-path", 1)]) {
-      expect(changed.selectedSlice).toBeUndefined();
+  it("a change of meaning makes the selection stale along with ending the approval", () => {
+    const product = approved();
+    const selection = choose(product);
+    for (const changed of [updateCard(product, "step-main-path", { title: "Lay out the path" }), moveStep(product, "step-main-path", 1)]) {
       expect(changed.revision).toEqual({ number: 2, status: "proposed" });
+      expect(codes(resolveSelection(changed, selection))).toEqual(["stale_selection"]);
     }
   });
 
-  it("a forged or stale selection in a file is rejected", () => {
-    const selected = choose(approved());
-
-    const edited = structuredClone(selected);
-    edited.narrative[0].title = "Edited by hand";
-    expect(codes(validateProduct(edited))).toEqual(["stale_selection"]);
-
-    const unapproved = structuredClone(selected);
-    unapproved.revision = { number: 1, status: "proposed" };
-    expect(codes(validateProduct(unapproved))).toContain("selection_requires_approval");
-
-    const ghost = structuredClone(selected);
-    ghost.selectedSlice!.stepIds = ["step-ghost"];
-    expect(codes(validateProduct(ghost))).toEqual(["unknown_step"]);
+  it("a product document that carries a selection is not a valid product document", () => {
+    const forged = { ...approved(), selectedSlice: choose(approved()) };
+    expect(codes(validateProduct(forged))).toEqual(["schema_unrecognized_keys"]);
   });
 });
 
 describe("execution brief", () => {
-  const selected = () => choose(approved());
-  function brief(p: ProductDocument) {
-    const result = buildExecutionBrief(p);
+  function selected(p: ProductDocument = approved()): [ProductDocument, SliceSelection] {
+    return [p, choose(p)];
+  }
+  function brief(p: ProductDocument, selection: SliceSelection) {
+    const result = buildExecutionBrief(p, selection);
     if (!result.ok) throw new Error(JSON.stringify(result.issues));
     return result.brief;
   }
 
   it("is refused without a human selection or without approval", () => {
-    expect(codes(buildExecutionBrief(loadFixture()))).toEqual(["selection_required"]);
-    expect(codes(buildExecutionBrief(approved()))).toEqual(["selection_required"]);
+    expect(codes(buildExecutionBrief(loadFixture(), undefined))).toEqual(["selection_required"]);
+    expect(codes(buildExecutionBrief(approved(), null))).toEqual(["selection_required"]);
+    expect(codes(buildExecutionBrief(loadFixture(), choose(approved())))).toEqual(["approval_required"]);
   });
 
   it("references the exact map revision it was made from", () => {
-    const first = selected();
-    expect(brief(first).sourceMapRevision).toEqual({
+    const [first, firstSelection] = selected();
+    expect(brief(first, firstSelection).sourceMapRevision).toEqual({
       productId: "asm",
       productName: "ASM – Agentic Story Mapping",
       schemaVersion: 1,
@@ -228,17 +219,17 @@ describe("execution brief", () => {
 
     // Another revision of the map yields another revision and fingerprint in the brief.
     const edited = updateCard(first, "step-export-work", { description: "The slice leaves ASM as a work order." });
-    const second = choose(approveRevision(edited, { approvedBy: "Ada", approvedAt: "2026-10-03T10:00:00.000Z" }));
-    expect(brief(second).sourceMapRevision).toMatchObject({ revision: 2, approvedAt: "2026-10-03T10:00:00.000Z", mapFingerprint: fingerprint(second) });
+    const [second, secondSelection] = selected(approveRevision(edited, { approvedBy: "Ada", approvedAt: "2026-10-03T10:00:00.000Z" }));
+    expect(brief(second, secondSelection).sourceMapRevision).toMatchObject({ revision: 2, approvedAt: "2026-10-03T10:00:00.000Z", mapFingerprint: fingerprint(second) });
     expect(fingerprint(second)).not.toBe(fingerprint(first));
-    expect(exportBriefMarkdown(brief(second))).toContain(`revision 2 (\`${fingerprint(second)}\`)`);
+    expect(exportBriefMarkdown(brief(second, secondSelection))).toContain(`revision 2 (\`${fingerprint(second)}\`)`);
   });
 
   it("is deterministic and mentions only ids that are on the map", () => {
-    const product = selected();
-    expect(exportBriefJson(brief(product))).toBe(exportBriefJson(brief(product)));
+    const [product, selection] = selected();
+    expect(exportBriefJson(brief(product, selection))).toBe(exportBriefJson(brief(product, selection)));
     const ids = allIds(product);
-    const b = brief(product);
+    const b = brief(product, selection);
     const mentioned = [
       b.goal.id,
       ...b.inScope.flatMap((s) => [s.id, ...s.personaIds, ...s.needIds, ...s.branches.map((x) => x.id)]),
@@ -246,13 +237,14 @@ describe("execution brief", () => {
       ...b.needs.flatMap((e) => [e.id, e.personaId]),
       ...b.acceptanceCriteriaDraft.flatMap((c) => c.refs),
       ...b.approvedContext.decidedDecisions.flatMap((d) => [d.id, ...d.relatesTo]),
+      ...b.approvedContext.value.needIds,
       ...b.openHumanDecisions.flatMap((d) => d.relatesTo),
     ];
     for (const id of mentioned) expect(ids.has(id), id).toBe(true);
   });
 
   it("contains every required section, in JSON and in Markdown", () => {
-    const b = brief(selected());
+    const b = brief(...selected());
     expect(Object.keys(b)).toEqual([
       "briefVersion",
       "kind",
@@ -267,7 +259,10 @@ describe("execution brief", () => {
       "openHumanDecisions",
       "sourceMapRevision",
     ]);
+    expect(b.goal.slice).toEqual({ id: "slice-outcome-thread", title: "Thread to “Export execution-ready work”" });
     expect(b.inScope.map((s) => s.id)).toEqual(["step-main-path", "step-review-slices", "step-select-slice", "step-export-work"]);
+    expect(b.personas.map((e) => e.id)).toEqual(["persona-product-lead", "persona-domain-ux", "persona-developer"]);
+    expect(b.needs.map((e) => e.id)).toEqual(["need-shared-narrative", "need-approve-meaning", "need-buildable-slice", "need-stable-references"]);
     expect(b.outOfScope).toHaveLength(9);
     expect(b.acceptanceCriteriaDraft.length).toBe(b.verificationExpectations.length);
     expect(b.openHumanDecisions.map((d) => d.id)).toEqual([

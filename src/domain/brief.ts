@@ -1,13 +1,15 @@
 import { fingerprint } from "./fingerprint";
 import { reviewNarrative } from "./review";
 import type { ProductDocument, WcbcOutcome } from "./schema";
-import { criteriaFor, proposeSlices } from "./slices";
+import { criteriaFor } from "./slices";
 import type { ValidationIssue } from "./validate";
+import { resolveSelection, valueStatus, type SliceSelection, type ValueException } from "./work-state";
 
 /**
  * Execution brief ("work order"): what leaves ASM once a human has selected a
- * slice of an approved narrative. Derived from the canonical document and
- * nothing else, so the same document always yields the same brief.
+ * slice of an approved narrative. Derived from the approved canonical
+ * document and a selection that is not stale, and from nothing else, so the
+ * same two inputs always yield the same brief.
  *
  * ASM records approval; it verifies nothing. The brief says so.
  */
@@ -20,7 +22,17 @@ export interface ExecutionBrief {
   goal: { id: string; statement: string; slice: { id: string; title: string } };
   approvedContext: {
     approval: { revision: number; approvedBy: string; approvedAt: string };
-    selection: { candidateId: string; selectedBy: string; selectedAt: string };
+    selection: { candidateId: string; selectedBy: string; selectedAt: string; candidateFingerprint: string; derivationVersion: number };
+    /**
+     * Never VALUE_UNRESOLVED: such a slice is not exported. An accepted
+     * exception is an authorization under uncertainty, not proof of value.
+     */
+    value: {
+      status: "VALUE_RESOLVED" | "VALUE_EXCEPTION_ACCEPTED";
+      needIds: string[];
+      exception?: ValueException;
+      note: string;
+    };
     whyThisSlice: string[];
     assumptions: string[];
     decidedDecisions: { id: string; title: string; rationale: string; relatesTo: string[] }[];
@@ -59,28 +71,32 @@ export type BriefResult = { ok: true; brief: ExecutionBrief } | { ok: false; iss
 
 const refuse = (code: string, path: string, message: string): BriefResult => ({ ok: false, issues: [{ code, path, message }] });
 
-export function buildExecutionBrief(p: ProductDocument): BriefResult {
-  const selection = p.selectedSlice;
+export function buildExecutionBrief(p: ProductDocument, selection: SliceSelection | null | undefined): BriefResult {
   if (!selection)
-    return refuse("selection_required", "selectedSlice", "no slice has been selected; a human has to select one before a work order can be exported");
+    return refuse("selection_required", "selection", "no slice has been selected; a human has to select one before a work order can be exported");
   const approval = p.revision.approval;
   if (p.revision.status !== "approved" || !approval)
     return refuse("approval_required", "revision.status", "a work order can only be exported from an approved revision");
+  const resolved = resolveSelection(p, selection);
+  if (!resolved.ok) return resolved;
+  const candidate = resolved.candidate;
   const mapFingerprint = fingerprint(p);
-  if (selection.revision !== p.revision.number || selection.mapFingerprint !== mapFingerprint)
-    return refuse("stale_selection", "selectedSlice", "the map has changed since the slice was selected; select a slice again");
 
-  const proposal = proposeSlices(p);
-  const candidate = proposal.ok ? proposal.candidates.find((c) => c.id === selection.candidateId) : undefined;
-  if (!candidate || candidate.stepIds.join(" ") !== selection.stepIds.join(" "))
-    return refuse("stale_selection", "selectedSlice.candidateId", "the selected slice is not a candidate of this map; select a slice again");
+  const value = valueStatus(p, candidate, selection);
+  if (value === "VALUE_UNRESOLVED")
+    return refuse(
+      "value_unresolved",
+      "selection.valueException",
+      "the selected slice references no need; a work order can be exported once a need is referenced or a human accepts a value exception with a rationale",
+    );
+  const exception = value === "VALUE_EXCEPTION_ACCEPTED" ? selection.valueException : undefined;
 
-  const included = new Set(selection.stepIds);
+  const included = new Set(candidate.stepIds);
   const steps = [...p.narrative].sort((a, b) => a.sequence - b.sequence).filter((s) => included.has(s.id));
   const branches = p.wcbc.filter((b) => included.has(b.stepId));
-  const inSlice = new Set([p.product.id, p.goal.id, ...selection.stepIds, ...selection.personaIds, ...selection.needIds, ...branches.map((b) => b.id)]);
+  const inSlice = new Set([p.product.id, p.goal.id, ...candidate.stepIds, ...candidate.personaIds, ...candidate.needIds, ...branches.map((b) => b.id)]);
 
-  const criteria = criteriaFor(p, selection.stepIds).map((c, i) => ({ id: `ac-${i + 1}`, text: c.text, refs: c.refs }));
+  const criteria = criteriaFor(p, candidate.stepIds).map((c, i) => ({ id: `ac-${i + 1}`, text: c.text, refs: c.refs }));
   const branchIds = new Set(branches.map((b) => b.id));
 
   const openDecisions = p.decisions.filter((d) => candidate.evidence.openDecisionIds.includes(d.id));
@@ -91,10 +107,28 @@ export function buildExecutionBrief(p: ProductDocument): BriefResult {
     brief: {
       briefVersion: BRIEF_VERSION,
       kind: "asm.execution-brief",
-      goal: { id: p.goal.id, statement: p.goal.statement, slice: { id: selection.candidateId, title: selection.title } },
+      goal: { id: p.goal.id, statement: p.goal.statement, slice: { id: candidate.id, title: candidate.title } },
       approvedContext: {
         approval: { revision: p.revision.number, approvedBy: approval.approvedBy, approvedAt: approval.approvedAt },
-        selection: { candidateId: selection.candidateId, selectedBy: selection.selectedBy, selectedAt: selection.selectedAt },
+        selection: {
+          candidateId: selection.candidateId,
+          selectedBy: selection.selectedBy,
+          selectedAt: selection.selectedAt,
+          candidateFingerprint: selection.candidateFingerprint,
+          derivationVersion: selection.derivationVersion,
+        },
+        value: exception
+          ? {
+              status: "VALUE_EXCEPTION_ACCEPTED",
+              needIds: [],
+              exception: { rationale: exception.rationale, acceptedBy: exception.acceptedBy, acceptedAt: exception.acceptedAt },
+              note: "No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value.",
+            }
+          : {
+              status: "VALUE_RESOLVED",
+              needIds: [...candidate.needIds],
+              note: "The slice references at least one need on the map. ASM has not measured any business value.",
+            },
         whyThisSlice: candidate.whyNow,
         assumptions: candidate.assumptions,
         decidedDecisions: p.decisions
@@ -122,8 +156,8 @@ export function buildExecutionBrief(p: ProductDocument): BriefResult {
           })),
       })),
       outOfScope: candidate.outOfScope,
-      personas: p.personas.filter((e) => selection.personaIds.includes(e.id)).map((e) => ({ id: e.id, name: e.name, description: e.description })),
-      needs: p.needs.filter((e) => selection.needIds.includes(e.id)).map((e) => ({ id: e.id, personaId: e.personaId, statement: e.statement })),
+      personas: p.personas.filter((e) => candidate.personaIds.includes(e.id)).map((e) => ({ id: e.id, name: e.name, description: e.description })),
+      needs: p.needs.filter((e) => candidate.needIds.includes(e.id)).map((e) => ({ id: e.id, personaId: e.personaId, statement: e.statement })),
       acceptanceCriteriaDraft: criteria,
       verificationExpectations: criteria.map((c) => ({
         criterionId: c.id,
@@ -163,7 +197,7 @@ function outcomeText(outcome: WcbcOutcome | undefined): string {
 
 export function exportBriefMarkdown(brief: ExecutionBrief): string {
   const bullets = (lines: string[]) => (lines.length > 0 ? lines.map((line) => `- ${line}`) : ["- None."]);
-  const { approval, selection } = brief.approvedContext;
+  const { approval, selection, value } = brief.approvedContext;
   const source = brief.sourceMapRevision;
 
   return [
@@ -178,7 +212,10 @@ export function exportBriefMarkdown(brief: ExecutionBrief): string {
     "## VERIFIED / APPROVED CONTEXT",
     "",
     `- Approved: revision ${approval.revision} by ${approval.approvedBy} at ${approval.approvedAt}.`,
-    `- Slice selected by ${selection.selectedBy} at ${selection.selectedAt}.`,
+    `- Slice selected by ${selection.selectedBy} at ${selection.selectedAt} (candidate \`${selection.candidateFingerprint}\`, derivation rules version ${selection.derivationVersion}).`,
+    value.exception
+      ? `- Value: ${value.status}. Exception accepted by ${value.exception.acceptedBy} at ${value.exception.acceptedAt}: “${value.exception.rationale}” ${value.note}`
+      : `- Value: ${value.status} (${value.needIds.map((id) => `\`${id}\``).join(", ")}). ${value.note}`,
     `- Verified: nothing. ${brief.approvedContext.note}`,
     "",
     "Why this slice:",

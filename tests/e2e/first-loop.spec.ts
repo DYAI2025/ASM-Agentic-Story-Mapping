@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
-import { E2E_PRODUCT_FILE } from "../../playwright.config";
+import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { resetProductFile } from "./global-setup";
 
 const TRANSCRIPT_FILE = path.join(__dirname, "..", "fixtures", "workshop-transcript.txt");
@@ -15,6 +15,8 @@ test.beforeEach(resetProductFile);
 
 const storedText = () => fs.readFile(E2E_PRODUCT_FILE, "utf8");
 const stored = async () => YAML.parse(await storedText());
+const workState = async () => JSON.parse(await fs.readFile(E2E_WORK_STATE_FILE, "utf8"));
+const workStateExists = () => fs.access(E2E_WORK_STATE_FILE).then(() => true, () => false);
 const shot = (name: string) => path.join(SCREENSHOTS, `loop-${name}.png`);
 
 test("transcript -> map proposal -> approve -> review -> slice candidates -> select -> export", async ({ page }) => {
@@ -88,7 +90,9 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   // Approved, still nothing selected: no export, and no way to select except the explicit human action.
   const slices = await (await page.request.get("/api/slices")).json();
   expect(slices.candidates).toHaveLength(3);
-  expect(slices.selectedSlice).toBeNull();
+  expect(slices.selection).toBeNull();
+  expect(slices.selectionStale).toBe(false);
+  expect(Object.values(slices.valueStatus)).toEqual(["VALUE_RESOLVED", "VALUE_RESOLVED", "VALUE_RESOLVED"]);
   const noBrief = await page.request.get("/api/brief?format=json");
   expect(noBrief.status()).toBe(409);
   expect((await noBrief.json()).issues[0].code).toBe("selection_required");
@@ -107,8 +111,9 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
     mapFingerprint: slices.mapFingerprint,
   };
   const sneaky = await page.request.put("/api/product", { data: YAML.stringify(forged) });
-  expect(sneaky.status()).toBe(409);
-  expect((await sneaky.json()).issues[0].code).toBe("implicit_selection");
+  // The product document has no place for a selection: such a file is not a valid product.
+  expect(sneaky.status()).toBe(422);
+  expect((await sneaky.json()).issues[0].code).toBe("schema_unrecognized_keys");
   for (const body of [
     { candidateId: "slice-outcome-thread", selectedBy: "", mapFingerprint: slices.mapFingerprint },
     { candidateId: "slice-outcome-thread", selectedBy: HUMAN, mapFingerprint: "00000000" },
@@ -116,6 +121,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   ])
     expect((await page.request.post("/api/slices/select", { data: body })).status()).toBe(409);
   expect(await storedText()).toBe(beforeSelect);
+  expect(await workStateExists()).toBe(false);
 
   // 7. Slice drawer: compare the candidates.
   await page.setViewportSize({ width: 1600, height: 2000 });
@@ -135,12 +141,27 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   await page.getByTestId("select-slice-outcome-thread").click();
   await expect(page.getByTestId("selection-record")).toContainText(HUMAN);
   await expect(page.getByTestId("select-slice-outcome-thread")).toHaveText("Selected");
+  await expect(page.getByTestId("value-status")).toHaveAttribute("data-value", "VALUE_RESOLVED");
+  await expect(page.getByTestId("value-exception-form")).toHaveCount(0);
   await expect(page.getByTestId("export-work-order-md")).toHaveAttribute("href", "/api/brief?format=md");
   await drawer.screenshot({ path: shot("07-slice-selected-export-work-order") });
 
+  // Selecting wrote the work state and left the product file byte for byte as it was.
+  expect(await storedText()).toBe(beforeSelect);
+  const selection = (await workState()).selection;
+  expect(selection).toMatchObject({
+    candidateId: "slice-outcome-thread",
+    productId: "asm",
+    selectedBy: HUMAN,
+    revision: 3,
+    mapFingerprint: slices.mapFingerprint,
+    derivationVersion: slices.derivationVersion,
+  });
+  expect(selection.candidateFingerprint).toMatch(/^[0-9a-f]{8}$/);
+
   // 9. Export work order: JSON and Markdown, naming the exact map revision.
   const canon = await stored();
-  expect(canon.selectedSlice).toMatchObject({ candidateId: "slice-outcome-thread", selectedBy: HUMAN, revision: 3 });
+  expect(canon.selectedSlice).toBeUndefined();
   const json = await page.request.get(await page.getByTestId("export-work-order-json").getAttribute("href") as string);
   expect(json.status()).toBe(200);
   expect(json.headers()["content-disposition"]).toContain("asm.work-order.r3.json");
@@ -153,10 +174,17 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
     status: "approved",
     approvedBy: HUMAN,
     approvedAt: canon.revision.approval.approvedAt,
-    mapFingerprint: canon.selectedSlice.mapFingerprint,
+    mapFingerprint: selection.mapFingerprint,
   });
   expect(brief.sourceMapRevision.mapFingerprint).toBe(slices.mapFingerprint);
-  expect(brief.inScope.map((s: { id: string }) => s.id)).toEqual(canon.selectedSlice.stepIds);
+  expect(brief.inScope.map((s: { id: string }) => s.id)).toEqual(slices.candidates[1].stepIds);
+  expect(brief.approvedContext.selection).toMatchObject({
+    candidateId: "slice-outcome-thread",
+    candidateFingerprint: selection.candidateFingerprint,
+    derivationVersion: selection.derivationVersion,
+  });
+  expect(brief.approvedContext.value.status).toBe("VALUE_RESOLVED");
+  expect(brief.approvedContext.value.exception).toBeUndefined();
   const markdown = await (await page.request.get("/api/brief?format=md")).text();
   expect(markdown).toContain("## SOURCE MAP REVISION");
   expect(markdown).toContain(`- Revision: 3 (approved)`);
@@ -171,7 +199,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   await expect(page.getByTestId("column-step-start-product")).toHaveAttribute("data-in-slice", "false");
   await page.screenshot({ path: shot("08-map-with-selected-slice"), fullPage: true });
 
-  // The selection is bound to the map: a change of meaning ends it, and with it the export.
+  // The selection is bound to the map: a change of meaning makes it stale, and with it the export.
   await page.getByTestId("review-toggle").click();
   const card = page.getByTestId("card-step-export-work");
   await card.getByRole("button", { name: /^Edit/ }).click();
@@ -179,8 +207,104 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   await card.getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("revision-status")).toHaveText("proposed");
   await expect(page.getByTestId("selected-slice-badge")).toHaveCount(0);
-  expect((await stored()).selectedSlice).toBeUndefined();
   expect((await page.request.get("/api/brief?format=json")).status()).toBe(409);
+  // Nothing deleted the selection: it is still in the work state and no longer matches the map.
+  expect((await workState()).selection).toEqual(selection);
+  const after = await (await page.request.get("/api/slices")).json();
+  expect(after.selectionStale).toBe(true);
+  expect(after.mapFingerprint).not.toBe(selection.mapFingerprint);
+
+  // Approved again, the old selection stays stale: the export names the reason.
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  const staleBrief = await page.request.get("/api/brief?format=json");
+  expect(staleBrief.status()).toBe(409);
+  expect((await staleBrief.json()).issues[0]).toMatchObject({ code: "stale_selection", path: "selection.mapFingerprint" });
+  await expect(page.getByTestId("selected-slice-badge")).toHaveCount(0);
+});
+
+test("a slice without a need: shown and selectable, exported only after an explicit exception", async ({ page }) => {
+  test.setTimeout(120_000);
+  // A map on which the steps shared between personas reference no need.
+  const needless = YAML.parse(await storedText());
+  for (const step of needless.narrative) if (step.personaIds.length > 1) step.needIds = [];
+  await fs.writeFile(E2E_PRODUCT_FILE, YAML.stringify(needless));
+
+  await page.setViewportSize({ width: 1600, height: 2000 });
+  await page.goto("/");
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  const canonBytes = await storedText();
+
+  // Viewed and compared like any other candidate.
+  await page.getByTestId("slices-open").click();
+  const drawer = page.getByTestId("slice-drawer");
+  await expect(page.locator("[data-testid^='candidate-slice-']")).toHaveCount(3);
+  await expect(page.getByTestId("flag-slice-shared-steps")).toBeVisible();
+  const valueRow = page.getByTestId("slice-comparison").locator("tr", { hasText: "VALUE_" });
+  await expect(valueRow.locator("td")).toHaveText(["VALUE_RESOLVED", "VALUE_RESOLVED", "VALUE_UNRESOLVED"]);
+
+  // Selecting it is allowed and does not make it exportable.
+  await page.getByLabel("Selector name").fill(HUMAN);
+  await page.getByTestId("select-slice-shared-steps").click();
+  await expect(page.getByTestId("selection-record")).toContainText("Steps shared between personas");
+  await expect(page.getByTestId("value-status")).toHaveAttribute("data-value", "VALUE_UNRESOLVED");
+  await expect(page.getByTestId("export-work-order-md")).toHaveCount(0);
+  await expect(page.getByTestId("export-work-order-json")).toHaveCount(0);
+  const refused = await page.request.get("/api/brief?format=json");
+  expect(refused.status()).toBe(409);
+  expect((await refused.json()).issues[0].code).toBe("value_unresolved");
+  expect((await page.request.get("/api/brief?format=md")).status()).toBe(409);
+  await drawer.screenshot({ path: shot("09-value-unresolved-no-export") });
+
+  // An empty rationale is rejected, in the drawer and at the endpoint.
+  await page.getByLabel("Exception accepted by").fill(HUMAN);
+  await page.getByTestId("accept-value-exception").click();
+  await expect(page.getByTestId("slice-issues")).toContainText("requires a rationale");
+  for (const body of [
+    { rationale: "   ", acceptedBy: HUMAN },
+    { acceptedBy: HUMAN },
+    { rationale: "A reason.", acceptedBy: "" },
+  ])
+    expect((await page.request.post("/api/slices/exception", { data: body })).status()).toBe(409);
+  expect((await workState()).selection.valueException).toBeUndefined();
+  expect((await page.request.get("/api/brief?format=json")).status()).toBe(409);
+
+  // A named human accepts the exception with a rationale. Now it can be exported, and the brief says so.
+  const RATIONALE = "The hand-over points have to work before we can observe which need they serve.";
+  await page.getByLabel("Exception rationale").fill(RATIONALE);
+  await page.getByTestId("accept-value-exception").click();
+  await expect(page.getByTestId("value-status")).toHaveAttribute("data-value", "VALUE_EXCEPTION_ACCEPTED");
+  await expect(page.getByTestId("value-exception-record")).toContainText(RATIONALE);
+  await expect(page.getByTestId("value-exception-record")).toContainText("not proof of value");
+  await drawer.screenshot({ path: shot("10-value-exception-accepted") });
+
+  const json = await page.request.get(await page.getByTestId("export-work-order-json").getAttribute("href") as string);
+  expect(json.status()).toBe(200);
+  const brief = await json.json();
+  expect(brief.goal.slice.id).toBe("slice-shared-steps");
+  expect(brief.approvedContext.value).toMatchObject({
+    status: "VALUE_EXCEPTION_ACCEPTED",
+    needIds: [],
+    exception: { rationale: RATIONALE, acceptedBy: HUMAN },
+  });
+  const markdown = await (await page.request.get("/api/brief?format=md")).text();
+  expect(markdown).toContain("- Value: VALUE_EXCEPTION_ACCEPTED. Exception accepted by Maya (E2E)");
+  expect(markdown).toContain(RATIONALE);
+  await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.json"), await json.text());
+  await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.md"), markdown);
+
+  // None of this touched the product file.
+  expect(await storedText()).toBe(canonBytes);
+
+  // A slice that references a need needs no exception, and selecting again drops the old one.
+  await page.getByTestId("select-slice-outcome-thread").click();
+  await expect(page.getByTestId("value-status")).toHaveAttribute("data-value", "VALUE_RESOLVED");
+  expect((await workState()).selection.valueException).toBeUndefined();
+  expect((await page.request.post("/api/slices/exception", { data: { rationale: RATIONALE, acceptedBy: HUMAN } })).status()).toBe(409);
+  expect((await page.request.get("/api/brief?format=json")).status()).toBe(200);
+  expect(await storedText()).toBe(canonBytes);
 });
 
 test("the review endpoint reads and never writes", async ({ request }) => {

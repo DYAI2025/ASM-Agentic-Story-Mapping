@@ -1,5 +1,4 @@
-import { fingerprint } from "./fingerprint";
-import { DomainError } from "./operations";
+import { hashText } from "./fingerprint";
 import { reviewNarrative } from "./review";
 import type { NarrativeStep, ProductDocument } from "./schema";
 import { validateProduct, type ValidationIssue } from "./validate";
@@ -12,9 +11,15 @@ import { validateProduct, type ValidationIssue } from "./validate";
  * decisions). There is no score and no ranking: the order of candidates
  * carries no meaning, and nothing here selects one.
  *
- * Candidates are derived and never stored. Only `selectSlice`, called for a
- * named human on an approved revision, writes a selection.
+ * Candidates are derived and never stored. A human's selection of one is work
+ * state, kept apart from the product document (`work-state.ts`).
  */
+
+/**
+ * Version of the rules below that turn a map into candidates. Raise it with
+ * every change to those rules: a selection made under another version is stale.
+ */
+export const SLICE_DERIVATION_VERSION = 1 as const;
 
 export interface AcceptanceCriterion {
   text: string;
@@ -250,6 +255,45 @@ export function proposeSlices(p: ProductDocument): SliceProposal {
   return { ok: true, candidates };
 }
 
+/**
+ * Deterministic fingerprint of everything in a candidate that an execution
+ * brief is built from or that a human decided on: its steps, personas and
+ * needs, the reasons, assumptions, open questions, criteria, scope boundary,
+ * the facts shown for comparison and the flags. Fixed key order.
+ */
+export function candidateFingerprint(c: SliceCandidate): string {
+  const e = c.evidence;
+  return hashText(
+    JSON.stringify({
+      id: c.id,
+      title: c.title,
+      goalId: c.goalId,
+      stepIds: c.stepIds,
+      personaIds: c.personaIds,
+      needIds: c.needIds,
+      whyNow: c.whyNow,
+      assumptions: c.assumptions,
+      unresolvedQuestions: c.unresolvedQuestions,
+      acceptanceCriteria: c.acceptanceCriteria,
+      outOfScope: c.outOfScope,
+      evidence: {
+        stepCount: e.stepCount,
+        totalSteps: e.totalSteps,
+        includesStart: e.includesStart,
+        includesEnd: e.includesEnd,
+        primaryPersonaSteps: e.primaryPersonaSteps,
+        sharedSteps: e.sharedSteps,
+        needsServed: e.needsServed,
+        totalNeeds: e.totalNeeds,
+        worstCaseIds: e.worstCaseIds,
+        openDecisionIds: e.openDecisionIds,
+        reviewGapIds: e.reviewGapIds,
+      },
+      flags: c.flags.map((f) => f.code),
+    }),
+  );
+}
+
 export interface SliceCheck {
   /** Reasons the candidate is rejected. */
   issues: ValidationIssue[];
@@ -290,49 +334,4 @@ export function checkSliceCandidate(
       ? [{ code: "missing_need_reference", message: "None of the included steps references a need: the map gives no reason for this slice." }]
       : [];
   return { issues, flags };
-}
-
-/**
- * The human gate. The only way a slice becomes the selected one.
- *
- * - Needs a named human, like approval does.
- * - Only on an approved revision.
- * - `mapFingerprint` is the fingerprint of the map the human was looking at;
- *   if the map has changed since, the selection is refused.
- * - The candidate is looked up among the candidates of the map as it is now,
- *   so nothing that is not derived from the map can be selected.
- */
-export function selectSlice(
-  p: ProductDocument,
-  choice: { candidateId: string; selectedBy: string; selectedAt: string; mapFingerprint: string },
-): ProductDocument {
-  if (choice.selectedBy.trim() === "") throw new DomainError("selecting a slice requires the name of the human who selects it");
-  if (p.revision.status !== "approved")
-    throw new DomainError(`revision ${p.revision.number} is not approved; a slice can only be selected on an approved narrative`);
-  if (choice.mapFingerprint !== fingerprint(p))
-    throw new DomainError("the map has changed since these candidates were shown; review the candidates again");
-
-  const proposal = proposeSlices(p);
-  if (!proposal.ok) throw new DomainError(proposal.issues.map((i) => i.message).join("; "));
-  const candidate = proposal.candidates.find((c) => c.id === choice.candidateId);
-  if (!candidate) throw new DomainError(`"${choice.candidateId}" is not a slice candidate of this map`);
-  const check = checkSliceCandidate(p, candidate);
-  if (check.issues.length > 0) throw new DomainError(check.issues.map((i) => i.message).join("; "));
-
-  const result = validateProduct({
-    ...p,
-    selectedSlice: {
-      candidateId: candidate.id,
-      title: candidate.title,
-      stepIds: candidate.stepIds,
-      personaIds: candidate.personaIds,
-      needIds: candidate.needIds,
-      selectedBy: choice.selectedBy.trim(),
-      selectedAt: choice.selectedAt,
-      revision: p.revision.number,
-      mapFingerprint: fingerprint(p),
-    },
-  });
-  if (!result.ok) throw new DomainError(result.issues.map((i) => `${i.path}: ${i.message}`).join("; "));
-  return result.product;
 }

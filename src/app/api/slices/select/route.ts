@@ -1,12 +1,13 @@
 import { DomainError } from "../../../../domain/operations";
-import { selectSlice } from "../../../../domain/slices";
-import { loadProduct, saveProduct } from "../../../../server/store";
+import { WORK_STATE_VERSION, selectSlice } from "../../../../domain/work-state";
+import { loadProduct, saveWorkState } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
 /**
  * The human gate for slices: a named human selects one candidate of the
- * approved map they were looking at. Nothing else writes a selection.
+ * approved map they were looking at. Nothing else writes a selection, and the
+ * selection is written to the work state, never to the product file.
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as
@@ -18,19 +19,19 @@ export async function POST(request: Request) {
   if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
 
   try {
-    const selected = selectSlice(stored.product, {
+    const selection = selectSlice(stored.product, {
       candidateId: text(body?.candidateId),
       selectedBy: text(body?.selectedBy),
       mapFingerprint: text(body?.mapFingerprint),
       selectedAt: new Date().toISOString(),
     });
-    const saved = await saveProduct(selected);
+    const saved = await saveWorkState({ workStateVersion: WORK_STATE_VERSION, selection });
     if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
-    return Response.json({ product: saved.product });
+    return Response.json({ selection: saved.state.selection });
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
     return Response.json(
-      { issues: [{ code: "selection_rejected", path: "selectedSlice", message: error.message }] },
+      { issues: [{ code: "selection_rejected", path: "selection", message: error.message }] },
       { status: 409 },
     );
   }

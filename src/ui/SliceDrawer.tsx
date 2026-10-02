@@ -5,8 +5,15 @@ import { fingerprint } from "../domain/fingerprint";
 import type { ProductDocument } from "../domain/schema";
 import { proposeSlices, type SliceCandidate } from "../domain/slices";
 import type { ValidationIssue } from "../domain/validate";
+import { valueStatus, type SliceSelection, type ValueStatus } from "../domain/work-state";
 
-type Answer = { product?: ProductDocument; issues?: ValidationIssue[] };
+type Answer = { selection?: SliceSelection; issues?: ValidationIssue[] };
+
+const VALUE_LABEL: Record<ValueStatus, string> = {
+  VALUE_RESOLVED: "references a need on the map",
+  VALUE_UNRESOLVED: "references no need",
+  VALUE_EXCEPTION_ACCEPTED: "references no need; a human accepted that",
+};
 
 const DETAILS: { key: keyof SliceCandidate & ("whyNow" | "assumptions" | "unresolvedQuestions" | "acceptanceCriteria" | "outOfScope"); label: string }[] = [
   { key: "whyNow", label: "Why now" },
@@ -19,53 +26,62 @@ const DETAILS: { key: keyof SliceCandidate & ("whyNow" | "assumptions" | "unreso
 /**
  * Slice candidates side by side. The candidates are computed from the map;
  * the drawer never picks one. Selecting needs a named human and an approved
- * revision, and only then can the work order be exported.
+ * revision. The selection is work state, handed in from outside the product
+ * document. A work order can be exported once the selected slice references a
+ * need, or a named human has accepted, with a rationale, that it does not.
  */
 export function SliceDrawer({
   product,
+  selection,
   onClose,
-  onSelected,
+  onSelection,
 }: {
   product: ProductDocument;
+  /** The current selection, or null when there is none or it is stale. */
+  selection: SliceSelection | null;
   onClose: () => void;
-  onSelected: (product: ProductDocument) => void;
+  onSelection: (selection: SliceSelection) => void;
 }) {
   const [selector, setSelector] = useState("");
+  const [rationale, setRationale] = useState("");
+  const [accepter, setAccepter] = useState("");
   const [busy, setBusy] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
 
   const proposal = useMemo(() => proposeSlices(product), [product]);
   const mapFingerprint = useMemo(() => fingerprint(product), [product]);
   const approved = product.revision.status === "approved";
-  const selection = product.selectedSlice;
+  const selected = proposal.ok && selection ? proposal.candidates.find((c) => c.id === selection.candidateId) : undefined;
+  const selectedValue = selected ? valueStatus(product, selected, selection) : null;
   const name = (ids: string[], items: { id: string; name: string }[]) =>
     ids.map((id) => items.find((e) => e.id === id)?.name ?? id).join(", ");
 
-  async function select(candidateId: string) {
+  async function post(url: string, body: object) {
     setBusy(true);
     let answer: Answer;
     try {
-      const response = await fetch("/api/slices/select", {
-        method: "POST",
-        body: JSON.stringify({ candidateId, selectedBy: selector, mapFingerprint }),
-      });
+      const response = await fetch(url, { method: "POST", body: JSON.stringify(body) });
       answer = (await response.json()) as Answer;
     } catch (error) {
-      answer = { issues: [{ code: "request_failed", path: "/api/slices/select", message: error instanceof Error ? error.message : String(error) }] };
+      answer = { issues: [{ code: "request_failed", path: url, message: error instanceof Error ? error.message : String(error) }] };
     }
     setBusy(false);
-    if (!answer.product) {
-      setIssues(answer.issues ?? [{ code: "unknown_error", path: "/api/slices/select", message: "request failed" }]);
+    if (!answer.selection) {
+      setIssues(answer.issues ?? [{ code: "unknown_error", path: url, message: "request failed" }]);
       return;
     }
     setIssues([]);
-    onSelected(answer.product);
+    onSelection(answer.selection);
   }
+
+  const select = (candidateId: string) => post("/api/slices/select", { candidateId, selectedBy: selector, mapFingerprint });
+  const acceptException = () => post("/api/slices/exception", { rationale, acceptedBy: accepter });
 
   const rows: { label: string; value: (c: SliceCandidate) => string }[] = [
     { label: "Scope", value: (c) => `${c.evidence.stepCount} of ${c.evidence.totalSteps} steps` },
     { label: "Personas", value: (c) => name(c.personaIds, product.personas) },
     { label: "Needs served", value: (c) => `${c.evidence.needsServed} of ${c.evidence.totalNeeds}` },
+    { label: "Value", value: (c) => valueStatus(product, c, selection) },
     {
       label: "Main path",
       value: (c) =>
@@ -112,22 +128,68 @@ export function SliceDrawer({
       {proposal.ok && (
         <>
           <div className="gate" data-testid="slice-gate">
-            {selection ? (
+            {selection && selected && selectedValue ? (
               <>
                 <p data-testid="selection-record">
-                  <strong>Selected: {selection.title}</strong>{" "}
+                  <strong>Selected: {selected.title}</strong>{" "}
                   <span className="muted">
                     by {selection.selectedBy} · {selection.selectedAt} · revision {selection.revision}
                   </span>
                 </p>
-                <div className="row">
-                  <a className="button" href="/api/brief?format=md" data-testid="export-work-order-md">
-                    Export work order (Markdown)
-                  </a>
-                  <a className="button secondary" href="/api/brief?format=json" data-testid="export-work-order-json">
-                    Export work order (JSON)
-                  </a>
-                </div>
+                <p data-testid="value-status" data-value={selectedValue}>
+                  Value: <code>{selectedValue}</code> <span className="muted">— {VALUE_LABEL[selectedValue]}</span>
+                </p>
+                {selection.valueException && selectedValue === "VALUE_EXCEPTION_ACCEPTED" && (
+                  <p data-testid="value-exception-record">
+                    Exception accepted by {selection.valueException.acceptedBy} · {selection.valueException.acceptedAt}:{" "}
+                    “{selection.valueException.rationale}”{" "}
+                    <span className="muted">This authorizes the work under uncertainty. It is not proof of value.</span>
+                  </p>
+                )}
+                {selectedValue === "VALUE_UNRESOLVED" ? (
+                  <form
+                    className="exception"
+                    data-testid="value-exception-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void acceptException();
+                    }}
+                  >
+                    <p className="flagged">
+                      ⚑ This slice references no need, so no work order can be exported. Reference a need on the map, or
+                      accept that explicitly and say why. Accepting is a decision under uncertainty, not proof of value.
+                    </p>
+                    <label className="field">
+                      <span>Why build this slice although it references no need?</span>
+                      <textarea
+                        aria-label="Exception rationale"
+                        rows={3}
+                        value={rationale}
+                        onChange={(event) => setRationale(event.target.value)}
+                      />
+                    </label>
+                    <div className="row">
+                      <input
+                        aria-label="Exception accepted by"
+                        placeholder="Your name"
+                        value={accepter}
+                        onChange={(event) => setAccepter(event.target.value)}
+                      />
+                      <button type="submit" data-testid="accept-value-exception" disabled={busy}>
+                        Accept value exception
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="row">
+                    <a className="button" href="/api/brief?format=md" data-testid="export-work-order-md">
+                      Export work order (Markdown)
+                    </a>
+                    <a className="button secondary" href="/api/brief?format=json" data-testid="export-work-order-json">
+                      Export work order (JSON)
+                    </a>
+                  </div>
+                )}
               </>
             ) : approved ? (
               <label className="row">
@@ -192,7 +254,7 @@ export function SliceDrawer({
 
           {issues.length > 0 && (
             <div className="panel error" role="alert" data-testid="slice-issues">
-              <strong>Not selected.</strong>
+              <strong>Not done.</strong>
               <ul>
                 {issues.map((issue, i) => (
                   <li key={i}>{issue.message}</li>

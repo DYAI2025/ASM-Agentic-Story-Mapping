@@ -1,6 +1,6 @@
 # Work order: Thread to “Export execution-ready work”
 
-Slice `slice-outcome-thread` of ASM – Agentic Story Mapping, revision 3 (`0e12d1e9`).
+Slice `slice-outcome-thread` of ASM – Agentic Story Mapping, revision 3 (`12ae5548`).
 
 ## GOAL
 
@@ -8,8 +8,9 @@ Software teams without prior AI experience can move from product discussion to a
 
 ## VERIFIED / APPROVED CONTEXT
 
-- Approved: revision 3 by Maya (E2E) at 2026-10-01T22:13:12.309Z.
-- Slice selected by Maya (E2E) at 2026-10-01T22:13:12.709Z.
+- Approved: revision 3 by Maya (E2E) at 2026-10-02T00:43:21.964Z.
+- Slice selected by Maya (E2E) at 2026-10-02T00:43:22.312Z (candidate `ef5f52e6`, derivation rules version 1).
+- Value: VALUE_RESOLVED (`need-shared-narrative`, `need-approve-meaning`, `need-buildable-slice`, `need-stable-references`). The slice references at least one need on the map. ASM has not measured any business value.
 - Verified: nothing. Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested.
 
 Why this slice:
@@ -98,5 +99,5 @@ A draft derived from the map. A human has to confirm it before it binds anyone.
 
 - Product: ASM – Agentic Story Mapping (`asm`), schema version 1
 - Revision: 3 (approved)
-- Approved by: Maya (E2E) at 2026-10-01T22:13:12.309Z
-- Map fingerprint: `0e12d1e9`
+- Approved by: Maya (E2E) at 2026-10-02T00:43:21.964Z
+- Map fingerprint: `12ae5548`

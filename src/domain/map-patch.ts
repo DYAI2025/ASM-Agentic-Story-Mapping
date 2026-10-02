@@ -595,10 +595,8 @@ export function applyMapPatch(product: ProductDocument, patchInput: unknown): Ap
 
   if (issues.length > 0) return { ok: false, issues: sorted(issues) };
 
-  // A change of meaning ends any slice selection made on the previous map.
-  const { selectedSlice: _selectedSlice, ...base } = product;
   const next: ProductDocument = {
-    ...base,
+    ...product,
     revision: { number: revision, status: "proposed" },
     goal,
     personas,
