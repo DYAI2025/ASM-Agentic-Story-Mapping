@@ -192,7 +192,7 @@ describe("whoever has a need or a step on the map is a persona", () => {
     expect(codes(p)).toEqual([]);
   });
 
-  it("so a persona on steps cannot be switched off, and the reason names the step", () => {
+  it("so a persona on steps cannot be switched off, and the reason is one sentence a human can act on", () => {
     let message = "";
     try {
       setPersonaPerspective(loadFixture(), "persona-domain-ux", false);

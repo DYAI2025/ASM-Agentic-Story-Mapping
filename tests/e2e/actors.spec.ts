@@ -114,3 +114,23 @@ test("a file with a role that does not exist is refused, not reinterpreted", asy
   expect(response.status()).toBe(422);
   expect((await response.json()).issues[0].path).toBe("personas.0.roles.0");
 });
+
+test("a form left open while the map is replaced does not write its old state over the new one", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("card-persona-developer").getByRole("button", { name: "Roles and persona… Developer" }).click();
+  await expect(page.getByTestId("actor-form-persona-developer")).toBeVisible();
+
+  // The same map arrives again through import, now stating a role for the developer.
+  const doc = await stored();
+  doc.personas.find((e: { id: string }) => e.id === "persona-developer").roles = ["customer"];
+  await page.getByTestId("import-input").setInputFiles({ name: "asm.product.yaml", mimeType: "application/yaml", buffer: Buffer.from(YAML.stringify(doc)) });
+  await expect(page.getByTestId("roles-persona-developer")).toHaveText("Customer / buyer");
+
+  // The form that was open described the old map: it is closed, not left to be saved.
+  await expect(page.getByTestId("actor-form-persona-developer")).toHaveCount(0);
+  expect((await stored()).personas.find((e: { id: string }) => e.id === "persona-developer").roles).toEqual(["customer"]);
+
+  // Opened again, it shows what the map says now.
+  await page.getByTestId("card-persona-developer").getByRole("button", { name: "Roles and persona… Developer" }).click();
+  await expect(page.getByTestId("actor-form-persona-developer").getByLabel("Customer / buyer")).toBeChecked();
+});

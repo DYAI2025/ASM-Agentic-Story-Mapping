@@ -30,6 +30,11 @@ export function ActorSemantics({
   const [persona, setPersona] = useState(isPersona(actor));
   const stated = rolesOf(actor);
   const asPersona = isPersona(actor);
+  // An open form describes the actor as it was when the form opened. If the map says something else
+  // now (an import, an accepted proposal, a save), or editing is no longer allowed, the form is closed
+  // rather than left to write its old state over the new one.
+  const signature = `${stated.join(",")}|${asPersona}|${readOnly}`;
+  useEffect(() => setEditing(false), [signature]);
   // When the form closes, keyboard focus goes back to the button that opened it.
   const opener = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);

@@ -146,7 +146,7 @@ export function setPersonaPerspective(p: ProductDocument, actorId: string, perso
     if (steps > 0 || needs > 0)
       throw new DomainError(
         `${actor.name} takes part in ${steps} step(s) and owns ${needs} need(s) on the map. Someone with a step or a need on the map is a persona. ` +
-          "To mark them as not a persona, first take them off those steps and remove or reassign those needs; the editor cannot do that yet, so it means editing the product file.",
+          "To mark them as not a persona, first take them off every step and remove or reassign every need of theirs; the editor cannot do that yet, so it means editing the product file.",
       );
   }
   return assertValid({
