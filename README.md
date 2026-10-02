@@ -395,6 +395,51 @@ npm run docs:refresh       # same browser tests, writing into docs/
 fails if the run changed a tracked file, and uploads `.e2e-artifacts/` named
 by that commit.
 
+### The whole first-time path in one test
+
+`tests/e2e/first-time-user.spec.ts` starts with no product file and walks the
+path in order: start screen, own words, proposal, first map, findings and a
+worst case accepted, approval, who else matters, candidates, selection, the
+work order read back as JSON and Markdown, then a change of meaning, the stale
+state and the way back. It also runs a small accessibility check on the start
+screen, the map, the review panel and the slice drawer: every control has a
+name a screen reader can say, every button has text, headings exist. Its
+screenshots are the review gallery [docs/first-time-user.md](docs/first-time-user.md).
+
+### What the tests have been shown to catch
+
+A green test proves little until it has been seen red. For every rule the
+prototype depends on, the rule was broken on purpose in a clone and the test
+that is supposed to notice was run; the table is the record. "Red" means the
+named test failed; a mutation nothing caught was either a gap that got a test
+or an equivalent mutant (a change that does not change behaviour), and the
+table says which.
+
+| Rule broken on purpose | Ticket, verified at | Result |
+|---|---|---|
+| Guide button sends an approval; guide button sends a slice selection | ASM-15, `686bdc5` | red (the no-write oracle records the request) |
+| "Earlier steps first" rule removed; last step read from the selection instead of the export gate; work-order warning removed; approval warning removed | ASM-15, `686bdc5` | red |
+| Approval predicate forced true; people predicate ignoring approval; map marker without content check; as-is marking removed; dead-end action restored; singular wording; CSS rule that hides the guide before paint | ASM-15, `1f01b72` | all red |
+| Derive persona from the role; drop the non-persona finding; operation adds a need; always write persona; legacy entry is a persona only for some roles; roles form left open during an import | ASM-16, `39db73d` | red |
+| Blank draft at revision 1; accept route writing an approved document; non-strict patch schema; overwrite instead of exclusive create; bootstrap route without the exists check; goal check removed; non-persona flag dropped on apply; persona derived from role; `Actor` treated as persona; start-screen branch removed; save/import guards removed; link replaced by rename; temp cleanup removed; goal-length mislabel; control characters in names; message for unstructured text removed; old temp-file name | ASM-17, `24c45f3` | all red (the temp-file canary red 5 of 5) |
+| Approval gate removed; persona gate removed; selection without a record not treated as stale; fingerprint comparison of the check disabled; select route accepting a confirmation from the request body; `approved_content_changed` guard removed; open-decision finding removed; guide step forced done; confirm route selecting a slice automatically; toolbar badge removed; reselect-to-check focus removed | ASM-18, `f19c222` | all red |
+| An autonomous selection inside a GET route | ASM-19, `65f2855` | **survived every test** and exported a work order live — a false-green gap; closed by the static guard `tests/domain/read-routes.test.ts` and repeated reads in the browser tests |
+| GET selects a candidate, plus four variants (in the brief route, via `confirmPersonaCheck`, via direct `fs.writeFile`, as a new GET on the people-check route); `valueStatus` always resolved; version not bumped; people check dropped from the brief; roles/persona dropped; brief version 2 | ASM-19, `a96bc2b` | all red |
+| Fingerprint blind to the goal, the needs or the step order | ASM-20, `67a1e41` | **the re-entry matrix and scenarios stayed green** (every change also reopened the revision, which is part of the fingerprint) — closed by tests that change one field under the same revision and approval |
+| No reopen on an approved revision; selection ignoring the fingerprint; check ignoring the fingerprint; fingerprint blind to goal / needs / step order / roles; fingerprint including layout; summary with a fixed step list; GET deletes a stale selection | ASM-20, `6972e89` | all red |
+| Dropping `sequence` while the narrative is still sorted by it | ASM-20, `6972e89` | equivalent mutant (behaviour unchanged); replaced by sorting by id, which is red |
+
+The full lists with the failing test names are in the evidence comments on the tickets.
+
+### What a green run does not prove
+
+The deterministic provider has no understanding; the Anthropic provider has
+only ever run against a stubbed client. The store is last-writer-wins for two
+writes from one browser. An imported file keeps the approval it records. The
+accessibility check is a smoke test, not an audit. The visual and usability
+verdict is a human's, on one exact commit, and is recorded on the ticket, not
+in this repository.
+
 ## Not built
 
 Automatic coding execution, writing to Jira or Confluence, automatic merge, an
