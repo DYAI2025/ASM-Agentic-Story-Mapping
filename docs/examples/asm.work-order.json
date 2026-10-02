@@ -1,5 +1,5 @@
 {
-  "briefVersion": 1,
+  "briefVersion": 2,
   "kind": "asm.execution-brief",
   "goal": {
     "id": "goal-faster-shared-narrative",
@@ -13,12 +13,12 @@
     "approval": {
       "revision": 3,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-02T00:43:21.964Z"
+      "approvedAt": "2026-10-02T10:45:14.385Z"
     },
     "selection": {
       "candidateId": "slice-outcome-thread",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-02T00:43:22.312Z",
+      "selectedAt": "2026-10-02T10:45:14.818Z",
       "candidateFingerprint": "ef5f52e6",
       "derivationVersion": 1
     },
@@ -338,7 +338,7 @@
     "revision": 3,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-02T00:43:21.964Z",
-    "mapFingerprint": "12ae5548"
+    "approvedAt": "2026-10-02T10:45:14.385Z",
+    "mapFingerprint": "5ee7f610"
   }
 }

@@ -166,6 +166,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect(json.status()).toBe(200);
   expect(json.headers()["content-disposition"]).toContain("asm.work-order.r3.json");
   const brief = await json.json();
+  expect(brief.briefVersion).toBe(2);
   expect(brief.sourceMapRevision).toEqual({
     productId: "asm",
     productName: "ASM – Agentic Story Mapping",
@@ -186,6 +187,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect(brief.approvedContext.value.status).toBe("VALUE_RESOLVED");
   expect(brief.approvedContext.value.exception).toBeUndefined();
   const markdown = await (await page.request.get("/api/brief?format=md")).text();
+  expect(markdown).toContain("Work order contract: `asm.execution-brief`, briefVersion 2.");
   expect(markdown).toContain("## SOURCE MAP REVISION");
   expect(markdown).toContain(`- Revision: 3 (approved)`);
   await fs.mkdir(EXAMPLES, { recursive: true });
@@ -207,6 +209,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   await card.getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("revision-status")).toHaveText("proposed");
   await expect(page.getByTestId("selected-slice-badge")).toHaveCount(0);
+  await expect(page.getByTestId("stale-slice-badge")).toBeVisible();
   expect((await page.request.get("/api/brief?format=json")).status()).toBe(409);
   // Nothing deleted the selection: it is still in the work state and no longer matches the map.
   expect((await workState()).selection).toEqual(selection);
@@ -221,6 +224,46 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect(staleBrief.status()).toBe(409);
   expect((await staleBrief.json()).issues[0]).toMatchObject({ code: "stale_selection", path: "selection.mapFingerprint" });
   await expect(page.getByTestId("selected-slice-badge")).toHaveCount(0);
+  await expect(page.getByTestId("stale-slice-badge")).toBeVisible();
+
+  // 10. The drawer shows the stale selection as stale, not as "nothing selected", and offers no export.
+  await page.setViewportSize({ width: 1600, height: 2000 });
+  await page.getByTestId("slices-open").click();
+  await expect(page.getByTestId("slice-gate")).toHaveAttribute("data-selection-state", "stale");
+  await expect(page.getByTestId("stale-heading")).toContainText("Stale selection");
+  await expect(page.getByTestId("stale-previous")).toContainText("slice-outcome-thread");
+  await expect(page.getByTestId("stale-previous")).toContainText("Thread to");
+  await expect(page.getByTestId("stale-previous")).toContainText(HUMAN);
+  await expect(page.getByTestId("stale-reason")).toContainText("Product Map changed");
+  await expect(page.getByTestId("stale-reason")).toHaveAttribute("data-reason", "selection.mapFingerprint");
+  await expect(drawer).not.toContainText("No slice is selected");
+  await expect(page.getByTestId("selection-record")).toHaveCount(0);
+  await expect(page.getByTestId("export-work-order-md")).toHaveCount(0);
+  await expect(page.getByTestId("export-work-order-json")).toHaveCount(0);
+  await expect(page.getByTestId("select-slice-outcome-thread")).toHaveText("Select slice");
+  await drawer.screenshot({ path: shot("11-stale-selection") });
+  // Showing it repaired, replaced and deleted nothing.
+  expect((await workState()).selection).toEqual(selection);
+  expect((await page.request.get("/api/brief?format=md")).status()).toBe(409);
+
+  // Only a human selecting again replaces it; then the drawer is back to an ordinary selection.
+  await page.getByTestId("reselect-candidates").click();
+  await expect(page.getByLabel("Selector name")).toBeFocused();
+  await page.getByLabel("Selector name").fill(HUMAN);
+  await page.getByTestId("select-slice-outcome-thread").click();
+  await expect(page.getByTestId("selection-record")).toContainText(HUMAN);
+  await expect(page.getByTestId("slice-gate")).toHaveAttribute("data-selection-state", "current");
+  await expect(page.getByTestId("selection-stale")).toHaveCount(0);
+  const fresh = await (await page.request.get("/api/slices")).json();
+  expect(fresh.selectionStale).toBe(false);
+  expect((await workState()).selection.mapFingerprint).toBe(fresh.mapFingerprint);
+  expect(fresh.mapFingerprint).not.toBe(selection.mapFingerprint);
+  const again = await page.request.get("/api/brief?format=json");
+  expect(again.status()).toBe(200);
+  expect((await again.json()).briefVersion).toBe(2);
+  await page.getByTestId("slices-close").click();
+  await expect(page.getByTestId("stale-slice-badge")).toHaveCount(0);
+  await expect(page.getByTestId("selected-slice-badge")).toContainText("Thread to");
 });
 
 test("a slice without a need: shown and selectable, exported only after an explicit exception", async ({ page }) => {
@@ -283,6 +326,7 @@ test("a slice without a need: shown and selectable, exported only after an expli
   const json = await page.request.get(await page.getByTestId("export-work-order-json").getAttribute("href") as string);
   expect(json.status()).toBe(200);
   const brief = await json.json();
+  expect(brief.briefVersion).toBe(2);
   expect(brief.goal.slice.id).toBe("slice-shared-steps");
   expect(brief.approvedContext.value).toMatchObject({
     status: "VALUE_EXCEPTION_ACCEPTED",
@@ -291,6 +335,7 @@ test("a slice without a need: shown and selectable, exported only after an expli
   });
   const markdown = await (await page.request.get("/api/brief?format=md")).text();
   expect(markdown).toContain("- Value: VALUE_EXCEPTION_ACCEPTED. Exception accepted by Maya (E2E)");
+  expect(markdown).toContain("briefVersion 2.");
   expect(markdown).toContain(RATIONALE);
   await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.json"), await json.text());
   await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.md"), markdown);

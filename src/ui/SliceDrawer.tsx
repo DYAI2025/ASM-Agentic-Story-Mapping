@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { fingerprint } from "../domain/fingerprint";
 import type { ProductDocument } from "../domain/schema";
 import { proposeSlices, type SliceCandidate } from "../domain/slices";
 import type { ValidationIssue } from "../domain/validate";
-import { valueStatus, type SliceSelection, type ValueStatus } from "../domain/work-state";
+import { resolveSelection, valueStatus, type SliceSelection, type ValueStatus } from "../domain/work-state";
 
 type Answer = { selection?: SliceSelection; issues?: ValidationIssue[] };
 
@@ -13,6 +13,14 @@ const VALUE_LABEL: Record<ValueStatus, string> = {
   VALUE_RESOLVED: "references a need on the map",
   VALUE_UNRESOLVED: "references no need",
   VALUE_EXCEPTION_ACCEPTED: "references no need; a human accepted that",
+};
+
+/** What changed, by the part of the selection that no longer matches. */
+const STALE_REASON: Record<string, string> = {
+  "selection.productId": "Product Map changed",
+  "selection.mapFingerprint": "Product Map changed",
+  "selection.derivationVersion": "Derivation changed",
+  "selection.candidateFingerprint": "Candidate changed",
 };
 
 const DETAILS: { key: keyof SliceCandidate & ("whyNow" | "assumptions" | "unresolvedQuestions" | "acceptanceCriteria" | "outOfScope"); label: string }[] = [
@@ -29,15 +37,19 @@ const DETAILS: { key: keyof SliceCandidate & ("whyNow" | "assumptions" | "unreso
  * revision. The selection is work state, handed in from outside the product
  * document. A work order can be exported once the selected slice references a
  * need, or a named human has accepted, with a rationale, that it does not.
+ *
+ * A selection that no longer matches the map is stale. It is shown as stale,
+ * never as "nothing selected", and it is left alone: only a human selecting
+ * again replaces it.
  */
 export function SliceDrawer({
   product,
-  selection,
+  selection: stored,
   onClose,
   onSelection,
 }: {
   product: ProductDocument;
-  /** The current selection, or null when there is none or it is stale. */
+  /** The selection as it is in the work state, stale or not; null when no slice was ever selected. */
   selection: SliceSelection | null;
   onClose: () => void;
   onSelection: (selection: SliceSelection) => void;
@@ -51,6 +63,13 @@ export function SliceDrawer({
   const proposal = useMemo(() => proposeSlices(product), [product]);
   const mapFingerprint = useMemo(() => fingerprint(product), [product]);
   const approved = product.revision.status === "approved";
+  const resolution = useMemo(() => (stored ? resolveSelection(product, stored) : null), [product, stored]);
+  // Only a selection that still matches this map counts as selected.
+  const selection = resolution?.ok ? stored : null;
+  const stale = stored && resolution && !resolution.ok ? { selection: stored, issue: resolution.issues[0] } : null;
+  const staleCandidate = stale && proposal.ok ? proposal.candidates.find((c) => c.id === stale.selection.candidateId) : undefined;
+  const selectorInput = useRef<HTMLInputElement>(null);
+  const comparison = useRef<HTMLTableElement>(null);
   const selected = proposal.ok && selection ? proposal.candidates.find((c) => c.id === selection.candidateId) : undefined;
   const selectedValue = selected ? valueStatus(product, selected, selection) : null;
   const name = (ids: string[], items: { id: string; name: string }[]) =>
@@ -127,7 +146,48 @@ export function SliceDrawer({
 
       {proposal.ok && (
         <>
-          <div className="gate" data-testid="slice-gate">
+          <div className="gate" data-testid="slice-gate" data-selection-state={stale ? "stale" : selection ? "current" : "none"}>
+            {stale && (
+              <div className="stale" role="status" data-testid="selection-stale">
+                <p data-testid="stale-heading">
+                  <strong>⚠ Stale selection.</strong> A slice was selected earlier, and it no longer matches the map. It
+                  is not the selected slice, and no work order can be exported from it.
+                </p>
+                <p data-testid="stale-previous">
+                  Previously selected: <code>{stale.selection.candidateId}</code>{" "}
+                  {staleCandidate ? (
+                    <>
+                      — {staleCandidate.title}{" "}
+                      <span className="muted">(the title the current map gives this candidate id)</span>
+                    </>
+                  ) : (
+                    <span className="muted">(no candidate with this id is derived from the current map)</span>
+                  )}{" "}
+                  <span className="muted">
+                    by {stale.selection.selectedBy} · {stale.selection.selectedAt} · revision {stale.selection.revision} ·
+                    map <code>{stale.selection.mapFingerprint}</code>
+                  </span>
+                </p>
+                <p data-testid="stale-reason" data-reason={stale.issue.path}>
+                  Reason: <strong>{STALE_REASON[stale.issue.path] ?? "Selection no longer matches"}</strong> —{" "}
+                  {stale.issue.message}.
+                </p>
+                <p className="muted">
+                  The candidates below are derived again from the map as it is now. ASM does not repair, replace or
+                  delete the stale selection: it stays in the work state until a human selects a slice again.
+                </p>
+                <button
+                  type="button"
+                  data-testid="reselect-candidates"
+                  onClick={() => {
+                    comparison.current?.scrollIntoView({ block: "nearest" });
+                    selectorInput.current?.focus();
+                  }}
+                >
+                  Reselect from current candidates
+                </button>
+              </div>
+            )}
             {selection && selected && selectedValue ? (
               <>
                 <p data-testid="selection-record">
@@ -195,12 +255,21 @@ export function SliceDrawer({
               <label className="row">
                 <span>Selecting as</span>
                 <input
+                  ref={selectorInput}
                   aria-label="Selector name"
                   placeholder="Your name"
                   value={selector}
                   onChange={(event) => setSelector(event.target.value)}
                 />
-                <span className="muted">No slice is selected. A work order can be exported once you select one.</span>
+                {stale ? (
+                  <span className="muted" data-testid="selection-reselect-hint">
+                    Select a slice below to replace the stale selection. Until then no work order can be exported.
+                  </span>
+                ) : (
+                  <span className="muted" data-testid="selection-none">
+                    No slice is selected. A work order can be exported once you select one.
+                  </span>
+                )}
               </label>
             ) : (
               <p data-testid="slice-needs-approval">
@@ -210,7 +279,7 @@ export function SliceDrawer({
             )}
           </div>
 
-          <table className="comparison" data-testid="slice-comparison">
+          <table ref={comparison} className="comparison" data-testid="slice-comparison">
             <thead>
               <tr>
                 <th />

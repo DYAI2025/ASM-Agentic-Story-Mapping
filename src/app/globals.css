@@ -118,6 +118,12 @@ code {
   background: var(--proposed-bg);
 }
 
+.badge.stale {
+  color: var(--worst);
+  background: var(--surface);
+  border: 1px solid var(--worst);
+}
+
 .badge.approved,
 .badge.decided {
   color: var(--approved);
@@ -601,6 +607,16 @@ textarea {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.stale {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-left: 4px solid var(--worst);
+}
+
+.stale p {
+  margin: 4px 0;
 }
 
 .comparison {

@@ -14,7 +14,11 @@ import { resolveSelection, valueStatus, type SliceSelection, type ValueException
  * ASM records approval; it verifies nothing. The brief says so.
  */
 
-export const BRIEF_VERSION = 1 as const;
+/**
+ * Version of the exported work order contract. 2: approvedContext.value was
+ * added, and the selection carries candidateFingerprint and derivationVersion.
+ */
+export const BRIEF_VERSION = 2 as const;
 
 export interface ExecutionBrief {
   briefVersion: typeof BRIEF_VERSION;
@@ -204,6 +208,8 @@ export function exportBriefMarkdown(brief: ExecutionBrief): string {
     `# Work order: ${brief.goal.slice.title}`,
     "",
     `Slice \`${brief.goal.slice.id}\` of ${source.productName}, revision ${source.revision} (\`${source.mapFingerprint}\`).`,
+    "",
+    `Work order contract: \`${brief.kind}\`, briefVersion ${brief.briefVersion}.`,
     "",
     "## GOAL",
     "",

@@ -1,5 +1,7 @@
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildExecutionBrief, exportBriefJson, exportBriefMarkdown } from "../../src/domain/brief";
+import { BRIEF_VERSION, buildExecutionBrief, exportBriefJson, exportBriefMarkdown } from "../../src/domain/brief";
 import { fingerprint } from "../../src/domain/fingerprint";
 import { allIds } from "../../src/domain/map-patch";
 import { approveRevision, moveStep, setCardRow, updateCard } from "../../src/domain/operations";
@@ -287,5 +289,41 @@ describe("execution brief", () => {
       "OPEN HUMAN DECISIONS",
       "SOURCE MAP REVISION",
     ]);
+  });
+
+  // The contract changed with approvedContext.value and the selection's candidateFingerprint and derivationVersion.
+  it("identifies work order contract version 2, in JSON and in Markdown", () => {
+    const b = brief(...selected());
+    expect(BRIEF_VERSION).toBe(2);
+    expect(b.briefVersion).toBe(2);
+    expect(exportBriefJson(b)).toContain('"briefVersion": 2');
+    expect(JSON.parse(exportBriefJson(b)).briefVersion).toBe(2);
+    expect(exportBriefMarkdown(b)).toContain("Work order contract: `asm.execution-brief`, briefVersion 2.");
+  });
+
+  it("no checked-in example or fixture claims another contract version", () => {
+    const root = path.join(__dirname, "..", "..");
+    const examples = path.join(root, "docs", "examples");
+    const names = readdirSync(examples);
+    const json = names.filter((n) => n.endsWith(".json"));
+    const markdown = names.filter((n) => n.endsWith(".md"));
+    expect(json.length).toBeGreaterThan(0);
+    expect(markdown.length).toBe(json.length);
+    for (const name of json) expect(JSON.parse(readFileSync(path.join(examples, name), "utf8")).briefVersion, name).toBe(2);
+    for (const name of markdown) {
+      const claimed = [...readFileSync(path.join(examples, name), "utf8").matchAll(/briefVersion (\d+)/g)].map((m) => m[1]);
+      expect(claimed, name).toEqual(["2"]);
+    }
+
+    const files = [
+      path.join(root, "README.md"),
+      ...[examples, path.join(root, "tests", "fixtures"), path.join(root, "product")].flatMap((dir) =>
+        readdirSync(dir, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => path.join(entry.parentPath, entry.name)),
+      ),
+    ];
+    const stale = files.filter((file) => /briefVersion\W{0,3}(?!2\b)\d+/.test(readFileSync(file, "utf8")));
+    expect(stale).toEqual([]);
   });
 });

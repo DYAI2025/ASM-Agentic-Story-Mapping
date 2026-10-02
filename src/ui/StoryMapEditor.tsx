@@ -169,11 +169,12 @@ export function StoryMapEditor({
   const [slicesOpen, setSlicesOpen] = useState(false);
   const shown = preview?.product ?? product;
   const findings = useMemo(() => reviewNarrative(product), [product]);
-  // A selection counts only while it still matches this exact map; otherwise it is stale and shown nowhere.
+  // A selection counts only while it still matches this exact map; otherwise it is stale: shown as stale, never as selected.
   const selectedCandidate = useMemo(() => {
     const resolved = selection ? resolveSelection(product, selection) : null;
     return resolved?.ok ? resolved.candidate : null;
   }, [product, selection]);
+  const selectionStale = selection !== null && selectedCandidate === null;
   const sliceSteps = useMemo(() => new Set(selectedCandidate?.stepIds ?? []), [selectedCandidate]);
 
   const view = useMemo(() => buildStoryMap(shown, personaFilter), [shown, personaFilter]);
@@ -304,6 +305,11 @@ export function StoryMapEditor({
               Slice: {selectedCandidate.title}
             </span>
           )}
+          {selectionStale && (
+            <span className="badge stale" data-testid="stale-slice-badge">
+              Slice selection stale
+            </span>
+          )}
         </div>
         <div className="row">
           <a className="button secondary" href="/api/product?format=yaml" data-testid="export-yaml">
@@ -360,7 +366,7 @@ export function StoryMapEditor({
       {slicesOpen && !reviewing && (
         <SliceDrawer
           product={product}
-          selection={selectedCandidate ? selection : null}
+          selection={selection}
           onClose={() => setSlicesOpen(false)}
           onSelection={(next) => {
             setSelection(next);

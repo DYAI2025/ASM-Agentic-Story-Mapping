@@ -112,8 +112,13 @@ checked in), and selecting never changes the product document
 names the candidate and binds itself to the product revision, the map
 fingerprint, a fingerprint of the candidate (`candidateFingerprint`) and the
 version of the derivation rules (`SLICE_DERIVATION_VERSION`). If any of them
-no longer matches, the selection is stale: it is ignored by the map view and
-refused by the export. Nothing deletes it.
+no longer matches, the selection is stale: it is not shown as the selected
+slice and it is refused by the export. Nothing deletes or repairs it. The map
+toolbar and the slice drawer show it as stale, with the earlier candidate, the
+reason (Product Map, Candidate or Derivation changed) and a way to select
+again from the current candidates.
+
+![A stale selection in the slice drawer](docs/screenshots/loop-11-stale-selection.png)
 
 Each candidate carries a value status. It is a label, not a number:
 
