@@ -46,8 +46,9 @@ yet; the user can drop or edit any change.
 ### 4. The first map — revision 1, proposed
 
 The user dropped the open question and accepted the rest. The map exists on
-disk as revision 1, proposed. The impact line shows the three layers: map,
-sensemaking, delivery. The guide moves to "Check the story and approve it".
+disk as revision 1, proposed. The impact line shows the first of three layers
+reached: the thinking is a readable map (sensemaking and delivery appear as
+they are reached). The guide moves to "Check the story and approve it".
 
 ![3 — first map](screenshots/first-time-03-first-map.png)
 

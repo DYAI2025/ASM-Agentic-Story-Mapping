@@ -37,23 +37,38 @@ const INTENT = [
 const shot = (name: string) => path.join(SCREENSHOTS, `first-time-${name}.png`);
 const exists = () => fs.access(E2E_PRODUCT_FILE).then(() => true, () => false);
 const stored = async () => YAML.parse(await fs.readFile(E2E_PRODUCT_FILE, "utf8"));
-const workState = async () => JSON.parse(await fs.readFile(E2E_WORK_STATE_FILE, "utf8"));
+/** The stored work state; no file yet means nothing has been confirmed or selected. */
+const workState = async () => fs.readFile(E2E_WORK_STATE_FILE, "utf8").then((text) => JSON.parse(text), () => ({}));
 
-/** Every form control on the page has a name a screen reader can say; every button says something. */
+/**
+ * Every control on the page has a name a screen reader would say, and every
+ * button and link says something. The name is computed the way the
+ * accessible-name algorithm does for the cases this UI uses: aria-label,
+ * aria-labelledby, a label (by `for` or as the label's own control — a label
+ * names only its first labelable descendant), the visible text without parts
+ * hidden from assistive technology, title. A placeholder is not a name.
+ */
 async function expectAccessible(page: Page, where: string) {
   const unnamed = await page.evaluate(() => {
-    // Hidden controls are not in the accessibility tree (the file input behind "Import file…").
-    const controls = [...document.querySelectorAll<HTMLElement>("input:not([type=hidden]), textarea, select, button")].filter((el) => !el.hidden);
+    const visible = (el: HTMLElement) => !el.hidden && el.getClientRects().length > 0;
+    const controls = [...document.querySelectorAll<HTMLElement>("input:not([type=hidden]), textarea, select, button, a[href], [role='button']")].filter(visible);
+    const visibleText = (node: Element): string =>
+      node.getAttribute("aria-hidden") === "true"
+        ? ""
+        : [...node.childNodes].map((child) => (child.nodeType === Node.TEXT_NODE ? child.textContent ?? "" : child instanceof Element ? visibleText(child) : "")).join("");
     const nameOf = (el: HTMLElement) => {
       const byAria = el.getAttribute("aria-label");
       if (byAria?.trim()) return byAria;
-      const labelled = el.id ? document.querySelector(`label[for="${el.id}"]`)?.textContent : null;
-      if (labelled?.trim()) return labelled;
-      const wrapping = el.closest("label")?.textContent;
-      if (wrapping?.trim()) return wrapping;
-      return el.textContent?.trim() || el.getAttribute("placeholder") || "";
+      const byIds = el.getAttribute("aria-labelledby");
+      if (byIds) return byIds.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+      const forLabel = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
+      if (forLabel?.textContent?.trim()) return forLabel.textContent;
+      const wrapping = el.closest("label");
+      if (wrapping && (wrapping as HTMLLabelElement).control === el && wrapping.textContent?.trim()) return wrapping.textContent;
+      if (el instanceof HTMLSelectElement || el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el.title;
+      return visibleText(el).trim() || el.title;
     };
-    return controls.filter((el) => nameOf(el).trim() === "").map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}`);
+    return controls.filter((el) => nameOf(el).trim() === "").map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${el.className ? `.${String(el.className).split(" ")[0]}` : ""}`);
   });
   expect(unnamed, `${where}: controls without an accessible name`).toEqual([]);
   expect(await page.locator("h1, h2").count(), `${where}: headings`).toBeGreaterThan(0);
@@ -121,6 +136,8 @@ test("a first-time Product Lead goes from own words to a work order, then change
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("revision-status")).toHaveText("approved");
   await expect(page.getByTestId("approval-record")).toContainText(LEAD);
+  // The review panel's "needs approval again" line described revision 2 proposed; it is gone once that is no longer so.
+  await expect(page.getByTestId("review-status")).toHaveCount(0);
   await expect(page.getByTestId("impact-sensemaking")).toContainText(LEAD);
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "people_check");
   await page.screenshot({ path: shot("05-approved"), fullPage: true });
@@ -132,6 +149,11 @@ test("a first-time Product Lead goes from own words to a work order, then change
   await expect(page.getByTestId("people-check-list").locator("li")).toHaveCount(3);
   await expect(page.getByTestId("people-check")).toContainText("ASM cannot know");
   await expect(page.getByTestId("select-slice-outcome-thread")).toBeDisabled();
+  // The gate is the server's, not the button's: selecting without the check is refused and writes nothing.
+  const early = await page.request.post("/api/slices/select", { data: { candidateId: "slice-outcome-thread", selectedBy: LEAD, mapFingerprint: (await (await page.request.get("/api/slices")).json()).mapFingerprint } });
+  expect(early.status()).toBe(409);
+  expect((await early.json()).issues[0].code).toBe("selection_rejected");
+  expect((await workState()).selection).toBeUndefined();
   await expectAccessible(page, "slice drawer before the people check");
   await page.getByTestId("people-check").screenshot({ path: shot("06-who-else-matters") });
   await page.getByLabel("Confirmed by").fill(LEAD);
@@ -139,8 +161,15 @@ test("a first-time Product Lead goes from own words to a work order, then change
   await expect(page.getByTestId("people-check-record")).toContainText(LEAD);
   expect((await workState()).selection).toBeUndefined();
 
-  // 8. Candidates compared: two or three, explained from the map, none chosen.
+  // 8. Candidates compared: two or three, explained from the map, none chosen — not by a read, however often.
   await expect(page.locator("[data-testid^='candidate-slice-']")).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    const read = await (await page.request.get("/api/slices")).json();
+    expect(read.selection, `read ${i + 1}`).toBeNull();
+    expect(read.candidates.length, `read ${i + 1}`).toBe(3);
+  }
+  expect((await workState()).selection).toBeUndefined();
+  expect((await page.request.get("/api/brief?format=json")).status()).toBe(409);
   await expect(drawer).toContainText("The order is not a ranking and there is no score");
   await expect(drawer).toContainText("No slice is selected");
   await drawer.screenshot({ path: shot("07-slice-candidates") });
@@ -159,7 +188,13 @@ test("a first-time Product Lead goes from own words to a work order, then change
 
   // 10. Work order: exported as JSON and Markdown, read back, bound to the exact map and selection.
   const live = await (await page.request.get("/api/slices")).json();
-  const json = await page.request.get("/api/brief?format=json");
+  await page.getByTestId("slices-open").click();
+  const jsonHref = await page.getByTestId("export-work-order-json").getAttribute("href");
+  const mdHref = await page.getByTestId("export-work-order-md").getAttribute("href");
+  expect(jsonHref).toBe("/api/brief?format=json");
+  expect(mdHref).toBe("/api/brief?format=md");
+  await page.getByTestId("slices-close").click();
+  const json = await page.request.get(jsonHref!);
   expect(json.status()).toBe(200);
   const brief = await json.json();
   expect(brief.briefVersion).toBe(3);
@@ -170,7 +205,7 @@ test("a first-time Product Lead goes from own words to a work order, then change
   expect(brief.approvedContext.value.status).toBe("VALUE_RESOLVED");
   expect(brief.inScope.length).toBeGreaterThan(0);
   expect(brief.personas.map((e: { id: string }) => e.id)).toContain("persona-resident");
-  const markdown = await (await page.request.get("/api/brief?format=md")).text();
+  const markdown = await (await page.request.get(mdHref!)).text();
   expect(markdown).toContain("Work order contract: `asm.execution-brief`, briefVersion 3.");
   expect(markdown).toContain(`- Approved: revision 2 by ${LEAD}`);
   expect(markdown).toContain(`- Who else matters: considered by ${LEAD}`);
@@ -212,5 +247,17 @@ test("a first-time Product Lead goes from own words to a work order, then change
   const again = await (await page.request.get("/api/brief?format=json")).json();
   expect(again.sourceMapRevision.revision).toBe(3);
   expect(again.sourceMapRevision.mapFingerprint).not.toBe(live.mapFingerprint);
+
+  // 13. The map's meaning is what the approval and the work order are bound to, not the revision number:
+  // the same revision and approval with one changed need is refused, and the stored file is untouched.
+  const approvedDoc = await stored();
+  const approvedBytes = await fs.readFile(E2E_PRODUCT_FILE, "utf8");
+  const tampered = structuredClone(approvedDoc);
+  tampered.needs[0].statement = "Changed under the same approval.";
+  const put = await page.request.put("/api/product", { data: YAML.stringify(tampered) });
+  expect(put.status()).toBe(409);
+  expect((await put.json()).issues[0].code).toBe("approved_content_changed");
+  expect(await fs.readFile(E2E_PRODUCT_FILE, "utf8")).toBe(approvedBytes);
+  expect(again.sourceMapRevision.mapFingerprint).toBe((await (await page.request.get("/api/slices")).json()).mapFingerprint);
   await page.screenshot({ path: shot("11-way-back-complete"), fullPage: true });
 });
