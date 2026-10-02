@@ -13,12 +13,12 @@
     "approval": {
       "revision": 1,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-02T10:45:16.018Z"
+      "approvedAt": "2026-10-02T22:08:52.280Z"
     },
     "selection": {
       "candidateId": "slice-shared-steps",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-02T10:45:16.184Z",
+      "selectedAt": "2026-10-02T22:08:52.495Z",
       "candidateFingerprint": "f66ec7d4",
       "derivationVersion": 1
     },
@@ -28,7 +28,7 @@
       "exception": {
         "rationale": "The hand-over points have to work before we can observe which need they serve.",
         "acceptedBy": "Maya (E2E)",
-        "acceptedAt": "2026-10-02T10:45:16.519Z"
+        "acceptedAt": "2026-10-02T22:08:52.844Z"
       },
       "note": "No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value."
     },
@@ -411,7 +411,7 @@
     "revision": 1,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-02T10:45:16.018Z",
-    "mapFingerprint": "142368f6"
+    "approvedAt": "2026-10-02T22:08:52.280Z",
+    "mapFingerprint": "ee5071eb"
   }
 }
