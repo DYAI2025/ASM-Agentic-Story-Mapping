@@ -1,6 +1,7 @@
 import { fingerprint } from "./fingerprint";
 import { reviewNarrative } from "./review";
-import type { ProductDocument, WcbcOutcome } from "./schema";
+import { ROLE_LABEL, isPersona, rolesOf } from "./actors";
+import type { ProductDocument, ValueChainRole, WcbcOutcome } from "./schema";
 import { criteriaFor } from "./slices";
 import type { ValidationIssue } from "./validate";
 import { resolveSelection, valueStatus, type SliceSelection, type ValueException } from "./work-state";
@@ -17,8 +18,10 @@ import { resolveSelection, valueStatus, type SliceSelection, type ValueException
 /**
  * Version of the exported work order contract. 2: approvedContext.value was
  * added, and the selection carries candidateFingerprint and derivationVersion.
+ * 3: approvedContext.peopleConsidered (the people check the slice was selected
+ * under) and roles / persona on every person.
  */
-export const BRIEF_VERSION = 2 as const;
+export const BRIEF_VERSION = 3 as const;
 
 export interface ExecutionBrief {
   briefVersion: typeof BRIEF_VERSION;
@@ -27,6 +30,8 @@ export interface ExecutionBrief {
   approvedContext: {
     approval: { revision: number; approvedBy: string; approvedAt: string };
     selection: { candidateId: string; selectedBy: string; selectedAt: string; candidateFingerprint: string; derivationVersion: number };
+    /** What a named human did before selecting. Never a claim that the people on the map are complete. */
+    peopleConsidered: { confirmedBy: string; confirmedAt: string; note: string };
     /**
      * Never VALUE_UNRESOLVED: such a slice is not exported. An accepted
      * exception is an authorization under uncertainty, not proof of value.
@@ -54,7 +59,7 @@ export interface ExecutionBrief {
     branches: { id: string; kind: "worst_case" | "best_case"; title: string; description: string; recovery: string; outcome?: WcbcOutcome }[];
   }[];
   outOfScope: string[];
-  personas: { id: string; name: string; description: string }[];
+  personas: { id: string; name: string; description: string; roles: ValueChainRole[]; persona: boolean }[];
   needs: { id: string; personaId: string; statement: string }[];
   acceptanceCriteriaDraft: { id: string; text: string; refs: string[] }[];
   verificationExpectations: { criterionId: string; expectation: string }[];
@@ -84,6 +89,8 @@ export function buildExecutionBrief(p: ProductDocument, selection: SliceSelectio
   const resolved = resolveSelection(p, selection);
   if (!resolved.ok) return resolved;
   const candidate = resolved.candidate;
+  // A selection that resolves was made under a people check (resolveSelection refuses one without).
+  const peopleCheck = selection.personaCheck!;
   const mapFingerprint = fingerprint(p);
 
   const value = valueStatus(p, candidate, selection);
@@ -120,6 +127,11 @@ export function buildExecutionBrief(p: ProductDocument, selection: SliceSelectio
           selectedAt: selection.selectedAt,
           candidateFingerprint: selection.candidateFingerprint,
           derivationVersion: selection.derivationVersion,
+        },
+        peopleConsidered: {
+          confirmedBy: peopleCheck.confirmedBy,
+          confirmedAt: peopleCheck.confirmedAt,
+          note: "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.",
         },
         value: exception
           ? {
@@ -160,7 +172,9 @@ export function buildExecutionBrief(p: ProductDocument, selection: SliceSelectio
           })),
       })),
       outOfScope: candidate.outOfScope,
-      personas: p.personas.filter((e) => candidate.personaIds.includes(e.id)).map((e) => ({ id: e.id, name: e.name, description: e.description })),
+      personas: p.personas
+        .filter((e) => candidate.personaIds.includes(e.id))
+        .map((e) => ({ id: e.id, name: e.name, description: e.description, roles: [...rolesOf(e)], persona: isPersona(e) })),
       needs: p.needs.filter((e) => candidate.needIds.includes(e.id)).map((e) => ({ id: e.id, personaId: e.personaId, statement: e.statement })),
       acceptanceCriteriaDraft: criteria,
       verificationExpectations: criteria.map((c) => ({
@@ -218,6 +232,7 @@ export function exportBriefMarkdown(brief: ExecutionBrief): string {
     "## VERIFIED / APPROVED CONTEXT",
     "",
     `- Approved: revision ${approval.revision} by ${approval.approvedBy} at ${approval.approvedAt}.`,
+    `- Who else matters: considered by ${brief.approvedContext.peopleConsidered.confirmedBy} at ${brief.approvedContext.peopleConsidered.confirmedAt}. ${brief.approvedContext.peopleConsidered.note}`,
     `- Slice selected by ${selection.selectedBy} at ${selection.selectedAt} (candidate \`${selection.candidateFingerprint}\`, derivation rules version ${selection.derivationVersion}).`,
     value.exception
       ? `- Value: ${value.status}. Exception accepted by ${value.exception.acceptedBy} at ${value.exception.acceptedAt}: “${value.exception.rationale}” ${value.note}`
@@ -253,7 +268,7 @@ export function exportBriefMarkdown(brief: ExecutionBrief): string {
     "## PERSONAS / NEEDS",
     "",
     ...brief.personas.flatMap((persona) => [
-      `- **${persona.name}** (\`${persona.id}\`) — ${persona.description}`,
+      `- **${persona.name}** (\`${persona.id}\`, ${persona.roles.length > 0 ? persona.roles.map((role) => ROLE_LABEL[role]).join(", ") : "role not stated"}) — ${persona.description}`,
       ...brief.needs.filter((n) => n.personaId === persona.id).map((n) => `  - \`${n.id}\` ${n.statement}`),
     ]),
     "",

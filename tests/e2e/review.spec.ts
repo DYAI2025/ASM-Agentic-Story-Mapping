@@ -260,3 +260,30 @@ test("with the guide hidden, a stale people check is still visible on the toolba
   await page.getByTestId("reselect-candidates").click();
   await expect(page.getByLabel("Selector name")).toBeFocused();
 });
+
+test("a stale selection on a proposed revision: reselecting leads to approval first", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  await page.getByTestId("slices-open").click();
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await page.getByLabel("Selector name").fill(HUMAN);
+  await page.getByTestId("select-slice-outcome-thread").click();
+  await expect(page.getByTestId("selection-record")).toBeVisible();
+  await page.getByTestId("slices-close").click();
+
+  const card = page.getByTestId("card-step-export-work");
+  await card.getByRole("button", { name: /^Edit/ }).click();
+  await card.locator("textarea[name='description']").fill("Changed; not approved again.");
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("revision-status")).toHaveText("proposed");
+
+  await page.getByTestId("slices-open").click();
+  await expect(page.getByTestId("people-check")).toHaveCount(0);
+  await expect(page.getByTestId("reselect-candidates")).toHaveText("Approve the narrative, then reselect");
+  await page.getByTestId("reselect-candidates").click();
+  await expect(page.getByTestId("slice-drawer")).toHaveCount(0);
+  await expect(page.getByLabel("Approver name")).toBeFocused();
+});

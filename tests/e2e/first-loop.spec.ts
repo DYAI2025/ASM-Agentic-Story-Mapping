@@ -197,7 +197,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect(json.status()).toBe(200);
   expect(json.headers()["content-disposition"]).toContain("asm.work-order.r3.json");
   const brief = await json.json();
-  expect(brief.briefVersion).toBe(2);
+  expect(brief.briefVersion).toBe(3);
   expect(brief.sourceMapRevision).toEqual({
     productId: "asm",
     productName: "ASM – Agentic Story Mapping",
@@ -218,7 +218,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect(brief.approvedContext.value.status).toBe("VALUE_RESOLVED");
   expect(brief.approvedContext.value.exception).toBeUndefined();
   const markdown = await (await page.request.get("/api/brief?format=md")).text();
-  expect(markdown).toContain("Work order contract: `asm.execution-brief`, briefVersion 2.");
+  expect(markdown).toContain("Work order contract: `asm.execution-brief`, briefVersion 3.");
   expect(markdown).toContain("## SOURCE MAP REVISION");
   expect(markdown).toContain(`- Revision: 3 (approved)`);
   await fs.mkdir(EXAMPLES, { recursive: true });
@@ -299,7 +299,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect(fresh.mapFingerprint).not.toBe(selection.mapFingerprint);
   const again = await page.request.get("/api/brief?format=json");
   expect(again.status()).toBe(200);
-  expect((await again.json()).briefVersion).toBe(2);
+  expect((await again.json()).briefVersion).toBe(3);
   await page.getByTestId("slices-close").click();
   await expect(page.getByTestId("stale-slice-badge")).toHaveCount(0);
   await expect(page.getByTestId("selected-slice-badge")).toContainText("Thread to");
@@ -368,7 +368,7 @@ test("a slice without a need: shown and selectable, exported only after an expli
   const json = await page.request.get(await page.getByTestId("export-work-order-json").getAttribute("href") as string);
   expect(json.status()).toBe(200);
   const brief = await json.json();
-  expect(brief.briefVersion).toBe(2);
+  expect(brief.briefVersion).toBe(3);
   expect(brief.goal.slice.id).toBe("slice-shared-steps");
   expect(brief.approvedContext.value).toMatchObject({
     status: "VALUE_EXCEPTION_ACCEPTED",
@@ -377,7 +377,7 @@ test("a slice without a need: shown and selectable, exported only after an expli
   });
   const markdown = await (await page.request.get("/api/brief?format=md")).text();
   expect(markdown).toContain("- Value: VALUE_EXCEPTION_ACCEPTED. Exception accepted by Maya (E2E)");
-  expect(markdown).toContain("briefVersion 2.");
+  expect(markdown).toContain("briefVersion 3.");
   expect(markdown).toContain(RATIONALE);
   await fs.mkdir(EXAMPLES, { recursive: true });
   await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.json"), await json.text());
@@ -421,4 +421,63 @@ test("the review endpoint reads and never writes", async ({ request }) => {
   const again = await request.post("/api/proposal/accept", { data: { patch } });
   expect(again.status()).toBe(409);
   expect((await again.json()).issues[0].code).toBe("stale_patch");
+});
+
+test("a map with one reading offers one candidate with the reason, and only a human picks it", async ({ page }) => {
+  // One persona on every step and no needs: the three readings collapse into one.
+  const flat = YAML.parse(await storedText());
+  for (const step of flat.narrative) {
+    step.personaIds = ["persona-developer"];
+    step.needIds = [];
+  }
+  await fs.writeFile(E2E_PRODUCT_FILE, YAML.stringify(flat));
+
+  await page.goto("/");
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+
+  await page.getByTestId("slices-open").click();
+  await expect(page.locator("[data-testid^='candidate-slice-']")).toHaveCount(1);
+  await expect(page.getByTestId("fewer-candidates")).toContainText("Only one candidate can be derived from this map");
+  await expect(page.getByTestId("fewer-candidates")).toContainText("ASM does not choose for you");
+  const slices = await (await page.request.get("/api/slices")).json();
+  expect(slices.candidates).toHaveLength(1);
+  expect(slices.fewerBecause).toContain("Only one candidate");
+  expect(slices.selection).toBeNull();
+  expect(await workStateExists()).toBe(false);
+
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await page.getByLabel("Selector name").fill(HUMAN);
+  await page.getByTestId("select-slice-primary-persona").click();
+  await expect(page.getByTestId("selection-record")).toContainText(HUMAN);
+  expect((await workState()).selection.derivationVersion).toBe(2);
+});
+
+test("the work order names who considered the people and states roles and persona per person", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("card-persona-developer").getByRole("button", { name: "Roles and persona… Developer" }).click();
+  const form = page.getByTestId("actor-form-persona-developer");
+  await form.getByLabel("Delivery participant").check();
+  await form.getByRole("button", { name: "Save roles" }).click();
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  await page.getByTestId("slices-open").click();
+  await page.getByLabel("Confirmed by").fill("Zoe (E2E)");
+  await page.getByTestId("people-check-confirm").click();
+  await page.getByLabel("Selector name").fill(HUMAN);
+  await page.getByTestId("select-slice-outcome-thread").click();
+  await expect(page.getByTestId("selection-record")).toBeVisible();
+
+  const brief = await (await page.request.get("/api/brief?format=json")).json();
+  expect(brief.briefVersion).toBe(3);
+  expect(brief.approvedContext.peopleConsidered).toMatchObject({ confirmedBy: "Zoe (E2E)" });
+  expect(brief.approvedContext.peopleConsidered.note).toContain("does not say the people on the map are complete");
+  const developer = brief.personas.find((e: { id: string }) => e.id === "persona-developer");
+  expect(developer).toMatchObject({ roles: ["delivery_participant"], persona: true });
+  const markdown = await (await page.request.get("/api/brief?format=md")).text();
+  expect(markdown).toContain("- Who else matters: considered by Zoe (E2E) at ");
+  expect(markdown).toContain("(`persona-developer`, Delivery participant)");
 });

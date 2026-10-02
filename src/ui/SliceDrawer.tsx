@@ -167,6 +167,12 @@ export function SliceDrawer({
         </div>
       )}
 
+      {proposal.ok && proposal.fewerBecause && (
+        <p className="flagged" role="status" data-testid="fewer-candidates">
+          ⚑ {proposal.fewerBecause} Choosing it is still yours; ASM does not choose for you.
+        </p>
+      )}
+
       {proposal.ok && (
         <>
           {approved && (
@@ -269,7 +275,12 @@ export function SliceDrawer({
                   type="button"
                   data-testid="reselect-candidates"
                   onClick={() => {
-                    // Selecting again starts at the people check when that is not current either.
+                    // Selecting again starts at the earliest gate that is not passed: approval, then the people check.
+                    if (!approved) {
+                      onClose();
+                      document.getElementById("approver-name")?.focus();
+                      return;
+                    }
                     if (!people.ok) {
                       document.getElementById("people-check-name")?.focus();
                       return;
@@ -278,7 +289,7 @@ export function SliceDrawer({
                     selectorInput.current?.focus();
                   }}
                 >
-                  {people.ok ? "Reselect from current candidates" : "Confirm who else matters, then reselect"}
+                  {!approved ? "Approve the narrative, then reselect" : people.ok ? "Reselect from current candidates" : "Confirm who else matters, then reselect"}
                 </button>
               </div>
             )}

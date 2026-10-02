@@ -47,7 +47,7 @@ describe("slice candidates", () => {
     ]);
   });
 
-  it("is deterministic and always yields two or three candidates or a reason", () => {
+  it("is deterministic and yields two or three candidates, one with the reason there is no second, or the reason there are none", () => {
     expect(proposeSlices(loadFixture())).toEqual(proposeSlices(loadFixture()));
 
     const single = mutableFixture();
@@ -62,7 +62,9 @@ describe("slice candidates", () => {
       step.personaIds = ["persona-developer"];
       step.needIds = [];
     }
-    expect(codes(proposeSlices(flat))).toEqual(["too_few_candidates"]);
+    const one = proposeSlices(flat);
+    expect(one.ok && one.candidates.length).toBe(1);
+    expect(one.ok && one.fewerBecause).toContain("Only one candidate can be derived");
   });
 
   it("every candidate carries the required fields and explains itself from the map", () => {
@@ -293,13 +295,13 @@ describe("execution brief", () => {
   });
 
   // The contract changed with approvedContext.value and the selection's candidateFingerprint and derivationVersion.
-  it("identifies work order contract version 2, in JSON and in Markdown", () => {
+  it("identifies work order contract version 3, in JSON and in Markdown", () => {
     const b = brief(...selected());
-    expect(BRIEF_VERSION).toBe(2);
-    expect(b.briefVersion).toBe(2);
-    expect(exportBriefJson(b)).toContain('"briefVersion": 2');
-    expect(JSON.parse(exportBriefJson(b)).briefVersion).toBe(2);
-    expect(exportBriefMarkdown(b)).toContain("Work order contract: `asm.execution-brief`, briefVersion 2.");
+    expect(BRIEF_VERSION).toBe(3);
+    expect(b.briefVersion).toBe(3);
+    expect(exportBriefJson(b)).toContain('"briefVersion": 3');
+    expect(JSON.parse(exportBriefJson(b)).briefVersion).toBe(3);
+    expect(exportBriefMarkdown(b)).toContain("Work order contract: `asm.execution-brief`, briefVersion 3.");
   });
 
   it("no checked-in example or fixture claims another contract version", () => {
@@ -310,10 +312,10 @@ describe("execution brief", () => {
     const markdown = names.filter((n) => n.endsWith(".md"));
     expect(json.length).toBeGreaterThan(0);
     expect(markdown.length).toBe(json.length);
-    for (const name of json) expect(JSON.parse(readFileSync(path.join(examples, name), "utf8")).briefVersion, name).toBe(2);
+    for (const name of json) expect(JSON.parse(readFileSync(path.join(examples, name), "utf8")).briefVersion, name).toBe(3);
     for (const name of markdown) {
       const claimed = [...readFileSync(path.join(examples, name), "utf8").matchAll(/briefVersion (\d+)/g)].map((m) => m[1]);
-      expect(claimed, name).toEqual(["2"]);
+      expect(claimed, name).toEqual(["3"]);
     }
 
     const files = [
@@ -324,7 +326,7 @@ describe("execution brief", () => {
           .map((entry) => path.join(entry.parentPath, entry.name)),
       ),
     ];
-    const stale = files.filter((file) => /briefVersion\W{0,3}(?!2\b)\d+/.test(readFileSync(file, "utf8")));
+    const stale = files.filter((file) => /briefVersion\W{0,3}(?!3\b)\d+/.test(readFileSync(file, "utf8")));
     expect(stale).toEqual([]);
   });
 });

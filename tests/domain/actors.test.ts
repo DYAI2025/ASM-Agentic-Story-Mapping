@@ -212,8 +212,7 @@ describe("whoever has a need or a step on the map is a persona", () => {
     expect(codes(p)).toEqual([]);
   });
 
-  it("slice candidates and their fingerprints are what they were: the derivation rules did not change", () => {
-    expect(SLICE_DERIVATION_VERSION).toBe(1);
+  it("slice candidates and their fingerprints are what they were: someone who is not a persona changes nothing", () => {
     const before = proposeSlices(loadFixture());
     // The fixture's candidates as derived at 686bdc5, before this change.
     expect(before.ok && before.candidates.map((c) => [c.id, candidateFingerprint(c)])).toEqual([

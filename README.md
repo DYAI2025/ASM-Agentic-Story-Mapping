@@ -222,7 +222,8 @@ matters?* block in the slice drawer).
 
 ```
 approved narrative -> review (fixed checks + agent findings)
-  -> 2-3 slice candidates -> a human selects one -> work order (JSON + Markdown)
+  -> who else matters (human) -> 2-3 slice candidates, or one with the reason
+  -> a human selects one -> work order (JSON + Markdown)
 ```
 
 **Review mode** opens the findings inbox.
@@ -251,11 +252,15 @@ serve the needs of the last step, and the steps shared between personas. Each
 candidate lists its step, persona and need ids, why now, assumptions,
 unresolved questions, suggested acceptance criteria and what is out of scope,
 and the comparison table shows counts taken from the map. There is no score and
-no ranking.
+no ranking. A map whose three readings collapse into one yields that one
+candidate together with the reason there is no second (`fewerBecause`); a map
+that yields none is refused with the reason. Changing these rules raises
+`SLICE_DERIVATION_VERSION` (now 2), which makes earlier selections stale.
 
 ![Slice candidates compared](docs/screenshots/loop-06-slice-drawer-comparison.png)
 
-**Select slice** needs a named human and an approved revision. The selection
+**Select slice** needs a named human, an approved revision and a current
+people check. The selection
 is work state, not product canon: it is written to its own file beside the
 product file (`product/asm.work-state.json`, or `ASM_WORK_STATE_FILE`; not
 checked in), and selecting never changes the product document
@@ -286,9 +291,12 @@ Each candidate carries a value status. It is a label, not a number:
 **Export work order** (`/api/brief?format=json|md`) is built from the approved
 product document plus a selection that is not stale, and is refused without
 one or while the value is unresolved. The brief holds GOAL, VERIFIED /
-APPROVED CONTEXT (including the value status and any exception), IN SCOPE, OUT
-OF SCOPE, PERSONAS / NEEDS, ACCEPTANCE CRITERIA DRAFT, VERIFICATION
-EXPECTATIONS, OPEN HUMAN DECISIONS and SOURCE MAP REVISION. Examples from the
+APPROVED CONTEXT (approval, who considered who else matters, the selection
+with candidate fingerprint and derivation version, the value status and any
+exception), IN SCOPE, OUT OF SCOPE, PERSONAS / NEEDS (each person with roles
+and persona answer), ACCEPTANCE CRITERIA DRAFT, VERIFICATION EXPECTATIONS,
+OPEN HUMAN DECISIONS and SOURCE MAP REVISION. The contract version is
+`briefVersion` (now 3) in the JSON and in the Markdown. Examples from the
 browser tests: [`docs/examples/asm.work-order.md`](docs/examples/asm.work-order.md)
 and [`.json`](docs/examples/asm.work-order.json); with an accepted exception,
 [`docs/examples/asm.work-order.exception.md`](docs/examples/asm.work-order.exception.md)

@@ -32,6 +32,7 @@ export async function GET() {
   return Response.json({
     ...base,
     candidates: proposal.candidates,
+    fewerBecause: proposal.fewerBecause ?? null,
     valueStatus: Object.fromEntries(
       proposal.candidates.map((c) => [c.id, valueStatus(stored.product, c, current ? selection : null)]),
     ),

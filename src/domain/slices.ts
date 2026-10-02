@@ -18,8 +18,10 @@ import { validateProduct, type ValidationIssue } from "./validate";
 /**
  * Version of the rules below that turn a map into candidates. Raise it with
  * every change to those rules: a selection made under another version is stale.
+ * 2: a map with exactly one distinct reading yields that one candidate, with
+ *    the reason why there is no second one, instead of none.
  */
-export const SLICE_DERIVATION_VERSION = 1 as const;
+export const SLICE_DERIVATION_VERSION = 2 as const;
 
 export interface AcceptanceCriterion {
   text: string;
@@ -65,7 +67,14 @@ export interface SliceCandidate {
   flags: SliceFlag[];
 }
 
-export type SliceProposal = { ok: true; candidates: SliceCandidate[] } | { ok: false; issues: ValidationIssue[] };
+export type SliceProposal =
+  | {
+      ok: true;
+      candidates: SliceCandidate[];
+      /** Set when the map yields fewer than two candidates: which readings were empty or the same as another. */
+      fewerBecause?: string;
+    }
+  | { ok: false; issues: ValidationIssue[] };
 
 const ordered = (p: ProductDocument) => [...p.narrative].sort((a, b) => a.sequence - b.sequence);
 const quote = (text: string) => `“${text}”`;
@@ -198,9 +207,10 @@ function build(p: ProductDocument, id: string, title: string, basis: string, cho
 }
 
 /**
- * Two or three candidates, or the reason there are none. Three fixed readings
- * of the map; a reading that yields no steps, or the same steps as an earlier
- * one, is dropped rather than padded.
+ * Two or three candidates, one candidate with the reason there is no second,
+ * or the reason there are none. Three fixed readings of the map; a reading
+ * that yields no steps, or the same steps as an earlier one, is dropped
+ * rather than padded, and the drop is said.
  */
 export function proposeSlices(p: ProductDocument): SliceProposal {
   const all = ordered(p);
@@ -236,25 +246,41 @@ export function proposeSlices(p: ProductDocument): SliceProposal {
     steps: all.filter((s) => s.personaIds.length > 1),
   });
 
-  const seen = new Set<string>();
+  const seen = new Map<string, string>();
   const candidates: SliceCandidate[] = [];
+  const dropped: string[] = [];
+  if (!primary) dropped.push("no persona takes part in any step, so there is no primary-persona reading");
   for (const reading of readings) {
     const key = reading.steps.map((s) => s.id).join(" ");
-    if (reading.steps.length === 0 || seen.has(key)) continue;
-    seen.add(key);
+    if (reading.steps.length === 0) {
+      dropped.push(`“${reading.title}” has no steps: ${reading.basis}`);
+      continue;
+    }
+    const same = seen.get(key);
+    if (same) {
+      dropped.push(`“${reading.title}” would be the same steps as “${same}”`);
+      continue;
+    }
+    seen.set(key, reading.title);
     candidates.push(build(p, reading.id, reading.title, reading.basis, reading.steps));
   }
 
-  if (candidates.length < 2)
+  if (candidates.length === 0)
     return {
       ok: false,
       issues: [
         {
           code: "too_few_candidates",
           path: "narrative",
-          message: `the map supports only ${candidates.length} distinct slice candidate(s); personas and needs on the steps are what candidates are derived from`,
+          message: `the map supports no slice candidate; personas and needs on the steps are what candidates are derived from (${dropped.join("; ")})`,
         },
       ],
+    };
+  if (candidates.length < 2)
+    return {
+      ok: true,
+      candidates,
+      fewerBecause: `Only one candidate can be derived from this map, so there is nothing to compare it with: ${dropped.join("; ")}. More personas or needs on the steps would give more readings.`,
     };
   return { ok: true, candidates };
 }
