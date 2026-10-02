@@ -1,9 +1,13 @@
-import { loadProduct, loadWorkState, productFilePath, workStateFilePath } from "../server/store";
+import { loadProduct, loadWorkState, productFileExists, productFilePath, workStateFilePath } from "../server/store";
+import { StartScreen } from "../ui/StartScreen";
 import { StoryMapEditor } from "../ui/StoryMapEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
+  // No product file is how a first product starts. A file that is there and cannot be read is an error.
+  if (!(await productFileExists()))
+    return <StartScreen markerHint={(process.env.ASM_AGENT_PROVIDER ?? "fake").trim().toLowerCase() === "fake"} />;
   const result = await loadProduct();
   if (!result.ok) {
     return (

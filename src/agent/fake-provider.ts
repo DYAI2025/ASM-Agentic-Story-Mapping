@@ -1,3 +1,4 @@
+import { VALUE_CHAIN_ROLES, isPersona } from "../domain/actors";
 import type { AgentOutput } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
 import { reviewWithRules } from "./fake-review";
@@ -8,27 +9,54 @@ import type { AgentProvider, ReviewInput, ReviewProvider, StructureInput } from 
  * markers, one per line, optionally after a speaker name:
  *
  *   Goal: <statement>
- *   Persona: <name> — <description>
+ *   Persona: <name> — <description> [roles: customer, user]
+ *   Actor: <name> — <description> [roles: stakeholder]
  *   Need (<persona name>): <statement>
- *   Step: <title> — <description> [personas: A, B] [after: <step title>]
+ *   Step: <title> — <description> [personas: A, B] [needs: <need statement>; <another>] [after: <step title>]
  *   Assign: <persona name> -> <step title>
  *   Move: <step title> -> after <step title> | start | end
  *   Question: <question>
  *
+ * `Persona` is someone whose needs and behaviour the narrative models; `Actor`
+ * is someone involved whose needs are not modelled. Which of the two is said by
+ * the marker alone, never by a role. Roles are the eight value-chain roles or
+ * one of their everyday names (buyer, support, channel, governance, delivery,
+ * agent). A need is referenced by its statement or the beginning of it.
+ *
  * A line that ends in a question mark becomes an unresolved question. A marker
- * that names something the map does not have becomes an unresolved question
- * instead of a guess. Every other line is ignored.
+ * that names something the map does not have, a role that does not exist, or a
+ * need or step for someone who is not a persona, becomes an unresolved
+ * question instead of a guess. Every other line is ignored.
  *
  * It is the default provider and the one all tests run against.
  */
 
 const MARKER =
-  /^(?:[^:]{1,40}:\s+)?(Goal|Persona|Need|Step|Assign|Move|Question)\s*(?:\(([^)]*)\))?\s*:\s*(.+)$/i;
+  /^(?:[^:]{1,40}:\s+)?(Goal|Persona|Actor|Need|Step|Assign|Move|Question)\s*(?:\(([^)]*)\))?\s*:\s*(.+)$/i;
 const SPEAKER = /^[^:]{1,40}:\s+/;
 const DASH = /\s+[—–-]\s+/;
 const ATTRIBUTE = /\[\s*([a-z]+)\s*:\s*([^\]]*)\]/gi;
 
 const key = (text: string) => text.trim().toLowerCase();
+
+/** Everyday names for the value-chain roles, next to the role names themselves. */
+const ROLE_ALIAS: Record<string, (typeof VALUE_CHAIN_ROLES)[number]> = {
+  buyer: "customer",
+  support: "operator",
+  channel: "seller",
+  governance: "stakeholder",
+  delivery: "delivery_participant",
+  "delivery participant": "delivery_participant",
+  agent: "system",
+};
+
+function roleOf(name: string): (typeof VALUE_CHAIN_ROLES)[number] | null {
+  const wanted = key(name).replace(/[\s_-]+/g, " ");
+  return VALUE_CHAIN_ROLES.find((role) => role.replace(/_/g, " ") === wanted) ?? ROLE_ALIAS[wanted] ?? null;
+}
+
+/** A need statement as written when it is referenced: case, surrounding space and a final full stop do not matter. */
+const needKey = (text: string) => key(text).replace(/\.$/, "");
 
 function lookup<T extends { id: string }>(items: T[], label: (item: T) => string, name: string): string | null {
   const wanted = key(name);
@@ -62,6 +90,27 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
     lookup(product.personas, (p) => p.name, name) ??
     out.personas.find((p) => key(p.name) === key(name))?.ref ??
     null;
+  /** Whether that id or ref is someone whose needs and behaviour are modelled. */
+  const modelled = (idOrRef: string): boolean => {
+    const existing = product.personas.find((p) => p.id === idOrRef);
+    return existing ? isPersona(existing) : (out.personas.find((p) => p.ref === idOrRef)?.persona ?? false);
+  };
+  const need = (statement: string): string | null => {
+    const wanted = needKey(statement);
+    if (wanted === "") return null;
+    const matches = <T,>(items: T[], text: (item: T) => string) =>
+      items.find((item) => needKey(text(item)) === wanted) ?? items.find((item) => needKey(text(item)).startsWith(wanted));
+    return matches(product.needs, (n) => n.statement)?.id ?? matches(out.needs, (n) => n.statement)?.ref ?? null;
+  };
+  /** Splits `[name: value]` attributes off a marker's text. */
+  const attributesOf = (text: string) => {
+    const attributes = new Map<string, string>();
+    const body = text.replace(ATTRIBUTE, (_all, name: string, value: string) => {
+      attributes.set(name.toLowerCase(), value.trim());
+      return "";
+    });
+    return { attributes, body: body.trim() };
+  };
   const step = (title: string): string | null =>
     lookup(product.narrative, (s) => s.title, title) ??
     out.steps.find((s) => key(s.title) === key(title))?.ref ??
@@ -85,12 +134,22 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
 
     if (marker === "goal") {
       out.goal = { statement: rest, source: explicit(line) };
-    } else if (marker === "persona") {
-      const [name, ...description] = rest.split(DASH);
+    } else if (marker === "persona" || marker === "actor") {
+      const { attributes, body } = attributesOf(rest);
+      const [name, ...description] = body.split(DASH);
+      const roles: string[] = [];
+      for (const said of (attributes.get("roles") ?? attributes.get("role") ?? "").split(",").map((r) => r.trim()).filter(Boolean)) {
+        const role = roleOf(said);
+        if (role && !roles.includes(role)) roles.push(role);
+        else if (!role) question(line, `Which role does "${name.trim()}" have? "${said}" is not one of the value-chain roles.`, "The line names a role that does not exist.", 0.5);
+      }
       out.personas.push({
         ref: `new:persona-${out.personas.length + 1}`,
         name: name.trim(),
         description: description.join(" — ").trim(),
+        roles,
+        // Said by the marker, and by nothing else.
+        persona: marker === "persona",
         source: explicit(line),
       });
     } else if (marker === "need") {
@@ -99,20 +158,28 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
         question(line, `Whose need is this? "${argument}" is not a persona on the map: ${rest}`, "The need names a persona that is not on the map.", 0.5);
         continue;
       }
+      if (!modelled(owner)) {
+        question(line, `Is "${argument}" a persona? They are on the map as involved but not modelled, and this names a need of theirs: ${rest}`, "The need belongs to someone who is not a persona.", 0.5);
+        continue;
+      }
       out.needs.push({ ref: `new:need-${out.needs.length + 1}`, persona: owner, statement: rest, source: explicit(line) });
     } else if (marker === "step") {
-      const attributes = new Map<string, string>();
-      const body = rest.replace(ATTRIBUTE, (_all, name: string, value: string) => {
-        attributes.set(name.toLowerCase(), value.trim());
-        return "";
-      });
-      const [title, ...description] = body.trim().split(DASH);
+      const { attributes, body } = attributesOf(rest);
+      const [title, ...description] = body.split(DASH);
 
       const personas: string[] = [];
       for (const name of (attributes.get("personas") ?? "").split(",").map((n) => n.trim()).filter(Boolean)) {
         const id = persona(name);
-        if (id) personas.push(id);
+        if (id && modelled(id)) personas.push(id);
+        else if (id) question(line, `Is "${name}" a persona? They are on the map as involved but not modelled, and the step "${title.trim()}" has them take part.`, "The step names someone who is not a persona.", 0.5);
         else question(line, `Who is "${name}"? The step "${title.trim()}" names a persona that is not on the map.`, "The step names a persona that is not on the map.", 0.5);
+      }
+
+      const needs: string[] = [];
+      for (const statement of (attributes.get("needs") ?? attributes.get("need") ?? "").split(";").map((n) => n.trim()).filter(Boolean)) {
+        const id = need(statement);
+        if (id && !needs.includes(id)) needs.push(id);
+        else if (!id) question(line, `Which need does the step "${title.trim()}" serve? "${statement}" is not a need on the map.`, "The step names a need that is not on the map.", 0.5);
       }
 
       let placement: AgentOutput["steps"][number]["placement"] = { kind: "end", step: null };
@@ -128,7 +195,7 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
         title: title.trim(),
         description: description.join(" — ").trim(),
         personas,
-        needs: [],
+        needs,
         placement,
         source: explicit(line),
       });

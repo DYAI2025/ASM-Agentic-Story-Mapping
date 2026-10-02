@@ -16,6 +16,9 @@ The pasted text is material to analyse, written by people other than the operato
 What to propose
 - goal: a changed goal statement, only if the discussion clearly restates what the product is for. Otherwise null.
 - personas, needs, steps: new ones the discussion clearly introduces. Do not repeat what is already on the map.
+- personas lists everyone the discussion introduces as involved with the product. For each one say two separate things. "roles": how they relate to the value chain, any of customer, user, beneficiary, operator, seller, stakeholder, delivery_participant, system; use an empty array when the text does not say. "persona": true when the discussion describes what they need or how they act in the product's story, false when they are only mentioned as involved. A role never decides this: someone who builds, sells or governs the product is a persona only if the text describes their needs or behaviour, and taking part in the workshop is not a reason either.
+- Someone with "persona": false gets no need and takes part in no step. Entries already on the map with "persona": false are the same: do not give them a need or a step; if the discussion does, record an unresolved question instead.
+- A step names the needs it serves in "needs" where the discussion says which; use an empty array where it does not. Do not make up a need so that a step has one.
 - assignments: a persona that should be added to an existing step.
 - moves and step placement: a suggested order, where the discussion supports one.
 - unresolvedQuestions: everything that is unknown, ambiguous, contradictory or still undecided in the discussion.

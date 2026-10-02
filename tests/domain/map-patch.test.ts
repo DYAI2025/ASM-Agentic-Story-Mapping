@@ -114,7 +114,7 @@ describe("invalid model output cannot become a proposal", () => {
 
   it("rejects empty text, out-of-range confidence and over-long text", () => {
     const output = emptyOutput();
-    output.personas.push({ ref: "new:a", name: "  ", description: "x".repeat(601), source: { ...source, confidence: 1.5 } });
+    output.personas.push({ ref: "new:a", name: "  ", description: "x".repeat(601), roles: [], persona: true, source: { ...source, confidence: 1.5 } });
     expect(codes(proposal(product, output)).sort()).toEqual(["empty_text", "invalid_confidence", "text_too_long"]);
   });
 
@@ -124,6 +124,8 @@ describe("invalid model output cannot become a proposal", () => {
       ref: "new:a",
       name: "Auditor",
       description: "",
+      roles: [],
+      persona: true,
       source: { snippet: "Everyone agreed we need an auditor.", rationale: "", confidence: 1 },
     });
     expect(codes(proposal(product, output))).toEqual(["snippet_not_in_source"]);
@@ -187,7 +189,7 @@ describe("unknown ids are rejected", () => {
 
   it("in agent output: a self-chosen id is not accepted as a ref", () => {
     const output = emptyOutput();
-    output.personas.push({ ref: "persona-my-own-id", name: "Auditor", description: "", source });
+    output.personas.push({ ref: "persona-my-own-id", name: "Auditor", description: "", roles: [], persona: true, source });
     expect(codes(proposal(product, output))).toEqual(["invalid_ref"]);
   });
 

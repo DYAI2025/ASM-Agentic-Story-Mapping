@@ -34,6 +34,39 @@ to work on a different file.
 - **Deterministic validation**: schema, unique ids, resolvable references,
   gapless narrative sequence, approval record consistency.
 
+## Starting a product
+
+If the product file does not exist, the app opens on a start screen instead of
+the map. Point `ASM_PRODUCT_FILE` at a path that does not exist yet to start a
+new product; the default file in this repository is ASM's own map.
+
+```bash
+ASM_PRODUCT_FILE=./product/my.product.yaml npm run dev
+```
+
+```
+name + own words -> proposal against a blank draft -> preview -> accept
+  -> the file is created as proposed revision 1
+```
+
+- There is no second way to build a map. The start screen runs the same
+  proposal mechanism as *Workshop input* (`resolveProposal`, `applyMapPatch`)
+  against a blank draft: a document with a name and nothing else
+  (`src/domain/bootstrap.ts`). The draft has no goal, does not validate and is
+  never saved.
+- Nothing is written until the human accepts. Rejecting leaves no file.
+- `POST /api/bootstrap/accept` is the only route that creates a product file,
+  and it only creates: the file is opened for exclusive creation, so where a
+  file exists the request is refused (409) and the file is untouched. Both
+  bootstrap routes refuse while a product exists.
+- A proposal that does not say what the product is for is refused
+  (`goal_required`). The accepted goal also becomes the product's summary line.
+- The result is always proposed. Approval stays the separate human action.
+- With the `fake` provider (the default, no model) the text has to use one
+  line per item (`Goal:`, `Persona:`, `Actor:`, `Need (name):`, `Step:`);
+  the start screen shows the format. Free text without such lines needs the
+  `anthropic` provider, which has only been tested against a stubbed client.
+
 ## From discussion to map
 
 ```
@@ -76,7 +109,7 @@ own.
 
 | Step | Done when |
 |---|---|
-| Say what you want to build | the product document validates (`validateProduct`). Always the case for a map that loads; it becomes a real step once a product can be started from nothing. |
+| Say what you want to build | a product exists and validates (`validateProduct`). On the start screen, before any product exists, this is the current step. |
 | Name who is involved and what they need | there is at least one persona and no persona is without a need, or the revision is approved without that |
 | Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path, or the revision is approved without one |
 | Check the story and approve it | the revision is `approved`: by the approve action, or because an imported file records an approval |

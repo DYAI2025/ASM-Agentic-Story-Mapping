@@ -1,7 +1,16 @@
 import { z } from "zod";
 import { ID_PREFIX, hasPrefix, makeId, type IdKind } from "./ids";
 import { fingerprint } from "./fingerprint";
-import { IdSchema, WcbcKindSchema, WcbcOutcomeSchema, type ProductDocument, type Provenance } from "./schema";
+import { ROLE_LABEL } from "./actors";
+import {
+  IdSchema,
+  ValueChainRoleSchema,
+  WcbcKindSchema,
+  WcbcOutcomeSchema,
+  type ProductDocument,
+  type Provenance,
+  type ValueChainRole,
+} from "./schema";
 import { validateProduct, type ValidationIssue } from "./validate";
 
 /**
@@ -46,7 +55,16 @@ export const AgentOutputSchema = z.strictObject({
   summary: z.string(),
   goal: z.strictObject({ statement: z.string(), source: AgentSource }).nullable(),
   personas: z.array(
-    z.strictObject({ ref: z.string(), name: z.string(), description: z.string(), source: AgentSource }),
+    z.strictObject({
+      ref: z.string(),
+      name: z.string(),
+      description: z.string(),
+      /** Value-chain roles the text states for this actor; empty when it states none. */
+      roles: z.array(z.string()),
+      /** Whether the actor's needs and behaviour are modelled. Always said; never implied by a role. */
+      persona: z.boolean(),
+      source: AgentSource,
+    }),
   ),
   needs: z.array(
     z.strictObject({ ref: z.string(), persona: z.string(), statement: z.string(), source: AgentSource }),
@@ -95,7 +113,16 @@ const opBase = { opId: z.string().regex(/^op-\d+$/), source: PatchSourceSchema }
 
 export const PatchOperationSchema = z.discriminatedUnion("op", [
   z.strictObject({ ...opBase, op: z.literal("set_goal"), statement: Text }),
-  z.strictObject({ ...opBase, op: z.literal("add_persona"), id: IdSchema, name: Text, description: OptionalText }),
+  z.strictObject({
+    ...opBase,
+    op: z.literal("add_persona"),
+    id: IdSchema,
+    name: Text,
+    description: OptionalText,
+    roles: z.array(ValueChainRoleSchema).optional(),
+    /** Absent means persona, as for every entry on the map. */
+    persona: z.boolean().optional(),
+  }),
   z.strictObject({ ...opBase, op: z.literal("add_need"), id: IdSchema, personaId: IdSchema, statement: Text }),
   z.strictObject({
     ...opBase,
@@ -134,7 +161,8 @@ export const MapPatchSchema = z.strictObject({
   provider: Text,
   /** Fingerprint of the map the proposal was built against. */
   baseFingerprint: z.string().regex(/^[0-9a-f]{8}$/),
-  baseRevision: z.number().int().min(1),
+  /** 0 only for a proposal built against the blank draft of a first product (`bootstrap.ts`). */
+  baseRevision: z.number().int().min(0),
   summary: OptionalText,
   operations: z.array(PatchOperationSchema).max(MAX_ITEMS_PER_KIND * 6),
 });
@@ -292,12 +320,22 @@ export function resolveProposal(
   out.personas.forEach((persona, i) => {
     const path = `personas[${i}]`;
     const name = text(`${path}.name`, persona.name);
+    const roles: ValueChainRole[] = [];
+    persona.roles.forEach((value, j) => {
+      const role = ValueChainRoleSchema.safeParse(value);
+      if (!role.success) add("unknown_role", `${path}.roles[${j}]`, `"${value}" is not a value-chain role`);
+      else if (roles.includes(role.data)) add("duplicate_role", `${path}.roles[${j}]`, `role "${value}" is named twice`);
+      else roles.push(role.data);
+    });
     operations.push({
       opId: nextOpId(),
       op: "add_persona",
       id: declare("persona", `${path}.ref`, persona.ref, name),
       name,
       description: text(`${path}.description`, persona.description, false),
+      ...(roles.length > 0 ? { roles } : {}),
+      // The answer travels with the proposal, so the human sees it and it is never derived from a role.
+      persona: persona.persona,
       source: source(`${path}.source`, persona.source),
     });
   });
@@ -502,7 +540,14 @@ export function applyMapPatch(product: ProductDocument, patchInput: unknown): Ap
       case "add_persona":
         fresh("persona", operation.id);
         if (issues.length === failuresBefore) {
-          personas.push({ id: operation.id, name: operation.name, description: operation.description });
+          personas.push({
+            id: operation.id,
+            name: operation.name,
+            description: operation.description,
+            ...(operation.roles && operation.roles.length > 0 ? { roles: [...operation.roles] } : {}),
+            // Written only where the answer is "no": a persona stays the plain entry it always was.
+            ...(operation.persona === false ? { persona: false } : {}),
+          });
           ids.add(operation.id);
         }
         record(operation.id, "added", "added");
@@ -652,19 +697,30 @@ export function describePatch(product: ProductDocument, patch: MapPatch): DiffEn
     const base = { opId: operation.opId, op: operation.op, source: operation.source };
     switch (operation.op) {
       case "set_goal":
-        return {
-          ...base,
-          targetId: product.goal.id,
-          headline: "Change the product goal",
-          before: product.goal.statement,
-          after: operation.statement,
-        };
+        // A first product has no goal yet: there is nothing it changes from.
+        return product.goal.statement === ""
+          ? { ...base, targetId: product.goal.id, headline: "Say what the product is for", after: operation.statement }
+          : {
+              ...base,
+              targetId: product.goal.id,
+              headline: "Change the product goal",
+              before: product.goal.statement,
+              after: operation.statement,
+            };
       case "add_persona":
         return {
           ...base,
           targetId: operation.id,
-          headline: `Add persona ${persona(operation.id)}`,
-          after: operation.description,
+          headline:
+            operation.persona === false
+              ? `Add ${persona(operation.id)}: involved, not a persona (their needs are not modelled)`
+              : `Add persona ${persona(operation.id)}`,
+          after: [
+            operation.description,
+            operation.roles && operation.roles.length > 0 ? `Role: ${operation.roles.map((role) => ROLE_LABEL[role]).join(", ")}.` : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
         };
       case "add_need":
         return {
@@ -680,7 +736,7 @@ export function describePatch(product: ProductDocument, patch: MapPatch): DiffEn
           headline:
             `Add step ${step(operation.id)} ${where(operation.placement)}` +
             (operation.personaIds.length > 0 ? `, for ${operation.personaIds.map(persona).join(", ")}` : ""),
-          after: operation.description,
+          after: [operation.description, operation.needIds.length > 0 ? `Serves ${operation.needIds.length} need(s).` : ""].filter(Boolean).join(" "),
         };
       case "assign_persona":
         return {

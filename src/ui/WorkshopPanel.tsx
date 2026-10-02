@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   EDITABLE_OP_FIELDS,
   applyMapPatch,
@@ -35,20 +35,36 @@ async function post(url: string, body: unknown): Promise<ApiResult> {
   }
 }
 
+const DEFAULT_ENDPOINTS = { propose: "/api/proposal", accept: "/api/proposal/accept" };
+const NO_EXTRA = {};
+
 /**
  * Paste a discussion, get a proposal, review it, then accept or reject it.
  * The proposal lives only in this component until the human accepts it.
+ *
+ * The same panel starts a first product: there `product` is the blank draft,
+ * and `endpoints` and `extra` send the proposal to the routes that create a
+ * product instead of changing one.
  */
 export function WorkshopPanel({
   product,
   onPreview,
   onReviewing,
   onAccepted,
+  endpoints = DEFAULT_ENDPOINTS,
+  extra = NO_EXTRA,
+  labels,
+  hint,
 }: {
   product: ProductDocument;
   onPreview: (preview: ProposalPreview | null) => void;
   onReviewing: (reviewing: boolean) => void;
   onAccepted: (product: ProductDocument) => void;
+  endpoints?: { propose: string; accept: string };
+  /** Sent along with every request, next to the transcript or the patch. */
+  extra?: Record<string, unknown>;
+  labels?: { heading: string; intro: string; placeholder: string; button: string; busy: string; acceptNote: string };
+  hint?: ReactNode;
 }) {
   const [transcript, setTranscript] = useState("");
   const [busy, setBusy] = useState(false);
@@ -83,10 +99,10 @@ export function WorkshopPanel({
   async function structure() {
     setBusy(true);
     setStatus("");
-    const answer = await post("/api/proposal", { transcript });
+    const answer = await post(endpoints.propose, { ...extra, transcript });
     setBusy(false);
     if (!answer.patch) {
-      setIssues(answer.issues ?? [{ code: "unknown_error", path: "/api/proposal", message: "request failed" }]);
+      setIssues(answer.issues ?? [{ code: "unknown_error", path: endpoints.propose, message: "request failed" }]);
       return;
     }
     setIssues([]);
@@ -98,10 +114,10 @@ export function WorkshopPanel({
   async function accept() {
     if (!effective) return;
     setBusy(true);
-    const answer = await post("/api/proposal/accept", { patch: effective });
+    const answer = await post(endpoints.accept, { ...extra, patch: effective });
     setBusy(false);
     if (!answer.product) {
-      setIssues(answer.issues ?? [{ code: "unknown_error", path: "/api/proposal/accept", message: "request failed" }]);
+      setIssues(answer.issues ?? [{ code: "unknown_error", path: endpoints.accept, message: "request failed" }]);
       return;
     }
     const revision = answer.product.revision.number;
@@ -130,20 +146,21 @@ export function WorkshopPanel({
 
   return (
     <section className="panel workshop" aria-label="Workshop input" data-testid="workshop">
-      <h2>Workshop input</h2>
+      <h2>{labels?.heading ?? "Workshop input"}</h2>
 
       {!patch && (
         <>
           <p className="muted">
-            Paste a product discussion, notes or a workshop transcript. The text is treated as material to analyse,
-            never as instructions. You get a proposal to review; the map does not change until you accept it.
+            {labels?.intro ??
+              "Paste a product discussion, notes or a workshop transcript. The text is treated as material to analyse, never as instructions. You get a proposal to review; the map does not change until you accept it."}
           </p>
+          {hint}
           <textarea
             id="workshop-input"
             data-testid="transcript-input"
             aria-label="Discussion text"
             rows={8}
-            placeholder="Paste discussion, notes or transcript…"
+            placeholder={labels?.placeholder ?? "Paste discussion, notes or transcript…"}
             value={transcript}
             onChange={(event) => setTranscript(event.target.value)}
           />
@@ -154,7 +171,7 @@ export function WorkshopPanel({
               disabled={busy || transcript.trim() === ""}
               onClick={() => void structure()}
             >
-              {busy ? "Structuring…" : "Structure discussion"}
+              {busy ? (labels?.busy ?? "Structuring…") : (labels?.button ?? "Structure discussion")}
             </button>
             {status && (
               <span className="muted" data-testid="proposal-status">
@@ -252,7 +269,9 @@ export function WorkshopPanel({
             >
               Reject
             </button>
-            <span className="muted">Accepting creates proposed revision {product.revision.number + 1}. It does not approve it.</span>
+            <span className="muted">
+              {labels?.acceptNote ?? `Accepting creates proposed revision ${product.revision.number + 1}. It does not approve it.`}
+            </span>
           </div>
         </div>
       )}

@@ -1,3 +1,4 @@
+import { GOAL_REQUIRED, blankProduct, lacksGoal } from "../domain/bootstrap";
 import { resolveProposal, type ProposalResult } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
 import { AnthropicProvider } from "./anthropic-provider";
@@ -38,6 +39,18 @@ export async function buildProposal(
     return { ok: false, issues: [{ code: "provider_error", path: provider.name, message: error.message }] };
   }
   return resolveProposal(product, raw, transcript, provider.name);
+}
+
+/**
+ * A first product: the same builder, against the blank draft for that name.
+ * A proposal that would leave the product without a goal is not shown as one.
+ */
+export async function startProposal(name: string, transcript: string, provider: AgentProvider): Promise<ProposalResult> {
+  const blank = blankProduct(name);
+  if (!blank.ok) return blank;
+  const result = await buildProposal(blank.product, transcript, provider);
+  if (!result.ok && lacksGoal(result.issues)) return { ok: false, issues: [GOAL_REQUIRED] };
+  return result;
 }
 
 /**

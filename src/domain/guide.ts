@@ -1,4 +1,5 @@
 import { isPersona } from "./actors";
+import { blankProduct } from "./bootstrap";
 import { buildExecutionBrief } from "./brief";
 import { reviewNarrative } from "./review";
 import type { ProductDocument } from "./schema";
@@ -74,6 +75,16 @@ export interface GuideState {
   currentStepId: GuideStepId | null;
   doneCount: number;
   impacts: GuideImpact[];
+}
+
+/**
+ * The guide before any product exists: the blank draft is read like any other
+ * state. It is not a valid product, so the first step is the current one.
+ */
+export function deriveStartGuide(): GuideState {
+  const blank = blankProduct("New product");
+  if (!blank.ok) throw new Error("the blank draft could not be built");
+  return deriveGuide(blank.product, null);
 }
 
 /** What `resolveSelection` appends to every stale reason. The guide says when to select again itself. */

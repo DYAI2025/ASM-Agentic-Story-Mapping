@@ -20,7 +20,8 @@ export function GuidePanel({
   /** A proposal is waiting for accept, edit or reject. Until then nothing else can be done. */
   proposalOpen: boolean;
   onAction: (action: GuideAction | { kind: "focus_proposal" }) => void;
-  onHide: () => void;
+  /** Absent where the guide cannot be hidden: on the start screen it is all there is. */
+  onHide?: () => void;
 }) {
   const current = guide.steps.find((s) => s.status === "current");
   const reached = guide.impacts.filter((i) => i.reached);
@@ -35,9 +36,11 @@ export function GuidePanel({
             {guide.doneCount} of {guide.steps.length} steps done
           </span>
         </h2>
-        <button type="button" className="secondary" data-testid="guide-hide" onClick={onHide}>
-          Hide guide
-        </button>
+        {onHide && (
+          <button type="button" className="secondary" data-testid="guide-hide" onClick={onHide}>
+            Hide guide
+          </button>
+        )}
       </header>
 
       <ol className="guide-steps">

@@ -28,6 +28,38 @@ export async function loadProduct(): Promise<ValidationResult> {
   return parseProductText(text);
 }
 
+/** Whether there is a product file at all. No file is how a first product starts; it is not an error. */
+export async function productFileExists(): Promise<boolean> {
+  try {
+    await fs.access(/* turbopackIgnore: true */ productFilePath());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates, then creates the product file. Never replaces one: the file is
+ * opened for exclusive creation, so if anything is there, at any moment, the
+ * write fails and the existing file is untouched.
+ */
+export async function createProduct(input: unknown): Promise<ValidationResult> {
+  const result = validateProduct(input);
+  if (!result.ok) return result;
+  const file = productFilePath();
+  await fs.mkdir(/* turbopackIgnore: true */ path.dirname(file), { recursive: true });
+  try {
+    await fs.writeFile(/* turbopackIgnore: true */ file, exportProductYaml(result.product), { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return {
+      ok: false,
+      issues: [{ code: "product_exists", path: file, message: "a product file already exists; it was not changed" }],
+    };
+  }
+  return result;
+}
+
 /** Validates, then replaces the file atomically. Invalid documents are never written. */
 export async function saveProduct(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
