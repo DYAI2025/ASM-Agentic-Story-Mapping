@@ -287,3 +287,27 @@ test("a stale selection on a proposed revision: reselecting leads to approval fi
   await expect(page.getByTestId("slice-drawer")).toHaveCount(0);
   await expect(page.getByLabel("Approver name")).toBeFocused();
 });
+
+test("saving an approved map with one changed need, step order or role under the same approval is refused", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  const approved = await stored();
+  const bytes = await storedText();
+
+  const changes: [string, (doc: typeof approved) => void][] = [
+    ["need", (doc) => (doc.needs[0].statement = "Changed under the approval.")],
+    ["step order", (doc) => { const a = doc.narrative[0].sequence; doc.narrative[0].sequence = doc.narrative[1].sequence; doc.narrative[1].sequence = a; }],
+    ["roles", (doc) => (doc.personas[0].roles = ["user"])],
+    ["worst-case outcome", (doc) => (doc.wcbc[0].outcome = { kind: "termination" })],
+  ];
+  for (const [name, change] of changes) {
+    const doc = structuredClone(approved);
+    change(doc);
+    const put = await page.request.put("/api/product", { data: YAML.stringify(doc) });
+    expect(put.status(), name).toBe(409);
+    expect((await put.json()).issues[0].code, name).toBe("approved_content_changed");
+  }
+  expect(await storedText()).toBe(bytes);
+});

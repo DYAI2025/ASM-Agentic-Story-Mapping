@@ -172,3 +172,57 @@ describe("re-entry: a change of meaning invalidates what was built on the old me
     expect(resolvePersonaCheck(changed, state.check)).toMatchObject({ ok: false, issues: [{ code: "stale_persona_check" }] });
   });
 });
+
+describe("re-entry: the fingerprint itself tells meaning apart, without any revision change", () => {
+  // Two documents with the same revision and the same approval record, differing in one field of meaning only.
+  const approved = () => approveRevision(loadFixture(), APPROVAL);
+  const variants: [string, (p: ProductDocument) => ProductDocument][] = [
+    ["goal statement", (p) => ({ ...p, goal: { ...p.goal, statement: "Another goal." } })],
+    ["need statement", (p) => ({ ...p, needs: p.needs.map((n) => (n.id === "need-buildable-slice" ? { ...n, statement: "Changed." } : n)) })],
+    ["step description", (p) => ({ ...p, narrative: p.narrative.map((s) => (s.id === "step-export-work" ? { ...s, description: "Changed." } : s)) })],
+    [
+      "step order",
+      (p) => ({
+        ...p,
+        narrative: p.narrative.map((s) => (s.sequence === 10 ? { ...s, sequence: 11 } : s.sequence === 11 ? { ...s, sequence: 10 } : s)),
+      }),
+    ],
+    ["worst-case outcome", (p) => ({ ...p, wcbc: p.wcbc.map((b) => (b.id === "wcbc-no-small-slice" ? { ...b, outcome: { kind: "termination" as const } } : b)) })],
+    ["a person's roles", (p) => ({ ...p, personas: p.personas.map((e) => (e.id === "persona-developer" ? { ...e, roles: ["user" as const] } : e)) })],
+    ["a decision's status", (p) => ({ ...p, decisions: p.decisions.map((d) => (d.id === "dec-measure-faster" ? { ...d, status: "decided" as const, rationale: "Decided." } : d)) })],
+    ["the product name", (p) => ({ ...p, product: { ...p.product, name: "Renamed" } })],
+  ];
+
+  it("each field of meaning changes the fingerprint; the revision and approval do not change", () => {
+    const base = approved();
+    for (const [name, change] of variants) {
+      const other = change(base);
+      expect(other.revision, name).toEqual(base.revision);
+      expect(fingerprint(other), name).not.toBe(fingerprint(base));
+    }
+  });
+
+  it("so a confirmation and a selection made on the base are stale on each variant, with the approval still standing", () => {
+    const base = approved();
+    const check = peopleCheck(base);
+    const selection = selectSlice(base, { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(base), personaCheck: check });
+    for (const [name, change] of variants) {
+      const other = change(base);
+      expect(resolvePersonaCheck(other, check).ok, name).toBe(false);
+      expect(resolveSelection(other, selection).ok, name).toBe(false);
+      expect(buildExecutionBrief(other, selection).ok, name).toBe(false);
+      const guide = deriveGuide(other, selection, check);
+      expect(guide.currentStepId, name).toBe("people_check");
+      expect(guide.steps.find((s) => s.id === "people_check")!.stale, name).toBeDefined();
+    }
+  });
+
+  it("layout and key order change nothing", () => {
+    const base = approved();
+    const moved = { ...base, layout: { cards: { ...base.layout.cards, "step-main-path": { row: 2 } } } };
+    expect(fingerprint(moved)).toBe(fingerprint(base));
+    const reordered = Object.fromEntries(Object.entries(base).reverse()) as unknown as ProductDocument;
+    expect(Object.keys(reordered)).not.toEqual(Object.keys(base));
+    expect(fingerprint(reordered)).toBe(fingerprint(base));
+  });
+});

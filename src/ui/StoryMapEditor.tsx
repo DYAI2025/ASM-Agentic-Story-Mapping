@@ -416,14 +416,27 @@ export function StoryMapEditor({
 
       {(selectionStale || personaCheckStale) && (
         <p className="stale-summary" role="status" data-testid="stale-summary">
-          <strong>The map has changed since you last {selectionStale ? "picked a slice" : "confirmed who else matters"}.</strong>{" "}
+          <strong>
+            {personaCheckStale && selectionStale
+              ? "A stored confirmation and a stored slice selection no longer fit this map."
+              : personaCheckStale
+                ? "A stored confirmation no longer fits this map."
+                : "A stored slice selection no longer fits this map."}
+          </strong>{" "}
           {personaCheckStale && selectionStale
-            ? "The confirmation and the slice selection are kept, shown as stale, and nothing is chosen for you. "
+            ? "Both are kept and shown as stale; nothing is confirmed or chosen for you."
             : personaCheckStale
-              ? "The confirmation is kept, shown as stale, and nothing is confirmed for you. "
-              : "The selection is kept, shown as stale, and nothing is chosen for you. "}
-          The way back starts at the earliest step that has to be redone:{" "}
-          {approved ? "" : "approve the story, then "}confirm who else matters{selectionStale ? ", then pick a slice again" : ""}.
+              ? "It is kept and shown as stale; nothing is confirmed for you."
+              : "It is kept and shown as stale; nothing is chosen for you."}{" "}
+          {/* The way back is what the guide derives: the earliest step the state has not reached. */}
+          The way back starts at “{guide.steps.find((s) => s.id === guide.currentStepId)?.title ?? "Export the work order"}”
+          {guide.steps.filter((s) => s.stale && s.status !== "done" && s.id !== guide.currentStepId).length > 0
+            ? `; still to redo after that: ${guide.steps
+                .filter((s) => s.stale && s.status !== "done" && s.id !== guide.currentStepId)
+                .map((s) => `“${s.title}”`)
+                .join(", ")}`
+            : ""}
+          .
         </p>
       )}
 

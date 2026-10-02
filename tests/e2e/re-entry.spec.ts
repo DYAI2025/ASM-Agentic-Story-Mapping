@@ -47,7 +47,8 @@ async function expectBackAtApproval(page: Page, workStateBefore: string, label: 
   await expect(page.getByTestId("guide-stale-note")).toContainText("nothing was deleted or chosen for you");
   await expect(page.getByTestId("stale-slice-badge")).toBeVisible();
   await expect(page.getByTestId("stale-people-check-badge")).toBeVisible();
-  await expect(page.getByTestId("stale-summary")).toContainText("approve the story, then confirm who else matters, then pick a slice again");
+  await expect(page.getByTestId("stale-summary")).toContainText("A stored confirmation and a stored slice selection no longer fit this map.");
+  await expect(page.getByTestId("stale-summary")).toContainText("The way back starts at “Check the story and approve it”; still to redo after that: “Confirm who else matters”, “Compare first slices and pick one”.");
   await expect(page.getByTestId("impact-delivery")).toHaveCount(0);
   expect((await page.request.get("/api/brief?format=json")).status()).toBe(409);
   // Nothing in the work state was deleted or repaired by the change.
@@ -66,7 +67,7 @@ test("the goal changes: back at approval, everything downstream stale and explai
   await expectBackAtApproval(page, workStateBefore, "01-goal-changed");
 });
 
-test("a need changes: the same way back", async ({ page }) => {
+test("a need changes (saved as a new revision, as a hand edit would be): the same way back", async ({ page }) => {
   await reachWorkOrder(page);
   const workStateBefore = await workStateText();
   // The editor shows needs as text on the person's card and has no need editor yet; the change comes in as a saved document.
@@ -91,7 +92,7 @@ test("the path order changes: the same way back; then approve, confirm and pick 
   await expect(page.getByTestId("revision-status")).toHaveText("approved");
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "people_check");
   await expect(page.getByTestId("stale-people-check-badge")).toBeVisible();
-  await expect(page.getByTestId("stale-summary")).toContainText("confirm who else matters, then pick a slice again");
+  await expect(page.getByTestId("stale-summary")).toContainText("The way back starts at “Confirm who else matters”; still to redo after that: “Compare first slices and pick one”.");
   expect(sha(await workStateText())).toBe(sha(workStateBefore));
 
   await page.getByTestId("slices-open").click();
@@ -106,7 +107,10 @@ test("the path order changes: the same way back; then approve, confirm and pick 
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "select");
   await expect(page.getByTestId("stale-people-check-badge")).toHaveCount(0);
   await expect(page.getByTestId("stale-slice-badge")).toBeVisible();
-  await expect(page.getByTestId("stale-summary")).toContainText("then pick a slice again");
+  // The confirmation is current now, so the summary does not ask for it again.
+  await expect(page.getByTestId("stale-summary")).toContainText("A stored slice selection no longer fits this map.");
+  await expect(page.getByTestId("stale-summary")).toContainText("The way back starts at “Compare first slices and pick one”.");
+  await expect(page.getByTestId("stale-summary")).not.toContainText("Confirm who else matters");
 
   await page.getByTestId("slices-open").click();
   await page.getByTestId("reselect-candidates").click();
@@ -127,6 +131,10 @@ test("a layout-only change invalidates nothing", async ({ page }) => {
   await reachWorkOrder(page);
   const workStateBefore = await workStateText();
   await page.getByRole("button", { name: "Nudge step-main-path down visually" }).click();
+  // The nudge landed: no refusal, and the card sits on another row now.
+  await expect(page.getByTestId("issues")).toHaveCount(0);
+  await expect(page.getByTestId("column-step-main-path")).toHaveCSS("padding-top", "28px");
+  expect(YAML.parse(await storedText()).layout.cards["step-main-path"]).toEqual({ row: 1 });
   await expect(page.getByTestId("revision-status")).toHaveText("approved");
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "complete");
   await expect(page.getByTestId("stale-summary")).toHaveCount(0);
