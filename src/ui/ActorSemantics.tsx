@@ -50,7 +50,7 @@ export function ActorSemantics({
         ) : (
           <>
             <span className="badge neutral">Not a persona</span>{" "}
-            <span className="muted">Involved, but their needs and behaviour are not modelled here.</span>
+            <span className="muted">Involved, but their needs and behaviour are not modelled here: no need, no step.</span>
           </>
         )}
       </p>
@@ -65,7 +65,7 @@ export function ActorSemantics({
         <button
           type="button"
           className="link"
-          aria-label={`Edit roles of ${actor.name}`}
+          aria-label={`Roles and persona… ${actor.name}`}
           onClick={() => {
             setRoles([...stated]);
             setPersona(asPersona);
@@ -82,16 +82,19 @@ export function ActorSemantics({
           data-testid={`actor-form-${actor.id}`}
           onSubmit={async (event) => {
             event.preventDefault();
-            // Kept in the fixed order of the role list, so the same choice always saves the same way.
-            if (await onSave(VALUE_CHAIN_ROLES.filter((role) => roles.includes(role)), persona)) setEditing(false);
+            const next = VALUE_CHAIN_ROLES.filter((role) => roles.includes(role));
+            // Nothing changed: nothing is saved, so an approved revision is not reopened by looking.
+            const unchanged = persona === asPersona && next.length === stated.length && next.every((role) => stated.includes(role));
+            if (unchanged || (await onSave(next, persona))) setEditing(false);
           }}
         >
           <fieldset>
             <legend>Role in the value chain (any that apply)</legend>
-            {VALUE_CHAIN_ROLES.map((role) => (
+            {VALUE_CHAIN_ROLES.map((role, index) => (
               <label key={role} className="row">
                 <input
                   type="checkbox"
+                  autoFocus={index === 0}
                   checked={roles.includes(role)}
                   onChange={() => setRoles(roles.includes(role) ? roles.filter((r) => r !== role) : [...roles, role])}
                 />

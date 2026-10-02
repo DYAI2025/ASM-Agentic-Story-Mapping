@@ -28,7 +28,7 @@ test("an existing map is shown as it was written: personas, no role stated, and 
 test("a human states roles; the persona answer stays what it was and is not written", async ({ page }) => {
   await page.goto("/");
   const card = page.getByTestId("card-persona-developer");
-  await card.getByRole("button", { name: "Edit roles of Developer" }).click();
+  await card.getByRole("button", { name: "Roles and persona… Developer" }).click();
   const form = page.getByTestId("actor-form-persona-developer");
   await form.getByLabel("Delivery participant").check();
   await form.getByLabel("User", { exact: true }).check();
@@ -43,10 +43,26 @@ test("a human states roles; the persona answer stays what it was and is not writ
   await page.screenshot({ path: shot("01-roles-stated"), fullPage: true });
 });
 
+test("opening the form and saving without a change writes nothing, also on an approved map", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Approver name").fill("Maya (E2E)");
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  const before = await storedText();
+  await page.getByTestId("card-persona-developer").getByRole("button", { name: "Roles and persona… Developer" }).click();
+  const form = page.getByTestId("actor-form-persona-developer");
+  // Keyboard focus is in the form as soon as it opens.
+  await expect(form.getByLabel("Customer / buyer")).toBeFocused();
+  await form.getByRole("button", { name: "Save roles" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  expect(await storedText()).toBe(before);
+});
+
 test("an actor who owns a need cannot be switched to 'not a persona'", async ({ page }) => {
   await page.goto("/");
   const before = await storedText();
-  await page.getByTestId("card-persona-developer").getByRole("button", { name: "Edit roles of Developer" }).click();
+  await page.getByTestId("card-persona-developer").getByRole("button", { name: "Roles and persona… Developer" }).click();
   const form = page.getByTestId("actor-form-persona-developer");
   await form.getByLabel(/^Persona:/).uncheck();
   await form.getByRole("button", { name: "Save roles" }).click();
@@ -72,7 +88,7 @@ test("a delivery participant who is not a persona, then a persona without a need
   await page.screenshot({ path: shot("02-delivery-participant-not-a-persona"), fullPage: true });
 
   // The human says: this one is a persona. Now a need is missing, and that is shown, not filled in.
-  await page.getByTestId("card-persona-build-engineer").getByRole("button", { name: "Edit roles of Build engineer" }).click();
+  await page.getByTestId("card-persona-build-engineer").getByRole("button", { name: "Roles and persona… Build engineer" }).click();
   const form = page.getByTestId("actor-form-persona-build-engineer");
   await form.getByLabel(/^Persona:/).check();
   await form.getByRole("button", { name: "Save roles" }).click();

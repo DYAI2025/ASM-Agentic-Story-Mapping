@@ -130,7 +130,7 @@ export function setActorRoles(p: ProductDocument, actorId: string, roles: readon
 /**
  * Says whether an actor's needs and behaviour are modelled in the narrative.
  * A human's answer, recorded as given; no role implies it. Refused for an
- * actor who owns a need: remove or reassign the need first.
+ * actor who owns a need or takes part in a step.
  */
 export function setPersonaPerspective(p: ProductDocument, actorId: string, persona: boolean): ProductDocument {
   if (!p.personas.some((e) => e.id === actorId)) throw new DomainError(`no actor with id "${actorId}"`);

@@ -114,6 +114,7 @@ export function reviewNarrative(p: ProductDocument): Finding[] {
       add("orphan_need", "gap", [need.id], `No step serves the need “${need.statement}”.`);
 
   // Both checks are about personas only. An actor who is not a persona has no modelled need or behaviour to miss.
+  // (Everyone on a step is a persona, by validation, so the step checks above need no such filter.)
   const actingPersonas = new Set(steps.flatMap((s) => s.personaIds));
   const needOwners = new Set(p.needs.map((n) => n.personaId));
   for (const persona of p.personas.filter(isPersona)) {

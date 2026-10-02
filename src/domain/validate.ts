@@ -72,6 +72,13 @@ function checkSemantics(p: ProductDocument): ValidationIssue[] {
     step.personaIds.forEach((id, j) => {
       if (!personaIds.has(id))
         add("unknown_persona", `narrative[${i}].personaIds[${j}]`, `persona "${id}" does not exist`);
+      // Taking part in a step is modelled behaviour: whoever does is a persona by that fact.
+      if (notPersona.has(id))
+        add(
+          "step_of_non_persona",
+          `narrative[${i}].personaIds[${j}]`,
+          `"${id}" is marked as not a persona but takes part in step "${step.id}"; an actor whose behaviour is on the map is a persona`,
+        );
     });
     step.needIds.forEach((id, j) => {
       if (!needIds.has(id))

@@ -6,7 +6,7 @@ import { DomainError, approveRevision, setActorRoles, setPersonaPerspective } fr
 import { reviewNarrative } from "../../src/domain/review";
 import type { ProductDocument } from "../../src/domain/schema";
 import { exportProductJson, exportProductYaml, parseProductText } from "../../src/domain/serialize";
-import { SLICE_DERIVATION_VERSION, proposeSlices } from "../../src/domain/slices";
+import { SLICE_DERIVATION_VERSION, candidateFingerprint, proposeSlices } from "../../src/domain/slices";
 import { validateProduct } from "../../src/domain/validate";
 import { fixtureText, loadFixture, mutableFixture } from "./helpers";
 
@@ -102,7 +102,11 @@ describe("persona: a perspective, separate from the role", () => {
     const developer = elsewhere.personas.find((e) => e.id === "persona-developer")!;
     const theirNeeds = new Set(elsewhere.needs.filter((n) => n.personaId === developer.id).map((n) => n.id));
     elsewhere.needs = elsewhere.needs.filter((n) => !theirNeeds.has(n.id));
-    elsewhere.narrative.forEach((s) => (s.needIds = s.needIds.filter((id) => !theirNeeds.has(id))));
+    // There the developer has no need on the map and takes part in no step.
+    elsewhere.narrative.forEach((s) => {
+      s.needIds = s.needIds.filter((id) => !theirNeeds.has(id));
+      s.personaIds = s.personaIds.filter((id) => id !== developer.id);
+    });
     elsewhere.decisions = elsewhere.decisions
       .map((d) => ({ ...d, relatesTo: d.relatesTo.filter((id) => !theirNeeds.has(id)) }))
       .filter((d) => d.relatesTo.length > 0);
@@ -116,7 +120,7 @@ describe("persona: a perspective, separate from the role", () => {
     const p = mutableFixture();
     Object.assign(p.personas.find((e) => e.id === "persona-developer")!, { persona: false });
     expect(codes(p)).toContain("need_of_non_persona");
-    expect(() => setPersonaPerspective(loadFixture(), "persona-developer", false)).toThrow(/need/);
+    expect(() => setPersonaPerspective(loadFixture(), "persona-developer", false)).toThrow(/owns a need/);
   });
 
   it("setPersonaPerspective records the human's answer explicitly, both ways, and reopens an approved revision", () => {
@@ -138,15 +142,23 @@ describe("a persona without a need is unresolved, and stays unresolved", () => {
     expect(finding.message).toContain("unresolved");
   });
 
-  it("nothing invents the need: reviewing, guiding, validating and exporting leave the needs as they are", () => {
-    const p = withActor({ roles: ["user"], persona: true });
+  it("nothing invents the need: every operation that touches the actor returns the needs it was given", () => {
+    const p = withActor({ roles: ["delivery_participant"], persona: false });
     const before = JSON.stringify(p.needs);
+    const outputs = [
+      setPersonaPerspective(p, "persona-build-engineer", true),
+      setActorRoles(p, "persona-build-engineer", ["user", "customer"]),
+      setActorRoles(setPersonaPerspective(p, "persona-build-engineer", true), "persona-build-engineer", []),
+      approveRevision(setPersonaPerspective(p, "persona-build-engineer", true), { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" }),
+    ];
+    for (const out of outputs) {
+      expect(JSON.stringify(out.needs)).toBe(before);
+      const reread = parseProductText(exportProductYaml(out));
+      expect(reread.ok && JSON.stringify(reread.product.needs)).toBe(before);
+    }
     reviewNarrative(p);
     deriveGuide(p, null);
-    validateProduct(p);
-    const reread = parseProductText(exportProductYaml(p));
     expect(JSON.stringify(p.needs)).toBe(before);
-    expect(reread.ok && reread.product.needs.filter((n) => n.personaId === "persona-build-engineer")).toEqual([]);
   });
 
   it("the guide's people step is not reached while a persona has no need", () => {
@@ -160,7 +172,7 @@ describe("a persona without a need is unresolved, and stays unresolved", () => {
     const p = mutableFixture();
     const gone = new Set(p.needs.map((n) => n.id));
     p.needs = [];
-    p.narrative.forEach((s) => (s.needIds = []));
+    p.narrative.forEach((s) => ((s.needIds = []), (s.personaIds = [])));
     p.decisions = p.decisions.map((d) => ({ ...d, relatesTo: d.relatesTo.filter((id) => !gone.has(id)) })).filter((d) => d.relatesTo.length > 0);
     p.personas.forEach((e) => Object.assign(e, { persona: false }));
     expect(codes(p)).toEqual([]);
@@ -168,25 +180,33 @@ describe("a persona without a need is unresolved, and stays unresolved", () => {
   });
 });
 
-describe("slice candidates only treat personas as personas", () => {
-  it("an actor on every step who is not a persona is never the primary persona", () => {
+describe("whoever has a need or a step on the map is a persona", () => {
+  it("an actor who is not a persona cannot take part in a step", () => {
     const p = withActor({ roles: ["delivery_participant"], persona: false });
-    p.narrative.forEach((s) => s.personaIds.push("persona-build-engineer"));
-    const proposal = proposeSlices(p);
-    if (!proposal.ok) throw new Error("no candidates");
-    const primary = proposal.candidates.find((c) => c.id === "slice-primary-persona")!;
-    expect(primary.title).not.toContain("Build engineer");
-    expect(primary.whyNow.join(" ")).not.toContain("persona-build-engineer");
-
-    // The same actor as a persona does become the primary one: the flag is what decides.
-    const asPersona = structuredClone(p);
-    Object.assign(asPersona.personas.at(-1)!, { persona: true });
-    const again = proposeSlices(asPersona);
-    expect(again.ok && again.candidates.find((c) => c.id === "slice-primary-persona")!.title).toBe("Build engineer path");
+    p.narrative[0].personaIds.push("persona-build-engineer");
+    expect(codes(p)).toEqual(["step_of_non_persona"]);
+    // The same actor as a persona may: the flag is what decides.
+    Object.assign(p.personas.at(-1)!, { persona: true });
+    expect(codes(p)).toEqual([]);
   });
 
-  it("the derivation rules changed, so their version did", () => {
-    expect(SLICE_DERIVATION_VERSION).toBe(2);
+  it("so a persona on steps cannot be switched off, and the reason names the step", () => {
+    expect(() => setPersonaPerspective(loadFixture(), "persona-domain-ux", false)).toThrow(/takes part in step/);
+  });
+
+  it("an actor who is not a persona can still be the one a worst case escalates to", () => {
+    const p = withActor({ roles: ["operator"], persona: false });
+    p.wcbc.find((b) => b.kind === "worst_case")!.outcome = { kind: "escalation", toPersonaId: "persona-build-engineer" };
+    expect(codes(p)).toEqual([]);
+  });
+
+  it("slice candidates and their fingerprints are what they were: the derivation rules did not change", () => {
+    expect(SLICE_DERIVATION_VERSION).toBe(1);
+    const before = proposeSlices(loadFixture());
+    const after = proposeSlices(withActor({ roles: ["delivery_participant"], persona: false }));
+    if (!before.ok || !after.ok) throw new Error("no candidates");
+    // Someone who is not a persona being on the map changes no candidate.
+    expect(after.candidates.map(candidateFingerprint)).toEqual(before.candidates.map(candidateFingerprint));
   });
 });
 
@@ -225,6 +245,14 @@ describe("existing maps mean what they meant", () => {
       expect(fingerprint(again.product)).toBe(fingerprint(p));
     }
     expect(exportProductYaml(p)).toBe(exportProductYaml(parseProductTextOrThrow(exportProductJson(p))));
+  });
+
+  it("the order roles are written in carries no meaning: same fingerprint, and one exported order", () => {
+    const a = withActor({ roles: ["delivery_participant", "user"] });
+    const b = withActor({ roles: ["user", "delivery_participant"] });
+    expect(fingerprint(a)).toBe(fingerprint(b));
+    expect(exportProductYaml(a)).toBe(exportProductYaml(b));
+    expect(parseProductTextOrThrow(exportProductYaml(a)).personas.at(-1)!.roles).toEqual(["user", "delivery_participant"]);
   });
 
   it("a role or the persona flag is part of the map's meaning: changing either changes the fingerprint", () => {

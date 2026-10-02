@@ -12,6 +12,10 @@ import { ValueChainRoleSchema, type Persona, type ValueChainRole } from "./schem
  *   persona  whether the actor's needs and behaviour are modelled in the
  *            narrative. A role never decides this. Building the product does
  *            not make someone a persona, and neither does attending a workshop.
+ *            An actor who is not a persona owns no need and takes part in no
+ *            step; validation refuses a map that says otherwise. Such an actor
+ *            can still be named, described, given roles, and be the one a
+ *            worst case escalates to.
  *
  * An entry that says nothing about `persona` is a persona: that is what every
  * entry meant before the field existed, and old maps keep their meaning.

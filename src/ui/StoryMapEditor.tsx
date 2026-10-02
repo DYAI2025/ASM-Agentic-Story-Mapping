@@ -324,13 +324,13 @@ export function StoryMapEditor({
 
       <section className="toolbar">
         <label className="row">
-          <span>Persona</span>
+          <span>Person</span>
           <select
             data-testid="persona-filter"
             value={personaFilter ?? ""}
             onChange={(event) => setPersonaFilter(event.target.value || null)}
           >
-            <option value="">All personas</option>
+            <option value="">Everyone</option>
             {shown.personas.map((persona) => (
               <option key={persona.id} value={persona.id}>
                 {persona.name}
@@ -474,7 +474,7 @@ export function StoryMapEditor({
         </EditableCard>
       </section>
 
-      <section aria-label="Personas">
+      <section aria-label="People">
         <h2>
           People <span className="muted">who is involved, in what role, and whose needs the narrative models (personas)</span>
         </h2>

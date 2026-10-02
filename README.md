@@ -136,11 +136,14 @@ personas:
   two fields to go back.
 - A persona without a need is a review finding (`persona_without_need`) and is
   shown on the card as unresolved. ASM does not create the need.
-- An actor marked `persona: false` cannot own a need: validation refuses the
-  file (`need_of_non_persona`).
-- Slice candidates choose the "primary persona" among personas only
-  (`SLICE_DERIVATION_VERSION` 2). The work order still lists everyone on the
-  included steps under personas; that contract is unchanged here.
+- An actor marked `persona: false` owns no need and takes part in no step:
+  validation refuses a file that says otherwise (`need_of_non_persona`,
+  `step_of_non_persona`). Whoever has a need or a step on the map is a persona
+  by that fact. Such an actor can still be the one a worst case escalates to.
+- So everyone a slice candidate or a work order calls a persona is one; those
+  two are unchanged.
+- The order roles are written in carries no meaning; they are exported in the
+  order of the list above.
 - In the UI, *Roles and persona…* on a card edits both. Saving is a change of
   meaning: it reopens an approved revision like any other edit.
 

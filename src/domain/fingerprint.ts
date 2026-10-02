@@ -1,4 +1,4 @@
-import type { ProductDocument } from "./schema";
+import { ValueChainRoleSchema, type ProductDocument } from "./schema";
 
 /** Fixed key and element order so that exports are stable and diffable. */
 export function canonicalize(p: ProductDocument): ProductDocument {
@@ -32,7 +32,8 @@ export function canonicalize(p: ProductDocument): ProductDocument {
       id: e.id,
       name: e.name,
       description: e.description,
-      ...(e.roles ? { roles: [...e.roles] } : {}),
+      // In the fixed order of the role list: the order roles are written in carries no meaning.
+      ...(e.roles ? { roles: ValueChainRoleSchema.options.filter((role) => e.roles!.includes(role)) } : {}),
       ...(e.persona !== undefined ? { persona: e.persona } : {}),
     })),
     needs: p.needs.map((e) => ({ id: e.id, personaId: e.personaId, statement: e.statement })),
