@@ -1,19 +1,26 @@
 import { buildExecutionBrief } from "./brief";
 import { reviewNarrative } from "./review";
 import type { ProductDocument } from "./schema";
-import { proposeSlices } from "./slices";
 import { validateProduct } from "./validate";
 import { resolveSelection, type SliceSelection } from "./work-state";
 
 /**
  * Guided flow: a projection of the product document and the work state.
  *
- * The guide owns no state and no rule. Whether a step is reached is read from
- * the same functions that gate the real actions: `validateProduct`,
- * `reviewNarrative`, the revision status that only `approveRevision` sets,
- * `resolveSelection` and `buildExecutionBrief`. A step is done only when every
- * step before it is done, so the current step is always the earliest one the
- * real state has not reached, and a change upstream leads back to it.
+ * The guide owns no state and gates nothing. The three gated steps are read
+ * from what the real gates read: the revision status (set by approval, or
+ * carried by an imported file that records one), `resolveSelection` and
+ * `buildExecutionBrief`.
+ *
+ * The first three steps say what a map needs before it is worth reviewing: a
+ * valid document, someone with a need, a path of more than one step. No gate
+ * requires them. They are the guide's own reading order, not a rule of the
+ * product: a human who approves a map without them has decided so, and from
+ * then on the guide follows the approval.
+ *
+ * A step is done only when every step before it is done, so the current step
+ * is always the earliest one the real state has not reached, and a change
+ * upstream leads back to it.
  *
  * An action never writes. It only says which part of the existing UI to open
  * or focus; the human acts there, through the existing gates.
@@ -35,7 +42,7 @@ export interface GuideStep {
   /** Why this step exists, in plain words. */
   purpose: string;
   status: "done" | "current" | "upcoming";
-  /** Set when an earlier result of this step exists and no longer matches the map. */
+  /** Set when a stored result of this step exists and no longer matches the map: the reason. */
   stale?: string;
   action: GuideAction;
 }
@@ -56,18 +63,23 @@ export interface GuideState {
   impacts: GuideImpact[];
 }
 
+/** What `resolveSelection` appends to every stale reason. The guide says when to select again itself. */
+const RESELECT_HINT = /; select a slice again$/;
+
 export function deriveGuide(product: ProductDocument, selection: SliceSelection | null): GuideState {
   const findings = reviewNarrative(product);
   const gaps = findings.filter((f) => f.level === "gap").length;
   const resolution = selection ? resolveSelection(product, selection) : null;
-  const staleSelection = resolution && !resolution.ok ? resolution.issues[0].message : undefined;
+  const staleSelection = resolution && !resolution.ok ? resolution.issues[0].message.replace(RESELECT_HINT, "") : undefined;
+  const approval = product.revision.status === "approved" ? product.revision.approval : undefined;
+  const approved = product.revision.status === "approved";
 
   const reached: Record<GuideStepId, boolean> = {
-    intent: validateProduct(product).ok,
-    people: product.personas.length > 0 && product.needs.length > 0,
-    main_path: !findings.some((f) => f.code === "main_path_missing" || f.code === "main_path_single_step"),
-    approve: product.revision.status === "approved",
-    select: proposeSlices(product).ok && resolution?.ok === true,
+    intent: approved || validateProduct(product).ok,
+    people: approved || (product.personas.length > 0 && product.needs.length > 0),
+    main_path: approved || !findings.some((f) => f.code === "main_path_missing" || f.code === "main_path_single_step"),
+    approve: approved,
+    select: resolution?.ok === true,
     work_order: buildExecutionBrief(product, selection).ok,
   };
 
@@ -95,7 +107,7 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
       title: "Check the story and approve it",
       purpose:
         gaps > 0
-          ? `Read the map as a story. ${gaps} open point${gaps === 1 ? "" : "s"} are listed for you to look at. Approval is yours alone: nothing is built on a story you have not approved.`
+          ? `Read the map as a story. ${gaps} open point${gaps === 1 ? " is" : "s are"} listed for you to look at. Approval is yours alone: nothing is built on a story you have not approved.`
           : "Read the map as a story. Approval is yours alone: nothing is built on a story you have not approved.",
       action: { kind: "focus_approval", label: "Review and approve" },
     },
@@ -131,7 +143,11 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
     doneCount: steps.filter((s) => s.status === "done").length,
     impacts: [
       { id: "map", label: "Your thinking is a readable map", reached: done("main_path") },
-      { id: "sensemaking", label: "The story is checked and approved by you", reached: done("approve") },
+      {
+        id: "sensemaking",
+        label: approval ? `The story is approved (by ${approval.approvedBy})` : "The story is approved",
+        reached: done("approve"),
+      },
       { id: "delivery", label: "A work order is ready to hand over", reached: done("work_order") },
     ],
   };

@@ -148,15 +148,42 @@ describe("guide: it cannot get past a human gate", () => {
       [edited, choose(first)],
       [approved(edited), choose(first)],
       [noNeedApproved, choose(noNeedApproved, "slice-primary-persona")],
+      [
+        approved(withoutNeeds()),
+        acceptValueException(approved(withoutNeeds()), choose(approved(withoutNeeds()), "slice-primary-persona"), {
+          rationale: "Learning spike.",
+          acceptedBy: "Ada",
+          acceptedAt: "2026-10-02T10:00:00.000Z",
+        }),
+      ],
     ];
     for (const [p, selection] of cases)
       expect(statuses(deriveGuide(p, selection)).work_order === "done").toBe(buildExecutionBrief(p, selection).ok);
   });
 
-  it("no step action writes anything: every action only opens or focuses part of the existing UI", () => {
-    const p = approved();
-    for (const g of [deriveGuide(loadFixture(), null), deriveGuide(p, null), deriveGuide(p, choose(p))])
-      for (const s of g.steps) expect(["focus_workshop", "focus_approval", "open_slices"]).toContain(s.action.kind);
+});
+
+describe("guide: it does not hide progress the gates have let through", () => {
+  it("a map without needs that a human approved, selected and excepted: every step is done", () => {
+    const p = approved(withoutNeeds());
+    const selection = acceptValueException(p, choose(p, "slice-primary-persona"), {
+      rationale: "Learning spike.",
+      acceptedBy: "Ada",
+      acceptedAt: "2026-10-02T10:00:00.000Z",
+    });
+    expect(buildExecutionBrief(p, selection).ok).toBe(true);
+    const g = deriveGuide(p, selection);
+    expect(g.currentStepId).toBeNull();
+    expect(impacts(g)).toEqual({ map: true, sensemaking: true, delivery: true });
+  });
+
+  it("the same map before approval: the people step is still the current one", () => {
+    expect(deriveGuide(withoutNeeds(), null).currentStepId).toBe("people");
+  });
+
+  it("the approval marker names who approved, also when the approval came with an imported file", () => {
+    const g = deriveGuide(approveRevision(loadFixture(), { approvedBy: "Someone Else", approvedAt: "2026-09-30T08:00:00.000Z" }), null);
+    expect(g.impacts.find((i) => i.id === "sensemaking")!.label).toBe("The story is approved (by Someone Else)");
   });
 });
 
@@ -168,7 +195,8 @@ describe("guide: a change upstream leads back to the earliest step that has to b
     const g = deriveGuide(edited, selection);
     expect(g.currentStepId).toBe("approve");
     expect(statuses(g).select).toBe("upcoming");
-    expect(step(g, "select").stale).toContain("the map has changed since the slice was selected");
+    // The reason only. Telling the human to select again would be wrong here: approval comes first.
+    expect(step(g, "select").stale).toBe("the map has changed since the slice was selected");
     expect(impacts(g)).toEqual({ map: true, sensemaking: false, delivery: false });
   });
 

@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import YAML from "yaml";
 import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { resetProductFile } from "./global-setup";
 
@@ -16,7 +17,8 @@ const storedText = () => fs.readFile(E2E_PRODUCT_FILE, "utf8");
 const workStateExists = () => fs.access(E2E_WORK_STATE_FILE).then(() => true, () => false);
 const shot = (name: string) => path.join(SHOTS, `guide-${name}.png`);
 
-test("the guide follows the real state from approval to work order, by keyboard", async ({ page }) => {
+// The guide's own buttons are activated with the keyboard (focus, then Enter). The existing forms are used as they are.
+test("the guide follows the real state from approval to work order", async ({ page }) => {
   await page.goto("/");
   const guide = page.getByTestId("guide");
   await expect(guide).toHaveAttribute("data-current-step", "approve");
@@ -100,12 +102,41 @@ test("the guide can be hidden and shown; the expert UI works without it", async 
   await page.screenshot({ path: shot("05-guide-hidden-expert-ui"), fullPage: true });
 
   // Shown again, it reads the same state: approval is done, selecting is current.
+  const beforeShow = await storedText();
   await page.getByTestId("guide-show").focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "select");
   await expect(page.getByTestId("guide-cta")).toBeFocused();
+  await page.getByTestId("guide-hide").click();
+  await expect(page.getByTestId("guide")).toHaveCount(0);
   // Hiding or showing the guide writes neither the product nor the work state.
+  expect(await storedText()).toBe(beforeShow);
   expect(await workStateExists()).toBe(false);
+});
+
+test("a map with nobody's needs on it: the guide points at the input, not at approval", async ({ page }) => {
+  // The fixture with every need removed, and every reference to one.
+  const doc = YAML.parse(await storedText());
+  const gone = new Set(doc.needs.map((n: { id: string }) => n.id));
+  doc.needs = [];
+  for (const step of doc.narrative) step.needIds = [];
+  doc.decisions = doc.decisions
+    .map((d: { relatesTo: string[] }) => ({ ...d, relatesTo: d.relatesTo.filter((id) => !gone.has(id)) }))
+    .filter((d: { relatesTo: string[] }) => d.relatesTo.length > 0);
+  await fs.writeFile(E2E_PRODUCT_FILE, YAML.stringify(doc));
+  const before = await storedText();
+
+  await page.goto("/");
+  await expect(page.getByTestId("load-error")).toHaveCount(0);
+  const guide = page.getByTestId("guide");
+  await expect(guide).toHaveAttribute("data-current-step", "people");
+  await expect(page.getByTestId("guide-progress")).toHaveText("1 of 6 steps done");
+  await expect(page.getByTestId("impact-map")).toHaveCount(0);
+  await page.getByTestId("guide-cta").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("transcript-input")).toBeFocused();
+  expect(await storedText()).toBe(before);
+  await page.screenshot({ path: shot("07-people-step-is-current"), fullPage: true });
 });
 
 test("an open proposal comes first, and the guide leaves the decision to the human", async ({ page }) => {

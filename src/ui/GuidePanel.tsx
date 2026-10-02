@@ -75,12 +75,15 @@ export function GuidePanel({
             <p>Your work order is ready to export. If you change the map, the guide takes you back to the step that has to be redone.</p>
           </>
         )}
-        {stale && (
-          <p className="guide-stale-note" role="status" data-testid="guide-stale-note">
-            <strong>Something you did earlier no longer fits the map.</strong> The slice selected before is stale: {stale.stale}. It is
-            kept and shown as stale; nothing was deleted or chosen for you. The guide is back at the earliest step that has to be redone.
-          </p>
-        )}
+        {/* Always mounted, so that a stale note appearing later is announced. */}
+        <div role="status" data-testid="guide-live">
+          {stale && (
+            <p className="guide-stale-note" data-testid="guide-stale-note">
+              <strong>A stored slice selection no longer fits this map:</strong> {stale.stale}. It is kept and shown as stale; nothing
+              was deleted or chosen for you. You pick again at the step “{stale.title}”.
+            </p>
+          )}
+        </div>
         {proposalOpen ? (
           <div className="row">
             <button type="button" id="guide-cta" data-testid="guide-cta" onClick={() => onAction({ kind: "focus_proposal" })}>

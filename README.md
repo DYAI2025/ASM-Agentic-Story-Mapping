@@ -76,13 +76,17 @@ own.
 
 | Step | Done when |
 |---|---|
-| Say what you want to build | the product document validates (`validateProduct`) |
+| Say what you want to build | the product document validates (`validateProduct`). Always the case for a map that loads; it becomes a real step once a product can be started from nothing. |
 | Name who is involved and what they need | at least one persona and one need exist |
 | Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path |
-| Check the story and approve it | the revision is `approved` (only `approveRevision` sets that) |
+| Check the story and approve it | the revision is `approved`: by the approve action, or because an imported file records an approval |
 | Compare first slices and pick one | the stored selection resolves against the current map (`resolveSelection`) |
 | Export the work order | `buildExecutionBrief` returns a work order |
 
+- The last three steps read what the real gates read. The first three are the
+  guide's own reading order: no gate requires a need or a second step, so once
+  a human has approved a map without them the guide treats them as done and
+  follows the approval.
 - A step is done only when every step before it is done. The current step is
   the earliest one the state has not reached, so a change to the map leads back
   to it.
@@ -92,7 +96,7 @@ own.
 - An earlier selection that no longer matches the map is shown as stale on its
   step. Nothing is deleted or selected again.
 - Three markers appear when their state is reached: a readable map (step 3),
-  an approved story (step 4), a work order (step 6).
+  an approved story with the approver's name (step 4), a work order (step 6).
 - *Hide guide* / *Show guide* is a per-browser preference in `localStorage`
   (`asm.guide`). It is not product or work state.
 

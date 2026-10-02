@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { deriveGuide, type GuideAction } from "../domain/guide";
 import type { Touch } from "../domain/map-patch";
 import {
@@ -199,7 +199,8 @@ export function StoryMapEditor({
   const guide = useMemo(() => deriveGuide(product, selection), [product, selection]);
   const [guideOn, setGuideOn] = useState(true);
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
-  useEffect(() => {
+  // Before the first paint, so a hidden guide does not flash on load.
+  useLayoutEffect(() => {
     try {
       if (window.localStorage.getItem(GUIDE_PREFERENCE) === "off") setGuideOn(false);
     } catch {

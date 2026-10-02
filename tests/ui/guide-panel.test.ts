@@ -39,7 +39,7 @@ describe("guide panel", () => {
     expect(html.match(/data-testid="guide-cta"/g)).toHaveLength(1);
   });
 
-  it("names steps in plain words: no ASM term is needed to read them", () => {
+  it("step titles avoid the internal terms canon, WCBC, fingerprint, revision, derivation and persona", () => {
     const html = render(loadFixture(), null);
     const titles = [...html.matchAll(/data-testid="guide-step-[\w]+"[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
     expect(titles).toHaveLength(6);
@@ -66,14 +66,23 @@ describe("guide panel", () => {
     const html = render(updateCard(first, "step-export-work", { description: "Changed after selection." }), choose(first));
     expect(html).toContain('data-current-step="approve"');
     expect(html).toContain('data-testid="guide-stale-select"');
-    expect(part(html, "guide-stale-note")).toContain("the map has changed since the slice was selected");
-    expect(part(html, "guide-stale-note")).toContain("nothing was deleted or chosen for you");
+    const note = part(html, "guide-stale-note")!;
+    expect(note).toContain("the map has changed since the slice was selected.");
+    expect(note).toContain("nothing was deleted or chosen for you");
+    // It does not tell the human to select now: on a proposed map the gate would refuse that.
+    expect(note).not.toContain("select a slice again");
+    expect(note).toContain("You pick again at the step “Compare first slices and pick one”");
     expect(html).not.toContain('data-testid="impact-delivery"');
   });
 
-  it("never selected: no stale marker", () => {
+  it("never selected: no stale marker, and the announcing region is there and empty", () => {
     const html = render(approved(), null);
     expect(html).not.toContain("guide-stale");
+    expect(html).toContain('<div role="status" data-testid="guide-live"></div>');
+  });
+
+  it("the approval marker names the approver", () => {
+    expect(part(render(approved(), null), "impact-sensemaking")).toBe("✓ The story is approved (by Ada)");
   });
 
   it("an open proposal comes first: the call to action points at it", () => {
