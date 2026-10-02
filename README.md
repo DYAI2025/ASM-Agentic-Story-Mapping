@@ -410,7 +410,12 @@ screenshots are the review gallery [docs/first-time-user.md](docs/first-time-use
 
 A green test proves little until it has been seen red. For every rule the
 prototype depends on, the rule was broken on purpose in a clone and the test
-that is supposed to notice was run; the table is the record. "Red" means the
+that is supposed to notice was run; the table is the record. Three times a
+new test passed under a mutation it was written for, and each time the
+reason was the same: an assertion satisfied by a weaker mechanism than the
+one it was meant to prove (a disabled button for a server gate, a revision
+number for a content fingerprint, the absence of a read for a read that
+repairs). "Red" means the
 named test failed; a mutation nothing caught was either a gap that got a test
 or an equivalent mutant (a change that does not change behaviour), and the
 table says which.
@@ -428,6 +433,8 @@ table says which.
 | Fingerprint blind to the goal, the needs or the step order | ASM-20, `67a1e41` | **the re-entry matrix and scenarios stayed green** (every change also reopened the revision, which is part of the fingerprint) — closed by tests that change one field under the same revision and approval |
 | No reopen on an approved revision; selection ignoring the fingerprint; check ignoring the fingerprint; fingerprint blind to goal / needs / step order / roles; fingerprint including layout; summary with a fixed step list; GET deletes a stale selection | ASM-20, `6972e89` | all red |
 | Dropping `sequence` while the narrative is still sorted by it | ASM-20, `6972e89` | equivalent mutant (behaviour unchanged); replaced by sorting by id, which is red |
+| Against the first-time-user test at its first version: people gate removed from `selectSlice`; GET `/api/slices` selects when nothing is selected; fingerprint blind to the goal; bootstrap accept ignores the exclusion | ASM-21, `8eac934` | **three of four survived** (the gate was asserted only as a disabled button; no read happened before the selection; the reopen hid the fingerprint); the fourth red |
+| Same four, plus an unnamed button inside a label and a button whose only text is hidden from assistive technology | ASM-21, the spec's second version | all red |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
