@@ -120,7 +120,9 @@ describe("persona: a perspective, separate from the role", () => {
     const p = mutableFixture();
     Object.assign(p.personas.find((e) => e.id === "persona-developer")!, { persona: false });
     expect(codes(p)).toContain("need_of_non_persona");
-    expect(() => setPersonaPerspective(loadFixture(), "persona-developer", false)).toThrow(/owns a need/);
+    expect(() => setPersonaPerspective(loadFixture(), "persona-developer", false)).toThrow(
+      /^Developer takes part in \d+ step\(s\) and owns 2 need\(s\) on the map\. Someone with a step or a need on the map is a persona\./,
+    );
   });
 
   it("setPersonaPerspective records the human's answer explicitly, both ways, and reopens an approved revision", () => {
@@ -191,7 +193,17 @@ describe("whoever has a need or a step on the map is a persona", () => {
   });
 
   it("so a persona on steps cannot be switched off, and the reason names the step", () => {
-    expect(() => setPersonaPerspective(loadFixture(), "persona-domain-ux", false)).toThrow(/takes part in step/);
+    let message = "";
+    try {
+      setPersonaPerspective(loadFixture(), "persona-domain-ux", false);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    // One sentence a human can act on: no array paths, no repetition per step.
+    expect(message).toMatch(/^Domain or UX Expert takes part in \d+ step\(s\) and owns 2 need\(s\) on the map\./);
+    expect(message).toContain("editing the product file");
+    expect(message).not.toMatch(/narrative\[|personaIds/);
+    expect(message.length).toBeLessThan(400);
   });
 
   it("an actor who is not a persona can still be the one a worst case escalates to", () => {
@@ -203,10 +215,33 @@ describe("whoever has a need or a step on the map is a persona", () => {
   it("slice candidates and their fingerprints are what they were: the derivation rules did not change", () => {
     expect(SLICE_DERIVATION_VERSION).toBe(1);
     const before = proposeSlices(loadFixture());
+    // The fixture's candidates as derived at 686bdc5, before this change.
+    expect(before.ok && before.candidates.map((c) => [c.id, candidateFingerprint(c)])).toEqual([
+      ["slice-primary-persona", "fbfe93f0"],
+      ["slice-outcome-thread", "8f0e9a22"],
+      ["slice-shared-steps", "f2a66927"],
+    ]);
     const after = proposeSlices(withActor({ roles: ["delivery_participant"], persona: false }));
     if (!before.ok || !after.ok) throw new Error("no candidates");
     // Someone who is not a persona being on the map changes no candidate.
     expect(after.candidates.map(candidateFingerprint)).toEqual(before.candidates.map(candidateFingerprint));
+  });
+});
+
+describe("stating what the map already says changes nothing", () => {
+  const approved = () => approveRevision(setActorRoles(loadFixture(), "persona-developer", ["user", "delivery_participant"]), { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" });
+
+  it("the same roles, in any order, leave an approved revision approved", () => {
+    const p = approved();
+    expect(setActorRoles(p, "persona-developer", ["delivery_participant", "user"])).toBe(p);
+    expect(setActorRoles(p, "persona-product-lead", [])).toBe(p);
+    expect(setActorRoles(p, "persona-developer", ["user"]).revision.status).toBe("proposed");
+  });
+
+  it("the same persona answer leaves an approved revision approved and adds no field", () => {
+    const p = approved();
+    expect(setPersonaPerspective(p, "persona-developer", true)).toBe(p);
+    expect("persona" in p.personas.find((e) => e.id === "persona-developer")!).toBe(false);
   });
 });
 

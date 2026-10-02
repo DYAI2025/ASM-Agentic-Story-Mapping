@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ROLE_LABEL, VALUE_CHAIN_ROLES, isPersona, rolesOf } from "../domain/actors";
 import type { Persona, ValueChainRole } from "../domain/schema";
 
@@ -30,6 +30,13 @@ export function ActorSemantics({
   const [persona, setPersona] = useState(isPersona(actor));
   const stated = rolesOf(actor);
   const asPersona = isPersona(actor);
+  // When the form closes, keyboard focus goes back to the button that opened it.
+  const opener = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editing) opener.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
 
   return (
     <div className="actor" data-testid={`actor-${actor.id}`} data-persona={asPersona} data-unresolved={asPersona && needCount === 0}>
@@ -63,6 +70,7 @@ export function ActorSemantics({
 
       {!readOnly && !editing && (
         <button
+          ref={opener}
           type="button"
           className="link"
           aria-label={`Roles and persona… ${actor.name}`}

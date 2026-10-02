@@ -140,12 +140,19 @@ personas:
   validation refuses a file that says otherwise (`need_of_non_persona`,
   `step_of_non_persona`). Whoever has a need or a step on the map is a persona
   by that fact. Such an actor can still be the one a worst case escalates to.
-- So everyone a slice candidate or a work order calls a persona is one; those
-  two are unchanged.
+- So everyone a slice candidate lists, and everyone under PERSONAS in a work
+  order, is a persona; slice rules and work order contract are unchanged.
 - The order roles are written in carries no meaning; they are exported in the
   order of the list above.
-- In the UI, *Roles and persona…* on a card edits both. Saving is a change of
-  meaning: it reopens an approved revision like any other edit.
+- In the UI, *Roles and persona…* on a card edits both. A changed answer is a
+  change of meaning: it reopens an approved revision like any other edit.
+  Saving without a change writes nothing.
+- A worst case may still escalate to an actor who is not a persona; a work
+  order then names that actor in the branch (`toPersonaId`) without listing
+  them under personas.
+- Marking someone on a step or with a need as not a persona is refused with
+  the reason. The editor cannot take a person off a step yet; that needs an
+  edit of the product file.
 
 ## From approved narrative to work order
 

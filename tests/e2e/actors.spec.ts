@@ -55,6 +55,8 @@ test("opening the form and saving without a change writes nothing, also on an ap
   await expect(form.getByLabel("Customer / buyer")).toBeFocused();
   await form.getByRole("button", { name: "Save roles" }).click();
   await expect(form).toHaveCount(0);
+  // Focus is back on the button that opened the form.
+  await expect(page.getByRole("button", { name: "Roles and persona… Developer" })).toBeFocused();
   await expect(page.getByTestId("revision-status")).toHaveText("approved");
   expect(await storedText()).toBe(before);
 });
@@ -66,7 +68,8 @@ test("an actor who owns a need cannot be switched to 'not a persona'", async ({ 
   const form = page.getByTestId("actor-form-persona-developer");
   await form.getByLabel(/^Persona:/).uncheck();
   await form.getByRole("button", { name: "Save roles" }).click();
-  await expect(page.getByTestId("issues")).toContainText("an actor whose need is on the map is a persona");
+  await expect(page.getByTestId("issues")).toContainText("Developer takes part in");
+  await expect(page.getByTestId("issues")).toContainText("Someone with a step or a need on the map is a persona");
   await expect(page.getByTestId("perspective-persona-developer")).toHaveText("Persona");
   expect(await storedText()).toBe(before);
 });

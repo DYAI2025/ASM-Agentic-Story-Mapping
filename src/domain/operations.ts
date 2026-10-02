@@ -116,6 +116,9 @@ export function setActorRoles(p: ProductDocument, actorId: string, roles: readon
   if (!p.personas.some((e) => e.id === actorId)) throw new DomainError(`no actor with id "${actorId}"`);
   for (const role of roles)
     if (!ValueChainRoleSchema.safeParse(role).success) throw new DomainError(`"${role}" is not a value-chain role`);
+  // The same roles, in whatever order: nothing changes, so an approved revision stays approved.
+  const stated = p.personas.find((e) => e.id === actorId)!.roles ?? [];
+  if (stated.length === roles.length && roles.every((role) => stated.includes(role)) && new Set(roles).size === roles.length) return p;
   return assertValid({
     ...p,
     revision: reopenIfApproved(p),
@@ -133,7 +136,19 @@ export function setActorRoles(p: ProductDocument, actorId: string, roles: readon
  * actor who owns a need or takes part in a step.
  */
 export function setPersonaPerspective(p: ProductDocument, actorId: string, persona: boolean): ProductDocument {
-  if (!p.personas.some((e) => e.id === actorId)) throw new DomainError(`no actor with id "${actorId}"`);
+  const actor = p.personas.find((e) => e.id === actorId);
+  if (!actor) throw new DomainError(`no actor with id "${actorId}"`);
+  // Already the answer the map gives: nothing changes, so an approved revision stays approved.
+  if ((actor.persona !== false) === persona) return p;
+  if (!persona) {
+    const steps = p.narrative.filter((s) => s.personaIds.includes(actorId)).length;
+    const needs = p.needs.filter((n) => n.personaId === actorId).length;
+    if (steps > 0 || needs > 0)
+      throw new DomainError(
+        `${actor.name} takes part in ${steps} step(s) and owns ${needs} need(s) on the map. Someone with a step or a need on the map is a persona. ` +
+          "To mark them as not a persona, first take them off those steps and remove or reassign those needs; the editor cannot do that yet, so it means editing the product file.",
+      );
+  }
   return assertValid({
     ...p,
     revision: reopenIfApproved(p),

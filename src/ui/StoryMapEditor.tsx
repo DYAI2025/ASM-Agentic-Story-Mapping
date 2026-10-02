@@ -491,7 +491,6 @@ export function StoryMapEditor({
               <h3>{persona.name}</h3>
               <p>{persona.description}</p>
               <ActorSemantics
-                key={`${(persona.roles ?? []).join(",")}|${persona.persona}`}
                 actor={persona}
                 needCount={shown.needs.filter((need) => need.personaId === persona.id).length}
                 readOnly={reviewing}
