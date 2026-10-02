@@ -690,6 +690,11 @@ textarea {
   border-left: 4px solid var(--accent);
 }
 
+/* Set before the first paint for a viewer who hid the guide (see layout.tsx). */
+html[data-guide="off"] .guide {
+  display: none;
+}
+
 .guide-head {
   justify-content: space-between;
 }

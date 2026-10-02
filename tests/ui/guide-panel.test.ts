@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 import { fingerprint } from "../../src/domain/fingerprint";
 import { deriveGuide } from "../../src/domain/guide";
 import { approveRevision, updateCard } from "../../src/domain/operations";
+import { parseProductText } from "../../src/domain/serialize";
 import type { ProductDocument } from "../../src/domain/schema";
 import { selectSlice, type SliceSelection } from "../../src/domain/work-state";
 import { GuidePanel } from "../../src/ui/GuidePanel";
-import { loadFixture } from "../domain/helpers";
+import { fixtureText, loadFixture } from "../domain/helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
 const approved = (p: ProductDocument = loadFixture()) => approveRevision(p, APPROVAL);
@@ -24,6 +25,21 @@ function part(html: string, testId: string): string | null {
   const match = new RegExp(`<(\\w+)[^>]*data-testid="${testId}"[^>]*>([\\s\\S]*?)</\\1>`).exec(html);
   return match ? match[2].replace(/<[^>]+>/g, "") : null;
 }
+/** The fixture cut down to its first step. */
+function singleStep(): ProductDocument {
+  const parsed = parseProductText(fixtureText());
+  if (!parsed.ok) throw new Error("fixture is invalid");
+  const p = structuredClone(parsed.product);
+  const keep = p.narrative.find((s) => s.sequence === 1)!;
+  p.narrative = [keep];
+  p.wcbc = p.wcbc.filter((b) => b.stepId === keep.id);
+  p.wcbc.forEach((b) => delete b.outcome);
+  const ids = new Set([p.goal.id, keep.id, ...p.personas.map((e) => e.id), ...p.needs.map((e) => e.id), ...p.wcbc.map((b) => b.id)]);
+  p.decisions = p.decisions.map((d) => ({ ...d, relatesTo: d.relatesTo.filter((id) => ids.has(id)) })).filter((d) => d.relatesTo.length > 0);
+  p.layout = { cards: {} };
+  return p;
+}
+
 const currentSteps = (html: string) => html.match(/aria-current="step"/g)?.length ?? 0;
 const cta = (html: string) => /<button[^>]*data-testid="guide-cta"[^>]*>([^<]*)<\/button>/.exec(html)?.[1];
 
@@ -83,6 +99,24 @@ describe("guide panel", () => {
 
   it("the approval marker names the approver", () => {
     expect(part(render(approved(), null), "impact-sensemaking")).toBe("✓ The story is approved (by Ada)");
+  });
+
+  it("an approved map with a single step: the path is marked 'approved as it is', and the slice step says why it is blocked", () => {
+    const html = render(approved(singleStep()), null);
+    expect(html).toContain('data-current-step="select"');
+    expect(part(html, "guide-as-is-main_path")).toBe("(not on the map; approved as it is)");
+    expect(html).not.toContain('data-testid="guide-as-is-people"');
+    expect(html).not.toContain('data-testid="impact-map"');
+    expect(part(html, "guide-blocked")).toContain("slice candidates need a main path of at least two steps");
+    expect(part(html, "guide-blocked")).toContain("needs your approval again");
+    expect(cta(html)).toBe("Add to the map");
+  });
+
+  it("a complete map shows neither an 'as it is' label nor a blocked note", () => {
+    const html = render(approved(), null);
+    expect(html).not.toContain("guide-as-is-");
+    expect(html).not.toContain('data-testid="guide-blocked"');
+    expect(cta(html)).toBe("Compare slices");
   });
 
   it("an open proposal comes first: the call to action points at it", () => {

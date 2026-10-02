@@ -199,7 +199,7 @@ export function StoryMapEditor({
   const guide = useMemo(() => deriveGuide(product, selection), [product, selection]);
   const [guideOn, setGuideOn] = useState(true);
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
-  // Before the first paint, so a hidden guide does not flash on load.
+  // The server cannot know the preference; layout.tsx hides the panel by CSS until this has run.
   useLayoutEffect(() => {
     try {
       if (window.localStorage.getItem(GUIDE_PREFERENCE) === "off") setGuideOn(false);
@@ -223,6 +223,8 @@ export function StoryMapEditor({
     } catch {
       // No storage: the choice lasts until the page is reloaded.
     }
+    if (on) delete document.documentElement.dataset.guide;
+    else document.documentElement.dataset.guide = "off";
     setFocusTarget(on ? "guide-cta" : "guide-show");
   }
 

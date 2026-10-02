@@ -52,7 +52,10 @@ export function GuidePanel({
           >
             <span className="guide-number">{index + 1}</span>
             <span>
-              {step.title} <span className="muted">({STATUS_LABEL[step.status]})</span>
+              {step.title}{" "}
+              <span className="muted" data-testid={step.approvedAsIs ? `guide-as-is-${step.id}` : undefined}>
+                ({step.approvedAsIs ? "not on the map; approved as it is" : STATUS_LABEL[step.status]})
+              </span>
               {step.stale && step.status !== "done" && (
                 <span className="badge stale" data-testid={`guide-stale-${step.id}`}>
                   earlier choice is stale
@@ -68,6 +71,12 @@ export function GuidePanel({
           <>
             <h3 data-testid="guide-current-title">{current.title}</h3>
             <p>{current.purpose}</p>
+            {current.blocked && (
+              <p className="guide-stale-note" data-testid="guide-blocked">
+                <strong>This cannot be done on the map as it is:</strong> {current.blocked}. Adding to the map opens a new version, which
+                needs your approval again.
+              </p>
+            )}
           </>
         ) : (
           <>

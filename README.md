@@ -77,16 +77,20 @@ own.
 | Step | Done when |
 |---|---|
 | Say what you want to build | the product document validates (`validateProduct`). Always the case for a map that loads; it becomes a real step once a product can be started from nothing. |
-| Name who is involved and what they need | at least one persona and one need exist |
-| Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path |
+| Name who is involved and what they need | at least one persona and one need exist, or the revision is approved without them |
+| Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path, or the revision is approved without one |
 | Check the story and approve it | the revision is `approved`: by the approve action, or because an imported file records an approval |
 | Compare first slices and pick one | the stored selection resolves against the current map (`resolveSelection`) |
 | Export the work order | `buildExecutionBrief` returns a work order |
 
 - The last three steps read what the real gates read. The first three are the
   guide's own reading order: no gate requires a need or a second step, so once
-  a human has approved a map without them the guide treats them as done and
-  follows the approval.
+  a human has approved a map without them the guide follows the approval. Such
+  a step is labelled "not on the map; approved as it is", and the readable-map
+  marker stays off.
+- If no slice can be derived from an approved map (`proposeSlices` refuses),
+  the slice step shows that reason and its button leads to the input, not to
+  an empty comparison.
 - A step is done only when every step before it is done. The current step is
   the earliest one the state has not reached, so a change to the map leads back
   to it.
@@ -251,15 +255,17 @@ npm run test:e2e           # builds, starts the app on :3311, runs browser tests
 The browser tests work on a scratch copy in `.e2e-tmp/`, not on the canonical
 file. Their screenshots and exported work orders go to `.e2e-artifacts/`, which
 git ignores, so a test run leaves the checkout unchanged. The copies under
-`docs/` are refreshed on purpose only:
+`docs/` are refreshed on purpose only (the command sets an environment
+variable inline, so it needs a POSIX shell; it also adds the guide screenshots,
+which are not checked in yet):
 
 ```bash
 npm run docs:refresh       # same browser tests, writing into docs/
 ```
 
-`.github/workflows/ci.yml` runs the five checks above on every pull request,
+`.github/workflows/ci.yml` runs the checks above on every pull request against the head commit,
 fails if the run changed a tracked file, and uploads `.e2e-artifacts/` named
-by commit.
+by that commit.
 
 ## Not built
 

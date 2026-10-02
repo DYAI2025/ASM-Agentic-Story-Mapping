@@ -1,6 +1,7 @@
 import { buildExecutionBrief } from "./brief";
 import { reviewNarrative } from "./review";
 import type { ProductDocument } from "./schema";
+import { proposeSlices } from "./slices";
 import { validateProduct } from "./validate";
 import { resolveSelection, type SliceSelection } from "./work-state";
 
@@ -16,7 +17,12 @@ import { resolveSelection, type SliceSelection } from "./work-state";
  * valid document, someone with a need, a path of more than one step. No gate
  * requires them. They are the guide's own reading order, not a rule of the
  * product: a human who approves a map without them has decided so, and from
- * then on the guide follows the approval.
+ * then on the guide follows the approval. Such a step is marked as approved
+ * as it is, never as present, and the map marker stays off.
+ *
+ * Where the next gated step cannot be done on the map as it is (no slice can
+ * be derived from it), the step says why, in the words of the function that
+ * refuses, and points back at the input instead of at a dead end.
  *
  * A step is done only when every step before it is done, so the current step
  * is always the earliest one the real state has not reached, and a change
@@ -42,6 +48,10 @@ export interface GuideStep {
   /** Why this step exists, in plain words. */
   purpose: string;
   status: "done" | "current" | "upcoming";
+  /** Done only because a human approved the map without it. What the step asks for is not on the map. */
+  approvedAsIs?: true;
+  /** The step cannot be done on the map as it is: the reason, from the function that refuses. */
+  blocked?: string;
   /** Set when a stored result of this step exists and no longer matches the map: the reason. */
   stale?: string;
   action: GuideAction;
@@ -74,10 +84,19 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
   const approval = product.revision.status === "approved" ? product.revision.approval : undefined;
   const approved = product.revision.status === "approved";
 
+  /** What the first three steps ask for, as it is on the map. */
+  const present = {
+    intent: validateProduct(product).ok,
+    people: product.personas.length > 0 && product.needs.length > 0,
+    main_path: !findings.some((f) => f.code === "main_path_missing" || f.code === "main_path_single_step"),
+  };
+  const candidates = proposeSlices(product);
+  const noCandidates = candidates.ok ? undefined : candidates.issues.map((i) => i.message).join("; ");
+
   const reached: Record<GuideStepId, boolean> = {
-    intent: approved || validateProduct(product).ok,
-    people: approved || (product.personas.length > 0 && product.needs.length > 0),
-    main_path: approved || !findings.some((f) => f.code === "main_path_missing" || f.code === "main_path_single_step"),
+    intent: approved || present.intent,
+    people: approved || present.people,
+    main_path: approved || present.main_path,
     approve: approved,
     select: resolution?.ok === true,
     work_order: buildExecutionBrief(product, selection).ok,
@@ -116,7 +135,9 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
       title: "Compare first slices and pick one",
       purpose: "A slice is a small part of the path to build first. You see two or three side by side; the choice is yours.",
       ...(staleSelection ? { stale: staleSelection } : {}),
-      action: { kind: "open_slices", label: "Compare slices" },
+      ...(noCandidates
+        ? { blocked: noCandidates, action: { kind: "focus_workshop" as const, label: "Add to the map" } }
+        : { action: { kind: "open_slices" as const, label: "Compare slices" } }),
     },
     {
       id: "work_order",
@@ -133,8 +154,10 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
     const current = open && !done;
     if (current) currentStepId = definition.id;
     if (!done) open = false;
-    return { ...definition, status: done ? "done" : current ? "current" : "upcoming" };
+    const asIs = done && definition.id in present && !present[definition.id as keyof typeof present];
+    return { ...definition, status: done ? "done" : current ? "current" : "upcoming", ...(asIs ? { approvedAsIs: true as const } : {}) };
   });
+  const onTheMap = present.intent && present.people && present.main_path;
   const done = (id: GuideStepId) => steps.some((s) => s.id === id && s.status === "done");
 
   return {
@@ -142,7 +165,7 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
     currentStepId,
     doneCount: steps.filter((s) => s.status === "done").length,
     impacts: [
-      { id: "map", label: "Your thinking is a readable map", reached: done("main_path") },
+      { id: "map", label: "Your thinking is a readable map", reached: onTheMap && done("main_path") },
       {
         id: "sensemaking",
         label: approval ? `The story is approved (by ${approval.approvedBy})` : "The story is approved",

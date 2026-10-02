@@ -150,3 +150,36 @@ test("an open proposal comes first, and the guide leaves the decision to the hum
   expect(await storedText()).toBe(before);
   await page.screenshot({ path: shot("06-open-proposal-first"), fullPage: true });
 });
+
+test("a hidden guide is not painted while the page loads", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("guide-hide").click();
+  await expect(page.getByTestId("guide")).toHaveCount(0);
+
+  // Hold the scripts back: what is visible now is the server's HTML before React takes over.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/_next/static/**/*.js", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto("/", { waitUntil: "commit" });
+  await expect(page.getByTestId("product-name")).toBeVisible();
+  // The server always renders the panel; the stored preference hides it before the first paint.
+  await expect(page.getByTestId("guide")).toHaveCount(1);
+  await expect(page.getByTestId("guide")).toBeHidden();
+  await expect(page.locator("html")).toHaveAttribute("data-guide", "off");
+  await expect(page.getByTestId("guide-show")).toHaveCount(0);
+
+  release();
+  await expect(page.getByTestId("guide-show")).toBeVisible();
+  await expect(page.getByTestId("guide")).toHaveCount(0);
+
+  // Shown again: the attribute is gone, and a reload paints the guide from the start.
+  await page.unroute("**/_next/static/**/*.js");
+  await page.getByTestId("guide-show").click();
+  await expect(page.getByTestId("guide")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("guide")).toBeVisible();
+  await expect(page.locator("html")).not.toHaveAttribute("data-guide", "off");
+});
