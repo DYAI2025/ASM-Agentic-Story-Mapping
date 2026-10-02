@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { deriveGuide, type GuideAction } from "../domain/guide";
 import type { Touch } from "../domain/map-patch";
 import {
   DomainError,
@@ -15,6 +16,7 @@ import { reviewNarrative } from "../domain/review";
 import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
 import { resolveSelection, type SliceSelection } from "../domain/work-state";
+import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SliceDrawer } from "./SliceDrawer";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
@@ -40,6 +42,9 @@ const CardContext = createContext<{
 }>({ readOnly: false, touched: {}, provenance: [], findingCounts: {} });
 
 const TOUCH_LABEL: Record<Touch, string> = { added: "New", changed: "Changed", moved: "Moved" };
+
+/** Browser storage key for whether this viewer wants the guide shown. Never product or work state. */
+const GUIDE_PREFERENCE = "asm.guide";
 
 function EditableCard({
   id,
@@ -190,6 +195,49 @@ export function StoryMapEditor({
   const validation = useMemo(() => validateProduct(product), [product]);
   const approved = product.revision.status === "approved";
 
+  // The guide is read from the product and the work state. Whether it is shown is view state only.
+  const guide = useMemo(() => deriveGuide(product, selection), [product, selection]);
+  const [guideOn, setGuideOn] = useState(true);
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(GUIDE_PREFERENCE) === "off") setGuideOn(false);
+    } catch {
+      // No storage: the guide stays on.
+    }
+  }, []);
+  // Focus moves after the part of the UI the guide points at has been rendered.
+  useEffect(() => {
+    if (!focusTarget) return;
+    const target = document.getElementById(focusTarget);
+    target?.scrollIntoView({ block: "center" });
+    target?.focus();
+    setFocusTarget(null);
+  }, [focusTarget]);
+
+  function showGuide(on: boolean) {
+    setGuideOn(on);
+    try {
+      window.localStorage.setItem(GUIDE_PREFERENCE, on ? "on" : "off");
+    } catch {
+      // No storage: the choice lasts until the page is reloaded.
+    }
+    setFocusTarget(on ? "guide-cta" : "guide-show");
+  }
+
+  /** Takes the human to where the step is done. Opens and focuses; never writes. */
+  function follow(action: GuideAction | { kind: "focus_proposal" }) {
+    if (action.kind === "focus_proposal") setFocusTarget("proposal-review");
+    else if (action.kind === "focus_workshop") setFocusTarget("workshop-input");
+    else if (action.kind === "focus_approval") {
+      setReviewMode(true);
+      setFocusTarget("approver-name");
+    } else {
+      setSlicesOpen(true);
+      setFocusTarget("slice-drawer");
+    }
+  }
+
   async function send(url: string, method: string, body: string): Promise<boolean> {
     let result: ApiResult;
     try {
@@ -251,6 +299,7 @@ export function StoryMapEditor({
               }}
             >
               <input
+                id="approver-name"
                 aria-label="Approver name"
                 placeholder="Your name"
                 value={approver}
@@ -263,6 +312,8 @@ export function StoryMapEditor({
           )}
         </div>
       </header>
+
+      {guideOn && <GuidePanel guide={guide} proposalOpen={reviewing} onAction={follow} onHide={() => showGuide(false)} />}
 
       <section className="toolbar">
         <label className="row">
@@ -281,6 +332,11 @@ export function StoryMapEditor({
           </select>
         </label>
         <div className="row">
+          {!guideOn && (
+            <button type="button" id="guide-show" className="secondary" data-testid="guide-show" onClick={() => showGuide(true)}>
+              Show guide
+            </button>
+          )}
           <button
             type="button"
             className={reviewMode ? "" : "secondary"}

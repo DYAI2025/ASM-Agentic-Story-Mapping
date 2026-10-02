@@ -121,7 +121,7 @@ export function SliceDrawer({
   ];
 
   return (
-    <aside className="drawer" aria-label="Slice candidates" data-testid="slice-drawer">
+    <aside id="slice-drawer" tabIndex={-1} className="drawer" aria-label="Slice candidates" data-testid="slice-drawer">
       <header className="row drawer-head">
         <h2>First slice candidates</h2>
         <button type="button" className="secondary" data-testid="slices-close" onClick={onClose}>

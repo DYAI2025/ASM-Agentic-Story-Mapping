@@ -67,6 +67,35 @@ code does not know which provider produced a proposal.
 Copy `.env.example` to `.env.local` to configure. No credentials belong in the
 repository.
 
+## The guide
+
+A panel above the toolbar walks a first-time user through the same flow the
+expert UI offers. It is a projection (`deriveGuide` in `src/domain/guide.ts`):
+it reads the product document and the work state and keeps no progress of its
+own.
+
+| Step | Done when |
+|---|---|
+| Say what you want to build | the product document validates (`validateProduct`) |
+| Name who is involved and what they need | at least one persona and one need exist |
+| Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path |
+| Check the story and approve it | the revision is `approved` (only `approveRevision` sets that) |
+| Compare first slices and pick one | the stored selection resolves against the current map (`resolveSelection`) |
+| Export the work order | `buildExecutionBrief` returns a work order |
+
+- A step is done only when every step before it is done. The current step is
+  the earliest one the state has not reached, so a change to the map leads back
+  to it.
+- The guide's button opens or focuses the part of the UI where the step is
+  done. It never writes: approving, selecting and accepting stay where they
+  were, behind the same gates.
+- An earlier selection that no longer matches the map is shown as stale on its
+  step. Nothing is deleted or selected again.
+- Three markers appear when their state is reached: a readable map (step 3),
+  an approved story (step 4), a work order (step 6).
+- *Hide guide* / *Show guide* is a per-browser preference in `localStorage`
+  (`asm.guide`). It is not product or work state.
+
 ## From approved narrative to work order
 
 ```

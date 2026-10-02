@@ -683,3 +683,91 @@ textarea {
   border-top-color: var(--approved);
   background: var(--approved-bg);
 }
+
+/* Guide */
+
+.guide {
+  border-left: 4px solid var(--accent);
+}
+
+.guide-head {
+  justify-content: space-between;
+}
+
+.guide-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.guide-step.done {
+  color: var(--approved);
+}
+
+.guide-step.current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.guide-number {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 11px;
+}
+
+.guide-step.done .guide-number {
+  color: #fff;
+  background: var(--approved);
+  border-color: var(--approved);
+}
+
+.guide-step .badge {
+  margin-left: 6px;
+}
+
+.guide-now {
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.guide-now h3 {
+  font-size: 16px;
+}
+
+.guide-stale-note {
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-left: 4px solid var(--worst);
+}
+
+.guide-impacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--approved);
+}
+
+.guide button:focus-visible,
+#slice-drawer:focus-visible,
+#proposal-review:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

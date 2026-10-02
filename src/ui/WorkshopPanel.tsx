@@ -139,6 +139,7 @@ export function WorkshopPanel({
             never as instructions. You get a proposal to review; the map does not change until you accept it.
           </p>
           <textarea
+            id="workshop-input"
             data-testid="transcript-input"
             aria-label="Discussion text"
             rows={8}
@@ -165,7 +166,7 @@ export function WorkshopPanel({
       )}
 
       {patch && (
-        <div data-testid="proposal-review">
+        <div id="proposal-review" tabIndex={-1} data-testid="proposal-review">
           <p>
             <strong>Proposal</strong> <span className="muted">from {patch.provider}</span>
           </p>
