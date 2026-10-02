@@ -10,7 +10,7 @@ import { exportProductYaml } from "../../src/domain/serialize";
 import { SLICE_DERIVATION_VERSION, candidateFingerprint, checkSliceCandidate, proposeSlices, type SliceCandidate } from "../../src/domain/slices";
 import { validateProduct } from "../../src/domain/validate";
 import { resolveSelection, selectSlice, type SliceSelection } from "../../src/domain/work-state";
-import { loadFixture, mutableFixture } from "./helpers";
+import { loadFixture, mutableFixture, peopleCheck } from "./helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
 const approved = (p: ProductDocument = loadFixture()) => approveRevision(p, APPROVAL);
@@ -23,7 +23,7 @@ function candidates(p: ProductDocument): SliceCandidate[] {
 }
 
 const choose = (p: ProductDocument, candidateId = "slice-outcome-thread", selectedBy = "Maya") =>
-  selectSlice(p, { candidateId, selectedBy, selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p) });
+  selectSlice(p, { candidateId, selectedBy, selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p), personaCheck: peopleCheck(p) });
 
 /** Every id a candidate mentions: in its id lists and as `[id]` in its text. */
 function mentionedIds(c: SliceCandidate): string[] {
@@ -144,7 +144,7 @@ describe("the human gate", () => {
   it("selection is refused for a map other than the one the human looked at", () => {
     const product = approved();
     expect(() =>
-      selectSlice(product, { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: "00000000" }),
+      selectSlice(product, { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: "00000000", personaCheck: peopleCheck(product) }),
     ).toThrow(/has changed/);
   });
 
@@ -164,6 +164,7 @@ describe("the human gate", () => {
       derivationVersion: SLICE_DERIVATION_VERSION,
       selectedBy: "Maya",
       selectedAt: "2026-10-02T09:00:00.000Z",
+      personaCheck: { confirmedBy: "Maya", confirmedAt: "2026-10-02T08:30:00.000Z" },
     });
   });
 

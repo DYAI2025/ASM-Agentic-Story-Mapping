@@ -48,5 +48,11 @@ export default async function Page() {
       </main>
     );
   }
-  return <StoryMapEditor initial={result.product} initialSelection={work.state.selection ?? null} />;
+  return (
+    <StoryMapEditor
+      initial={result.product}
+      initialSelection={work.state.selection ?? null}
+      initialPersonaCheck={work.state.personaCheck ?? null}
+    />
+  );
 }

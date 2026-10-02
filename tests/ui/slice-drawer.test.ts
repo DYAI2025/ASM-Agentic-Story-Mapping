@@ -6,17 +6,28 @@ import { fingerprint } from "../../src/domain/fingerprint";
 import { approveRevision, updateCard } from "../../src/domain/operations";
 import type { ProductDocument } from "../../src/domain/schema";
 import { SLICE_DERIVATION_VERSION } from "../../src/domain/slices";
-import { selectSlice, type SliceSelection } from "../../src/domain/work-state";
+import { selectSlice, type PersonaCheck, type SliceSelection } from "../../src/domain/work-state";
 import { SliceDrawer } from "../../src/ui/SliceDrawer";
-import { loadFixture } from "../domain/helpers";
+import { loadFixture, peopleCheck } from "../domain/helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
 const approved = (p: ProductDocument = loadFixture()) => approveRevision(p, APPROVAL);
 const choose = (p: ProductDocument, candidateId = "slice-outcome-thread") =>
-  selectSlice(p, { candidateId, selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p) });
+  selectSlice(p, { candidateId, selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p), personaCheck: peopleCheck(p) });
 
-const render = (product: ProductDocument, selection: SliceSelection | null) =>
-  renderToStaticMarkup(createElement(SliceDrawer, { product, selection, onClose: () => {}, onSelection: () => {} }));
+/** With the people check a human made on this map when it is approved, unless another one (or none) is given. */
+const render = (product: ProductDocument, selection: SliceSelection | null, personaCheck?: PersonaCheck | null) =>
+  renderToStaticMarkup(
+    createElement(SliceDrawer, {
+      product,
+      selection,
+      personaCheck: personaCheck === undefined ? (product.revision.status === "approved" ? peopleCheck(product) : null) : personaCheck,
+      onPersonaCheck: () => {},
+      onClose: () => {},
+      onSelection: () => {},
+    }),
+  );
+const checkState = (html: string) => /data-testid="people-check" data-state="(\w+)"/.exec(html)?.[1];
 
 /** The text of the element with this test id, or null when it is not rendered. Only for elements without nested tags of the same name. */
 function part(html: string, testId: string): string | null {
@@ -32,6 +43,49 @@ function editedAfterSelection(): [ProductDocument, SliceSelection] {
   const edited = updateCard(first, "step-export-work", { description: "Changed after selection." });
   return [approveRevision(edited, { approvedBy: "Ada", approvedAt: "2026-10-03T10:00:00.000Z" }), selection];
 }
+
+describe("slice drawer: the people check comes before any selection", () => {
+  it("approved, nobody confirmed yet: the people are listed, ASM claims nothing, and no slice can be selected", () => {
+    const html = render(approved(), null, null);
+    expect(checkState(html)).toBe("none");
+    expect(part(html, "people-check-list")).toContain("Product Lead / Product Owner");
+    expect(html).toContain("ASM cannot know whether someone relevant for this goal is missing");
+    expect(html).toContain(">I have considered who else is relevant</button>");
+    expect(html).not.toContain('data-testid="people-check-record"');
+    expect(html).not.toContain('data-testid="people-check-stale"');
+    expect(part(html, "selection-needs-people-check")).toContain("once you have confirmed");
+    // Every select button is there and disabled.
+    expect(html.match(/data-testid="select-slice-[\w-]+" disabled=""/g)).toHaveLength(3);
+    expect(html).not.toContain("export-work-order");
+  });
+
+  it("confirmed on this map: the record names who and says it is not a claim of completeness; selecting is possible", () => {
+    const html = render(approved(), null);
+    expect(checkState(html)).toBe("current");
+    expect(part(html, "people-check-record")).toContain("Confirmed by Maya");
+    expect(part(html, "people-check-record")).toContain("This does not say the list is complete");
+    expect(html).not.toContain(">I have considered who else is relevant</button>");
+    expect(html.match(/data-testid="select-slice-[\w-]+" disabled=""/g)).toBeNull();
+  });
+
+  it("confirmed on an earlier map: shown as stale, not as never confirmed, and selecting is blocked again", () => {
+    const first = approved();
+    const again = approveRevision(updateCard(first, "persona-developer", { description: "Changed." }), { approvedBy: "Ada", approvedAt: "2026-10-03T10:00:00.000Z" });
+    const html = render(again, null, peopleCheck(first));
+    expect(checkState(html)).toBe("stale");
+    expect(part(html, "people-check-stale")).toContain("Stale confirmation");
+    expect(part(html, "people-check-stale")).toContain("Maya");
+    expect(part(html, "people-check-stale")).toContain("made on an earlier map");
+    expect(html).toContain(">I have considered who else is relevant</button>");
+    expect(html.match(/data-testid="select-slice-[\w-]+" disabled=""/g)).toHaveLength(3);
+  });
+
+  it("on a proposed map there is no people check to make yet: approval comes first", () => {
+    const html = render(loadFixture(), null, null);
+    expect(html).not.toContain('data-testid="people-check"');
+    expect(html).toContain('data-testid="slice-needs-approval"');
+  });
+});
 
 describe("slice drawer: selection state", () => {
   it("never selected: says so, and shows no stale state", () => {

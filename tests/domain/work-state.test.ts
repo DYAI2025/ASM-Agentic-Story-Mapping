@@ -18,7 +18,7 @@ import {
   type SliceSelection,
 } from "../../src/domain/work-state";
 import { loadProduct, loadWorkState, productFilePath, saveProduct, saveWorkState, workStateFilePath } from "../../src/server/store";
-import { loadFixture, mutableFixture } from "./helpers";
+import { loadFixture, mutableFixture, peopleCheck } from "./helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
 const approved = (p: ProductDocument = loadFixture()) => approveRevision(p, APPROVAL);
@@ -32,7 +32,7 @@ function candidates(p: ProductDocument): SliceCandidate[] {
 }
 
 const choose = (p: ProductDocument, candidateId = "slice-outcome-thread") =>
-  selectSlice(p, { candidateId, selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p) });
+  selectSlice(p, { candidateId, selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p), personaCheck: peopleCheck(p) });
 
 /** An approved map on which the shared-steps candidate references no need. */
 function needless(): ProductDocument {

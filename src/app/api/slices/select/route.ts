@@ -1,6 +1,6 @@
 import { DomainError } from "../../../../domain/operations";
 import { WORK_STATE_VERSION, selectSlice } from "../../../../domain/work-state";
-import { loadProduct, saveWorkState } from "../../../../server/store";
+import { loadProduct, loadWorkState, saveWorkState } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +18,19 @@ export async function POST(request: Request) {
   const stored = await loadProduct();
   if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
 
+  const work = await loadWorkState();
+  if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });
+
   try {
+    // The people check is read from the work state, never from the request: only its own route can make one.
     const selection = selectSlice(stored.product, {
       candidateId: text(body?.candidateId),
       selectedBy: text(body?.selectedBy),
       mapFingerprint: text(body?.mapFingerprint),
       selectedAt: new Date().toISOString(),
+      personaCheck: work.state.personaCheck,
     });
-    const saved = await saveWorkState({ workStateVersion: WORK_STATE_VERSION, selection });
+    const saved = await saveWorkState({ ...work.state, workStateVersion: WORK_STATE_VERSION, selection });
     if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
     return Response.json({ selection: saved.state.selection });
   } catch (error) {

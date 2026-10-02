@@ -116,10 +116,11 @@ own.
 | Name who is involved and what they need | there is at least one persona and no persona is without a need, or the revision is approved without that |
 | Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path, or the revision is approved without one |
 | Check the story and approve it | the revision is `approved`: by the approve action, or because an imported file records an approval |
+| Confirm who else matters | a people check stands for this map (`resolvePersonaCheck`), or a selection made under one does |
 | Compare first slices and pick one | the stored selection resolves against the current map (`resolveSelection`) |
 | Export the work order | `buildExecutionBrief` returns a work order |
 
-- The last three steps read what the real gates read. The first three are the
+- The last four steps read what the real gates read. The first three are the
   guide's own reading order: no gate requires a need or a second step, so once
   a human has approved a map without them the guide follows the approval. Such
   a step is labelled "not complete on the map; approved as it is", and the readable-map
@@ -134,10 +135,10 @@ own.
 - The guide's button opens or focuses the part of the UI where the step is
   done. It never writes: approving, selecting and accepting stay where they
   were, behind the same gates.
-- An earlier selection that no longer matches the map is shown as stale on its
-  step. Nothing is deleted or selected again.
+- An earlier selection or confirmation that no longer matches the map is shown
+  as stale on its step. Nothing is deleted or selected again.
 - Three markers appear when their state is reached: a readable map (step 3),
-  an approved story with the approver's name (step 4), a work order (step 6).
+  an approved story with the approver's name (step 4), a work order (step 7).
 - *Hide guide* / *Show guide* is a per-browser preference in `localStorage`
   (`asm.guide`). It is not product or work state.
 
@@ -189,6 +190,27 @@ personas:
 - Marking someone on a step or with a need as not a persona is refused with
   the reason. The editor cannot take a person off a step yet; that needs an
   edit of the product file.
+
+## Before slicing: who else matters
+
+After approval and before any slice can be selected, a named human confirms
+that they considered who else is relevant for the goal (`confirmPersonaCheck`
+in `src/domain/work-state.ts`, `POST /api/people-check`, the *Who else
+matters?* block in the slice drawer).
+
+- It says what a human did. It does not say the people on the map are
+  complete, and ASM never says so: no agent output, review output or proposal
+  has a field for it.
+- It is work state (`asm.work-state.json`, key `personaCheck`), never part of
+  the product file, bound to product, revision and map fingerprint.
+- After any change of meaning it is stale. A stale confirmation is kept and
+  shown as stale, not as never made; only a human confirming again replaces it.
+- `selectSlice` refuses without a current one, so no work order can exist
+  without it. A selection records under whose confirmation it was made; a
+  selection without that record (a work-state file from before this gate, or a
+  hand-edited one) is stale.
+- Slice candidates can still be looked at on a proposed map or before the
+  confirmation; selecting and exporting cannot happen.
 
 ## From approved narrative to work order
 
@@ -280,8 +302,12 @@ stubbed client only.
   never changes ids, relations or order, and never reopens an approved
   revision.
 - **Approval is explicit.** Only the approve action, with a named human, turns
-  `proposed` into `approved`. Saving never approves. A semantic edit to an
-  approved revision opens the next `proposed` revision.
+  `proposed` into `approved`. Saving never approves, and a save that keeps an
+  approval while changing what was approved is refused
+  (`approved_content_changed`): only where a card sits may change under an
+  approval. A semantic edit to an approved revision opens the next `proposed`
+  revision. Import is different on purpose: an imported file is taken as the
+  record it claims to be, including an approval it records.
 - **An agent proposes, a human decides.** Building a proposal never writes the
   canonical file. Only an accepted patch does, and it always yields the next
   `proposed` revision; approving stays a separate human action.

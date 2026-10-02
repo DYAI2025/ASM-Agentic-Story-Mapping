@@ -38,7 +38,7 @@ test("no product yet: a start screen, not an error, and the guide is at its firs
   await expect(page.getByTestId("start-screen")).toBeVisible();
   await expect(page.getByTestId("load-error")).toHaveCount(0);
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "intent");
-  await expect(page.getByTestId("guide-progress")).toHaveText("0 of 6 steps done");
+  await expect(page.getByTestId("guide-progress")).toHaveText("0 of 7 steps done");
   await expect(page.getByTestId("guide-hide")).toHaveCount(0);
   // The text can be written before the product has a name; a proposal cannot be asked for yet.
   await page.getByTestId("transcript-input").fill("Goal: Something.");

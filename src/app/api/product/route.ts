@@ -1,4 +1,4 @@
-import { exportProductJson, exportProductYaml, parseProductText } from "../../../domain/serialize";
+import { exportProductJson, exportProductYaml, fingerprint, parseProductText } from "../../../domain/serialize";
 import { loadProduct, productFileExists, productFilePath, saveProduct } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,8 @@ export async function GET(request: Request) {
 
 /**
  * Editor save. Never approves: a save that would turn a proposed revision
- * into an approved one is rejected. A slice selection is work state, not part
+ * into an approved one is rejected, and so is one that keeps an approval while
+ * changing what was approved. A slice selection is work state, not part
  * of the product document, so a document carrying one fails validation.
  */
 export async function PUT(request: Request) {
@@ -52,6 +53,21 @@ export async function PUT(request: Request) {
               code: "implicit_approval",
               path: "revision.status",
               message: "saving cannot approve a revision; use the explicit approve action",
+            },
+          ],
+        },
+        { status: 409 },
+      );
+    }
+    // The approval stands for what was approved. Only where a card sits may change under it.
+    if (stored.ok && fingerprint(stored.product) !== fingerprint(incoming.product)) {
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "approved_content_changed",
+              path: "revision.approval",
+              message: "the meaning of an approved revision cannot be changed under its approval; a change opens a new proposed revision",
             },
           ],
         },

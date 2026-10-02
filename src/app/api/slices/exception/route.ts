@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       acceptedBy: text(body?.acceptedBy),
       acceptedAt: new Date().toISOString(),
     });
-    const saved = await saveWorkState({ workStateVersion: WORK_STATE_VERSION, selection });
+    const saved = await saveWorkState({ ...work.state, workStateVersion: WORK_STATE_VERSION, selection });
     if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
     return Response.json({ selection: saved.state.selection });
   } catch (error) {

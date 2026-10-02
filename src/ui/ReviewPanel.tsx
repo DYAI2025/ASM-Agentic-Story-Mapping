@@ -5,6 +5,7 @@ import { fingerprint } from "../domain/fingerprint";
 import { applyMapPatch, describePatch } from "../domain/map-patch";
 import { setWcbcOutcome } from "../domain/operations";
 import {
+  FINDING_LABEL,
   buildReviewPatch,
   type AgentFinding,
   type AgentFindingKind,
@@ -243,7 +244,10 @@ export function ReviewPanel({
         {findings.length === 0 && <li className="muted">The fixed checks found nothing.</li>}
         {findings.map((finding) => (
           <li key={finding.id} className={`finding ${finding.level}`} data-testid={`finding-${finding.id}`} data-code={finding.code}>
-            <span className={`tag ${finding.level}`}>{finding.level}</span> {finding.message}{" "}
+            <span className={`tag ${finding.level}`} data-testid={`finding-label-${finding.id}`}>
+              {FINDING_LABEL[finding.code]}
+            </span>{" "}
+            {finding.message}{" "}
             {finding.relatesTo.map((id) => (
               <code key={id}>{id} </code>
             ))}

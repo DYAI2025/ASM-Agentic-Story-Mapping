@@ -18,6 +18,10 @@ import type { ValidationIssue } from "./validate";
  * picked to build next is delivery state: it lives in its own file and
  * selecting never changes the product document.
  *
+ * Before a slice can be selected, a named human confirms that they considered
+ * who else is relevant for the goal (the people check). That, too, is work
+ * state: it says what a human did, not what the product means.
+ *
  * A selection stores no copy of the slice. It names a candidate and binds
  * itself to the exact map revision, the map fingerprint, the fingerprint of
  * the candidate and the version of the derivation rules. If any of them no
@@ -39,6 +43,21 @@ export const ValueExceptionSchema = z.strictObject({
   acceptedAt: z.iso.datetime(),
 });
 
+/**
+ * A named human says they considered who else is relevant for this goal,
+ * beyond the people on the map. It is a statement about what the human did.
+ * It is not a statement that the people on the map are complete, and nothing
+ * but a human can make it. Bound to the exact map it was made on: after any
+ * change of meaning it is stale.
+ */
+export const PersonaCheckSchema = z.strictObject({
+  productId: IdSchema,
+  revision: z.number().int().min(1),
+  mapFingerprint: Fingerprint,
+  confirmedBy: Text,
+  confirmedAt: z.iso.datetime(),
+});
+
 export const SliceSelectionSchema = z.strictObject({
   candidateId: IdSchema,
   productId: IdSchema,
@@ -48,15 +67,23 @@ export const SliceSelectionSchema = z.strictObject({
   derivationVersion: z.number().int().min(1),
   selectedBy: Text,
   selectedAt: z.iso.datetime(),
+  /**
+   * The people check the slice was selected under. Optional only so that a
+   * work-state file from before this gate still loads; a selection without it
+   * is stale.
+   */
+  personaCheck: z.strictObject({ confirmedBy: Text, confirmedAt: z.iso.datetime() }).optional(),
   valueException: ValueExceptionSchema.optional(),
 });
 
 export const WorkStateSchema = z.strictObject({
   workStateVersion: z.literal(WORK_STATE_VERSION),
+  personaCheck: PersonaCheckSchema.optional(),
   selection: SliceSelectionSchema.optional(),
 });
 
 export type ValueException = z.infer<typeof ValueExceptionSchema>;
+export type PersonaCheck = z.infer<typeof PersonaCheckSchema>;
 export type SliceSelection = z.infer<typeof SliceSelectionSchema>;
 export type WorkState = z.infer<typeof WorkStateSchema>;
 
@@ -79,8 +106,20 @@ export function validateWorkState(input: unknown): WorkStateResult {
 
 export function exportWorkStateJson(state: WorkState): string {
   const s = state.selection;
+  const c = state.personaCheck;
   const ordered: WorkState = {
     workStateVersion: state.workStateVersion,
+    ...(c
+      ? {
+          personaCheck: {
+            productId: c.productId,
+            revision: c.revision,
+            mapFingerprint: c.mapFingerprint,
+            confirmedBy: c.confirmedBy,
+            confirmedAt: c.confirmedAt,
+          },
+        }
+      : {}),
     ...(s
       ? {
           selection: {
@@ -92,6 +131,7 @@ export function exportWorkStateJson(state: WorkState): string {
             derivationVersion: s.derivationVersion,
             selectedBy: s.selectedBy,
             selectedAt: s.selectedAt,
+            ...(s.personaCheck ? { personaCheck: { confirmedBy: s.personaCheck.confirmedBy, confirmedAt: s.personaCheck.confirmedAt } } : {}),
             ...(s.valueException
               ? {
                   valueException: {
@@ -106,6 +146,58 @@ export function exportWorkStateJson(state: WorkState): string {
       : {}),
   };
   return `${JSON.stringify(ordered, null, 2)}\n`;
+}
+
+export type PersonaCheckResolution = { ok: true } | { ok: false; issues: ValidationIssue[] };
+
+/**
+ * Whether the people check stands for the map as it is now. Never made and
+ * made on an earlier map are different answers, and both mean: not now.
+ */
+export function resolvePersonaCheck(p: ProductDocument, check: PersonaCheck | null | undefined): PersonaCheckResolution {
+  if (!check)
+    return {
+      ok: false,
+      issues: [
+        {
+          code: "persona_check_required",
+          path: "personaCheck",
+          message: "nobody has confirmed yet that they considered who else is relevant for this goal",
+        },
+      ],
+    };
+  const stale = (message: string): PersonaCheckResolution => ({ ok: false, issues: [{ code: "stale_persona_check", path: "personaCheck", message }] });
+  if (check.productId !== p.product.id)
+    return stale(`the confirmation by ${check.confirmedBy} was made for another product ("${check.productId}"); it has to be made again for this one`);
+  if (check.revision !== p.revision.number || check.mapFingerprint !== fingerprint(p))
+    return stale(`the confirmation by ${check.confirmedBy} was made on an earlier map; the map has changed since, so it has to be made again`);
+  return { ok: true };
+}
+
+/**
+ * The human gate before slicing. The only way a people check comes to exist.
+ *
+ * - Needs a named human, like approval and selection do.
+ * - Only on an approved revision: what is confirmed is the approved narrative.
+ * - `mapFingerprint` is the fingerprint of the map the human was looking at.
+ *
+ * The product document is read, never changed.
+ */
+export function confirmPersonaCheck(
+  p: ProductDocument,
+  confirmation: { confirmedBy: string; confirmedAt: string; mapFingerprint: string },
+): PersonaCheck {
+  if (confirmation.confirmedBy.trim() === "") throw new DomainError("confirming requires the name of the human who confirms");
+  if (p.revision.status !== "approved")
+    throw new DomainError(`revision ${p.revision.number} is not approved; who else is relevant is confirmed for an approved narrative`);
+  if (confirmation.mapFingerprint !== fingerprint(p)) throw new DomainError("the map has changed since you looked at it; look at the people again");
+  return {
+    productId: p.product.id,
+    revision: p.revision.number,
+    mapFingerprint: fingerprint(p),
+    confirmedBy: confirmation.confirmedBy.trim(),
+    confirmedAt: confirmation.confirmedAt,
+  };
 }
 
 export type SelectionResolution = { ok: true; candidate: SliceCandidate } | { ok: false; issues: ValidationIssue[] };
@@ -126,6 +218,8 @@ export function resolveSelection(p: ProductDocument, selection: SliceSelection):
     return stale("selection.productId", `the slice was selected on product "${selection.productId}", not "${p.product.id}"`);
   if (selection.revision !== p.revision.number || selection.mapFingerprint !== fingerprint(p))
     return stale("selection.mapFingerprint", "the map has changed since the slice was selected");
+  if (!selection.personaCheck)
+    return stale("selection.personaCheck", "the slice was selected without a confirmation that someone considered who else is relevant");
   if (selection.derivationVersion !== SLICE_DERIVATION_VERSION)
     return stale(
       "selection.derivationVersion",
@@ -163,6 +257,8 @@ export function valueStatus(
  * - Only on an approved revision.
  * - `mapFingerprint` is the fingerprint of the map the human was looking at;
  *   if the map has changed since, the selection is refused.
+ * - Only under a current people check (`confirmPersonaCheck`): a human has
+ *   confirmed, for this exact map, that they considered who else is relevant.
  * - The candidate is looked up among the candidates of the map as it is now,
  *   so nothing that is not derived from the map can be selected.
  *
@@ -171,11 +267,16 @@ export function valueStatus(
  */
 export function selectSlice(
   p: ProductDocument,
-  choice: { candidateId: string; selectedBy: string; selectedAt: string; mapFingerprint: string },
+  choice: { candidateId: string; selectedBy: string; selectedAt: string; mapFingerprint: string; personaCheck: PersonaCheck | null | undefined },
 ): SliceSelection {
   if (choice.selectedBy.trim() === "") throw new DomainError("selecting a slice requires the name of the human who selects it");
   if (p.revision.status !== "approved")
     throw new DomainError(`revision ${p.revision.number} is not approved; a slice can only be selected on an approved narrative`);
+  const people = resolvePersonaCheck(p, choice.personaCheck);
+  if (!people.ok || !choice.personaCheck)
+    throw new DomainError(
+      `a slice can only be selected once a human has confirmed that they considered who else is relevant: ${people.ok ? "no confirmation" : people.issues[0].message}`,
+    );
   if (choice.mapFingerprint !== fingerprint(p))
     throw new DomainError("the map has changed since these candidates were shown; review the candidates again");
 
@@ -195,6 +296,7 @@ export function selectSlice(
     derivationVersion: SLICE_DERIVATION_VERSION,
     selectedBy: choice.selectedBy.trim(),
     selectedAt: choice.selectedAt,
+    personaCheck: { confirmedBy: choice.personaCheck.confirmedBy, confirmedAt: choice.personaCheck.confirmedAt },
   };
 }
 

@@ -12,6 +12,7 @@ test.describe.configure({ mode: "serial" });
 test.beforeEach(resetProductFile);
 
 const storedText = () => fs.readFile(E2E_PRODUCT_FILE, "utf8");
+const workState = async () => JSON.parse(await fs.readFile(E2E_WORK_STATE_FILE, "utf8"));
 const workStateExists = () => fs.access(E2E_WORK_STATE_FILE).then(() => true, () => false);
 /**
  * Presses the guide's button and returns every request it caused that is not a GET.
@@ -39,7 +40,7 @@ test("the guide follows the real state from approval to work order", async ({ pa
   await page.goto("/");
   const guide = page.getByTestId("guide");
   await expect(guide).toHaveAttribute("data-current-step", "approve");
-  await expect(page.getByTestId("guide-progress")).toHaveText("3 of 6 steps done");
+  await expect(page.getByTestId("guide-progress")).toHaveText("3 of 7 steps done");
   await expect(guide.locator("[aria-current='step']")).toHaveCount(1);
   await expect(page.getByTestId("impact-map")).toBeVisible();
   await expect(page.getByTestId("impact-sensemaking")).toHaveCount(0);
@@ -58,17 +59,34 @@ test("the guide follows the real state from approval to work order", async ({ pa
   await page.keyboard.type(HUMAN);
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("revision-status")).toHaveText("approved");
-  await expect(guide).toHaveAttribute("data-current-step", "select");
+  // Approved: the next step is not slicing but the question who else matters.
+  await expect(guide).toHaveAttribute("data-current-step", "people_check");
+  await expect(page.getByTestId("guide-now")).toContainText("ASM cannot know that");
   await expect(page.getByTestId("impact-sensemaking")).toBeVisible();
   await expect(page.getByTestId("impact-delivery")).toHaveCount(0);
+  await page.screenshot({ path: shot("02a-people-check-is-current"), fullPage: true });
+
+  // The call to action opens the drawer on the people check. It confirms nothing.
+  expect(await pressGuideButton(page)).toEqual([]);
+  const drawer = page.getByTestId("slice-drawer");
+  await expect(drawer).toBeFocused();
+  await expect(page.getByTestId("people-check")).toHaveAttribute("data-state", "none");
+  expect(await workStateExists()).toBe(false);
+  await expect(guide).toHaveAttribute("data-current-step", "people_check");
+
+  // The human confirms, with a name; only then does the guide move on to the slices.
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("people-check-record")).toContainText(HUMAN);
+  await page.getByTestId("slices-close").click();
+  await expect(guide).toHaveAttribute("data-current-step", "select");
   await page.screenshot({ path: shot("02-select-is-current"), fullPage: true });
 
   // The call to action opens the slice comparison and moves focus into it. It selects nothing.
   expect(await pressGuideButton(page)).toEqual([]);
-  const drawer = page.getByTestId("slice-drawer");
   await expect(drawer).toBeFocused();
   await expect(drawer).toContainText("No slice is selected");
-  expect(await workStateExists()).toBe(false);
+  expect((await workState()).selection).toBeUndefined();
   await expect(guide).toHaveAttribute("data-current-step", "select");
 
   await page.getByLabel("Selector name").fill(HUMAN);
@@ -76,7 +94,7 @@ test("the guide follows the real state from approval to work order", async ({ pa
   await expect(page.getByTestId("selection-record")).toBeVisible();
   await page.getByTestId("slices-close").click();
   await expect(guide).toHaveAttribute("data-current-step", "complete");
-  await expect(page.getByTestId("guide-progress")).toHaveText("6 of 6 steps done");
+  await expect(page.getByTestId("guide-progress")).toHaveText("7 of 7 steps done");
   await expect(page.getByTestId("impact-delivery")).toBeVisible();
   expect((await page.request.get("/api/brief?format=json")).status()).toBe(200);
   await page.screenshot({ path: shot("03-all-steps-done"), fullPage: true });
@@ -89,7 +107,9 @@ test("the guide follows the real state from approval to work order", async ({ pa
   await expect(page.getByTestId("revision-status")).toHaveText("proposed");
   await expect(guide).toHaveAttribute("data-current-step", "approve");
   await expect(page.getByTestId("guide-stale-select")).toBeVisible();
+  await expect(page.getByTestId("guide-stale-people_check")).toBeVisible();
   await expect(page.getByTestId("guide-stale-note")).toContainText("nothing was deleted or chosen for you");
+  await expect(page.getByTestId("guide-stale-note-people_check")).toContainText("nothing was confirmed for you");
   await expect(page.getByTestId("impact-delivery")).toHaveCount(0);
   expect(await workStateExists()).toBe(true);
   expect((await page.request.get("/api/brief?format=json")).status()).toBe(409);
@@ -116,11 +136,11 @@ test("the guide can be hidden and shown; the expert UI works without it", async 
   await page.getByTestId("slices-close").click();
   await page.screenshot({ path: shot("05-guide-hidden-expert-ui"), fullPage: true });
 
-  // Shown again, it reads the same state: approval is done, selecting is current.
+  // Shown again, it reads the same state: approval is done, the people check is current.
   const beforeShow = await storedText();
   await page.getByTestId("guide-show").focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "select");
+  await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "people_check");
   await expect(page.getByTestId("guide-cta")).toBeFocused();
   await page.getByTestId("guide-hide").click();
   await expect(page.getByTestId("guide")).toHaveCount(0);
@@ -145,7 +165,7 @@ test("a map with nobody's needs on it: the guide points at the input, not at app
   await expect(page.getByTestId("load-error")).toHaveCount(0);
   const guide = page.getByTestId("guide");
   await expect(guide).toHaveAttribute("data-current-step", "people");
-  await expect(page.getByTestId("guide-progress")).toHaveText("1 of 6 steps done");
+  await expect(page.getByTestId("guide-progress")).toHaveText("1 of 7 steps done");
   await expect(page.getByTestId("impact-map")).toHaveCount(0);
   expect(await pressGuideButton(page)).toEqual([]);
   await expect(page.getByTestId("transcript-input")).toBeFocused();

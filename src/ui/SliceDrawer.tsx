@@ -5,9 +5,17 @@ import { fingerprint } from "../domain/fingerprint";
 import type { ProductDocument } from "../domain/schema";
 import { proposeSlices, type SliceCandidate } from "../domain/slices";
 import type { ValidationIssue } from "../domain/validate";
-import { resolveSelection, valueStatus, type SliceSelection, type ValueStatus } from "../domain/work-state";
+import {
+  resolvePersonaCheck,
+  resolveSelection,
+  valueStatus,
+  type PersonaCheck,
+  type SliceSelection,
+  type ValueStatus,
+} from "../domain/work-state";
+import { ROLE_LABEL, isPersona, rolesOf } from "../domain/actors";
 
-type Answer = { selection?: SliceSelection; issues?: ValidationIssue[] };
+type Answer = { selection?: SliceSelection; personaCheck?: PersonaCheck; issues?: ValidationIssue[] };
 
 const VALUE_LABEL: Record<ValueStatus, string> = {
   VALUE_RESOLVED: "references a need on the map",
@@ -21,6 +29,7 @@ const STALE_REASON: Record<string, string> = {
   "selection.mapFingerprint": "Product Map changed",
   "selection.derivationVersion": "Derivation changed",
   "selection.candidateFingerprint": "Candidate changed",
+  "selection.personaCheck": "Selected before the people check",
 };
 
 const DETAILS: { key: keyof SliceCandidate & ("whyNow" | "assumptions" | "unresolvedQuestions" | "acceptanceCriteria" | "outOfScope"); label: string }[] = [
@@ -45,15 +54,22 @@ const DETAILS: { key: keyof SliceCandidate & ("whyNow" | "assumptions" | "unreso
 export function SliceDrawer({
   product,
   selection: stored,
+  personaCheck,
+  onPersonaCheck,
   onClose,
   onSelection,
 }: {
   product: ProductDocument;
   /** The selection as it is in the work state, stale or not; null when no slice was ever selected. */
   selection: SliceSelection | null;
+  /** The people check as it is in the work state, stale or not; null when nobody ever confirmed. */
+  personaCheck: PersonaCheck | null;
+  onPersonaCheck: (check: PersonaCheck) => void;
   onClose: () => void;
   onSelection: (selection: SliceSelection) => void;
 }) {
+  const [confirmer, setConfirmer] = useState("");
+  const people = useMemo(() => resolvePersonaCheck(product, personaCheck), [product, personaCheck]);
   const [selector, setSelector] = useState("");
   const [rationale, setRationale] = useState("");
   const [accepter, setAccepter] = useState("");
@@ -85,6 +101,11 @@ export function SliceDrawer({
       answer = { issues: [{ code: "request_failed", path: url, message: error instanceof Error ? error.message : String(error) }] };
     }
     setBusy(false);
+    if (answer.personaCheck) {
+      setIssues([]);
+      onPersonaCheck(answer.personaCheck);
+      return;
+    }
     if (!answer.selection) {
       setIssues(answer.issues ?? [{ code: "unknown_error", path: url, message: "request failed" }]);
       return;
@@ -92,6 +113,8 @@ export function SliceDrawer({
     setIssues([]);
     onSelection(answer.selection);
   }
+
+  const confirmPeople = () => post("/api/people-check", { confirmedBy: confirmer, mapFingerprint });
 
   const select = (candidateId: string) => post("/api/slices/select", { candidateId, selectedBy: selector, mapFingerprint });
   const acceptException = () => post("/api/slices/exception", { rationale, acceptedBy: accepter });
@@ -146,6 +169,70 @@ export function SliceDrawer({
 
       {proposal.ok && (
         <>
+          {approved && (
+            <div
+              className="gate"
+              data-testid="people-check"
+              data-state={people.ok ? "current" : personaCheck ? "stale" : "none"}
+            >
+              <h3>Who else matters?</h3>
+              <p className="muted">These are the people on the map. ASM cannot know whether someone relevant for this goal is missing; only you can.</p>
+              <ul className="people-list" data-testid="people-check-list">
+                {product.personas.map((actor) => (
+                  <li key={actor.id}>
+                    <strong>{actor.name}</strong>{" "}
+                    <span className="muted">
+                      {rolesOf(actor).length > 0 ? rolesOf(actor).map((role) => ROLE_LABEL[role]).join(", ") : "role not stated"} ·{" "}
+                      {isPersona(actor) ? "persona" : "involved, not a persona"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {people.ok && personaCheck ? (
+                <p data-testid="people-check-record">
+                  <strong>Confirmed by {personaCheck.confirmedBy}</strong>{" "}
+                  <span className="muted">
+                    · {personaCheck.confirmedAt} · revision {personaCheck.revision}. They considered who else is relevant. This does not
+                    say the list is complete.
+                  </span>
+                </p>
+              ) : (
+                <>
+                  {personaCheck && (
+                    <p className="stale" role="status" data-testid="people-check-stale">
+                      <strong>⚠ Stale confirmation.</strong> {personaCheck.confirmedBy} confirmed this on{" "}
+                      {personaCheck.confirmedAt} for revision {personaCheck.revision}
+                      {personaCheck.productId !== product.product.id ? " of another product" : ", made on an earlier map"}. The map has
+                      changed since, so it has to be made again. It is kept and shown as stale; nothing was confirmed for you.
+                    </p>
+                  )}
+                  <p>
+                    If someone is missing, close this and add them to the map first; that opens a new version, which needs approval again.
+                    If not, say so with your name. No slice can be selected before that.
+                  </p>
+                  <form
+                    className="row"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void confirmPeople();
+                    }}
+                  >
+                    <input
+                      id="people-check-name"
+                      aria-label="Confirmed by"
+                      placeholder="Your name"
+                      value={confirmer}
+                      onChange={(event) => setConfirmer(event.target.value)}
+                    />
+                    <button type="submit" data-testid="people-check-confirm" disabled={busy}>
+                      I have considered who else is relevant
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="gate" data-testid="slice-gate" data-selection-state={stale ? "stale" : selection ? "current" : "none"}>
             {stale && (
               <div className="stale" role="status" data-testid="selection-stale">
@@ -251,6 +338,10 @@ export function SliceDrawer({
                   </div>
                 )}
               </>
+            ) : approved && !people.ok ? (
+              <p className="muted" data-testid="selection-needs-people-check">
+                A slice can be selected once you have confirmed, above, that you considered who else is relevant.
+              </p>
             ) : approved ? (
               <label className="row">
                 <span>Selecting as</span>
@@ -310,7 +401,7 @@ export function SliceDrawer({
                     <button
                       type="button"
                       data-testid={`select-${c.id}`}
-                      disabled={busy || !approved || selection?.candidateId === c.id}
+                      disabled={busy || !approved || !people.ok || selection?.candidateId === c.id}
                       onClick={() => void select(c.id)}
                     >
                       {selection?.candidateId === c.id ? "Selected" : "Select slice"}

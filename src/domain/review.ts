@@ -41,6 +41,7 @@ export type FindingCode =
   | "orphan_need"
   | "orphan_persona"
   | "persona_without_need"
+  | "unresolved_decision"
   | "wcbc_without_outcome"
   | "need_persona_not_on_step";
 
@@ -138,8 +139,27 @@ export function reviewNarrative(p: ProductDocument): Finding[] {
         `Worst case “${branch.title}” does not say where it leads: no recovery step, termination or escalation is referenced.`,
       );
 
+  // An open decision is not a gap in the narrative; it is something a human still has to decide, shown where gaps are.
+  for (const decision of p.decisions)
+    if (decision.status === "open")
+      add("unresolved_decision", "note", [decision.id, ...decision.relatesTo], `Decision “${decision.title}” is still open.`);
+
   return findings;
 }
+
+/** What kind of thing a finding is, in the words of the review a human does. */
+export const FINDING_LABEL: Record<FindingCode, string> = {
+  step_without_persona: "Missing actor",
+  behavior_without_need: "Unjustified behaviour",
+  main_path_missing: "Missing main path",
+  main_path_single_step: "Missing main path",
+  orphan_need: "Missing behaviour for a need",
+  orphan_persona: "Missing behaviour for a persona",
+  wcbc_without_outcome: "Missing outcome",
+  need_persona_not_on_step: "Need without its persona",
+  persona_without_need: "Missing need",
+  unresolved_decision: "Unresolved decision",
+};
 
 // ---------------------------------------------------------------- agent output
 

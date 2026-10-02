@@ -119,6 +119,22 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
     { candidateId: "slice-made-up", selectedBy: HUMAN, mapFingerprint: slices.mapFingerprint },
   ])
     expect((await page.request.post("/api/slices/select", { data: body })).status()).toBe(409);
+  // Approved, right name, right map, a real candidate: still refused, because nobody has confirmed who else is relevant.
+  const unconfirmed = await page.request.post("/api/slices/select", {
+    data: { candidateId: "slice-outcome-thread", selectedBy: HUMAN, mapFingerprint: slices.mapFingerprint },
+  });
+  expect(unconfirmed.status()).toBe(409);
+  expect((await unconfirmed.json()).issues[0].message).toContain("considered who else is relevant");
+  // A confirmation smuggled in with the request is not one: only its own route, with a named human, makes it.
+  const smuggled = await page.request.post("/api/slices/select", {
+    data: {
+      candidateId: "slice-outcome-thread",
+      selectedBy: HUMAN,
+      mapFingerprint: slices.mapFingerprint,
+      personaCheck: { productId: "asm", revision: 3, mapFingerprint: slices.mapFingerprint, confirmedBy: "An agent", confirmedAt: "2026-10-02T09:00:00.000Z" },
+    },
+  });
+  expect(smuggled.status()).toBe(409);
   expect(await storedText()).toBe(beforeSelect);
   expect(await workStateExists()).toBe(false);
 
@@ -128,6 +144,22 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   const drawer = page.getByTestId("slice-drawer");
   await expect(page.getByTestId("slice-comparison").locator("thead th")).toHaveCount(4);
   await expect(page.getByTestId("candidate-slice-outcome-thread")).toContainText("Why now");
+  // Before any selection: the people check. Until a named human confirms, every select button is disabled.
+  await expect(page.getByTestId("people-check")).toHaveAttribute("data-state", "none");
+  await expect(page.getByTestId("select-slice-outcome-thread")).toBeDisabled();
+  await expect(page.getByTestId("selection-needs-people-check")).toBeVisible();
+  await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("slice-issues")).toContainText("name of the human");
+  expect(await workStateExists()).toBe(false);
+  await drawer.screenshot({ path: shot("06a-people-check-before-slicing") });
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("people-check-record")).toContainText(HUMAN);
+  await expect(page.getByTestId("people-check")).toHaveAttribute("data-state", "current");
+  expect((await workState()).personaCheck).toMatchObject({ confirmedBy: HUMAN, mapFingerprint: slices.mapFingerprint });
+  expect((await workState()).selection).toBeUndefined();
+  expect(await storedText()).toBe(beforeSelect);
+
   await expect(drawer).toContainText("No slice is selected");
   await expect(page.getByTestId("export-work-order-json")).toHaveCount(0);
   await drawer.screenshot({ path: shot("06-slice-drawer-comparison") });
@@ -245,6 +277,14 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
   expect((await workState()).selection).toEqual(selection);
   expect((await page.request.get("/api/brief?format=md")).status()).toBe(409);
 
+  // The earlier people check is stale too, and shown as stale; selecting again needs a new one first.
+  await expect(page.getByTestId("people-check")).toHaveAttribute("data-state", "stale");
+  await expect(page.getByTestId("people-check-stale")).toContainText("made on an earlier map");
+  await expect(page.getByTestId("select-slice-outcome-thread")).toBeDisabled();
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("people-check-record")).toContainText(HUMAN);
+
   // Only a human selecting again replaces it; then the drawer is back to an ordinary selection.
   await page.getByTestId("reselect-candidates").click();
   await expect(page.getByLabel("Selector name")).toBeFocused();
@@ -288,6 +328,9 @@ test("a slice without a need: shown and selectable, exported only after an expli
   await expect(valueRow.locator("td")).toHaveText(["VALUE_RESOLVED", "VALUE_RESOLVED", "VALUE_UNRESOLVED"]);
 
   // Selecting it is allowed and does not make it exportable.
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("people-check-record")).toContainText(HUMAN);
   await page.getByLabel("Selector name").fill(HUMAN);
   await page.getByTestId("select-slice-shared-steps").click();
   await expect(page.getByTestId("selection-record")).toContainText("Steps shared between personas");

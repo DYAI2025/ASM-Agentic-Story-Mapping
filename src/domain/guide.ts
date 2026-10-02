@@ -5,15 +5,15 @@ import { reviewNarrative } from "./review";
 import type { ProductDocument } from "./schema";
 import { proposeSlices } from "./slices";
 import { validateProduct } from "./validate";
-import { resolveSelection, type SliceSelection } from "./work-state";
+import { resolvePersonaCheck, resolveSelection, type PersonaCheck, type SliceSelection } from "./work-state";
 
 /**
  * Guided flow: a projection of the product document and the work state.
  *
- * The guide owns no state and gates nothing. The three gated steps are read
+ * The guide owns no state and gates nothing. The four gated steps are read
  * from what the real gates read: the revision status (set by approval, or
- * carried by an imported file that records one), `resolveSelection` and
- * `buildExecutionBrief`.
+ * carried by an imported file that records one), `resolvePersonaCheck`,
+ * `resolveSelection` and `buildExecutionBrief`.
  *
  * The first three steps say what a map needs before it is worth reviewing: a
  * valid document, personas who each have a need, a path of more than one step. No gate
@@ -34,14 +34,14 @@ import { resolveSelection, type SliceSelection } from "./work-state";
  * or focus; the human acts there, through the existing gates.
  */
 
-export type GuideStepId = "intent" | "people" | "main_path" | "approve" | "select" | "work_order";
+export type GuideStepId = "intent" | "people" | "main_path" | "approve" | "people_check" | "select" | "work_order";
 
 export type GuideAction =
   /** The workshop input: where text becomes a proposal for the map. */
   | { kind: "focus_workshop"; label: string }
   /** The approval form, with the review findings open beside it. */
   | { kind: "focus_approval"; label: string }
-  /** The slice drawer: candidates, selection, value exception and export. */
+  /** The slice drawer: the people check, candidates, selection, value exception and export. */
   | { kind: "open_slices"; label: string };
 
 export interface GuideStep {
@@ -90,11 +90,14 @@ export function deriveStartGuide(): GuideState {
 /** What `resolveSelection` appends to every stale reason. The guide says when to select again itself. */
 const RESELECT_HINT = /; select a slice again$/;
 
-export function deriveGuide(product: ProductDocument, selection: SliceSelection | null): GuideState {
+export function deriveGuide(product: ProductDocument, selection: SliceSelection | null, personaCheck: PersonaCheck | null = null): GuideState {
   const findings = reviewNarrative(product);
   const gaps = findings.filter((f) => f.level === "gap").length;
   const resolution = selection ? resolveSelection(product, selection) : null;
   const staleSelection = resolution && !resolution.ok ? resolution.issues[0].message.replace(RESELECT_HINT, "") : undefined;
+  // A selection that still resolves was made under a people check on this same map.
+  const people = resolvePersonaCheck(product, personaCheck);
+  const stalePeopleCheck = !people.ok && people.issues[0].code === "stale_persona_check" ? people.issues[0].message : undefined;
   const approval = product.revision.status === "approved" ? product.revision.approval : undefined;
   const approved = product.revision.status === "approved";
 
@@ -114,6 +117,7 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
     people: approved || present.people,
     main_path: approved || present.main_path,
     approve: approved,
+    people_check: people.ok || resolution?.ok === true,
     select: resolution?.ok === true,
     work_order: brief.ok,
   };
@@ -149,6 +153,16 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
       // Known before approval, so it is said before approval: approving this map would lead to a step that cannot be done.
       ...(noCandidates && !approved ? { warning: `As the map is now, no first slice can be derived from it after approval: ${noCandidates}` } : {}),
       action: { kind: "focus_approval", label: "Review and approve" },
+    },
+    {
+      id: "people_check",
+      title: "Confirm who else matters",
+      purpose:
+        "Before anything is cut into slices: is someone relevant for this goal still missing from the map? ASM cannot know that. You say that you have thought about it; if someone is missing, add them first.",
+      ...(stalePeopleCheck ? { stale: stalePeopleCheck } : {}),
+      // Known before confirming, so it is said before confirming: the step after this one cannot be done on this map.
+      ...(noCandidates ? { warning: `As the map is now, no first slice can be derived from it: ${noCandidates}` } : {}),
+      action: { kind: "open_slices", label: "Look at the people and confirm" },
     },
     {
       id: "select",

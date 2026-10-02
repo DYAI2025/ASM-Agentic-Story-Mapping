@@ -8,16 +8,22 @@ import { parseProductText } from "../../src/domain/serialize";
 import type { ProductDocument } from "../../src/domain/schema";
 import { selectSlice, type SliceSelection } from "../../src/domain/work-state";
 import { GuidePanel } from "../../src/ui/GuidePanel";
-import { fixtureText, loadFixture } from "../domain/helpers";
+import { fixtureText, loadFixture, peopleCheck } from "../domain/helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
 const approved = (p: ProductDocument = loadFixture()) => approveRevision(p, APPROVAL);
 const choose = (p: ProductDocument) =>
-  selectSlice(p, { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p) });
+  selectSlice(p, { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z", mapFingerprint: fingerprint(p), personaCheck: peopleCheck(p) });
 
-const render = (product: ProductDocument, selection: SliceSelection | null, proposalOpen = false) =>
+/** With the people check a human would have made on an approved map, unless `confirmed` is false. */
+const render = (product: ProductDocument, selection: SliceSelection | null, proposalOpen = false, confirmed = true) =>
   renderToStaticMarkup(
-    createElement(GuidePanel, { guide: deriveGuide(product, selection), proposalOpen, onAction: () => {}, onHide: () => {} }),
+    createElement(GuidePanel, {
+      guide: deriveGuide(product, selection, confirmed && product.revision.status === "approved" ? peopleCheck(product) : null),
+      proposalOpen,
+      onAction: () => {},
+      onHide: () => {},
+    }),
   );
 
 /** The text of the element with this test id, or null when it is not rendered. */
@@ -49,7 +55,7 @@ describe("guide panel", () => {
     expect(html).toContain('data-current-step="approve"');
     expect(currentSteps(html)).toBe(1);
     expect(html).toMatch(/data-testid="guide-step-approve" data-status="current" aria-current="step"/);
-    expect(part(html, "guide-progress")).toBe("3 of 6 steps done");
+    expect(part(html, "guide-progress")).toBe("3 of 7 steps done");
     expect(part(html, "guide-current-title")).toBe("Check the story and approve it");
     expect(cta(html)).toBe("Review and approve");
     expect(html.match(/data-testid="guide-cta"/g)).toHaveLength(1);
@@ -58,7 +64,7 @@ describe("guide panel", () => {
   it("step titles avoid the internal terms canon, WCBC, fingerprint, revision, derivation and persona", () => {
     const html = render(loadFixture(), null);
     const titles = [...html.matchAll(/data-testid="guide-step-[\w]+"[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
-    expect(titles).toHaveLength(6);
+    expect(titles).toHaveLength(7);
     for (const title of titles) expect(title).not.toMatch(/canon|WCBC|fingerprint|revision|derivation|persona/i);
   });
 
@@ -130,6 +136,15 @@ describe("guide panel", () => {
     expect(html).not.toContain("guide-as-is-");
     expect(html).not.toContain('data-testid="guide-blocked"');
     expect(cta(html)).toBe("Compare slices");
+  });
+
+  it("approved, not yet confirmed who else matters: that step is current, and it says ASM cannot know", () => {
+    const html = render(approved(), null, false, false);
+    expect(html).toContain('data-current-step="people_check"');
+    expect(part(html, "guide-current-title")).toBe("Confirm who else matters");
+    expect(part(html, "guide-now")).toContain("ASM cannot know that");
+    expect(cta(html)).toBe("Look at the people and confirm");
+    expect(html).not.toContain('data-testid="impact-delivery"');
   });
 
   it("an open proposal comes first: the call to action points at it", () => {

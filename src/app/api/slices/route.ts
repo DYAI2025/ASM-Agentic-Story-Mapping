@@ -1,6 +1,6 @@
 import { fingerprint } from "../../../domain/fingerprint";
 import { SLICE_DERIVATION_VERSION, proposeSlices } from "../../../domain/slices";
-import { resolveSelection, valueStatus } from "../../../domain/work-state";
+import { resolvePersonaCheck, resolveSelection, valueStatus } from "../../../domain/work-state";
 import { loadProduct, loadWorkState } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,8 @@ export async function GET() {
     derivationVersion: SLICE_DERIVATION_VERSION,
     selection,
     selectionStale: selection !== null && !current,
+    personaCheck: work.state.personaCheck ?? null,
+    personaCheckCurrent: resolvePersonaCheck(stored.product, work.state.personaCheck).ok,
   };
   const proposal = proposeSlices(stored.product);
   if (!proposal.ok) return Response.json({ ...base, issues: proposal.issues }, { status: 422 });

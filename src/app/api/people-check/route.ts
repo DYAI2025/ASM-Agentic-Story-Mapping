@@ -1,0 +1,36 @@
+import { DomainError } from "../../../domain/operations";
+import { WORK_STATE_VERSION, confirmPersonaCheck } from "../../../domain/work-state";
+import { loadProduct, loadWorkState, saveWorkState } from "../../../server/store";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * The human gate before slicing: a named human confirms, for the approved map
+ * they were looking at, that they considered who else is relevant. Nothing
+ * else writes this, and it is written to the work state, never to the product
+ * file. An earlier selection is left as it is; it is stale or not on its own
+ * terms.
+ */
+export async function POST(request: Request) {
+  const body = (await request.json().catch(() => null)) as { confirmedBy?: unknown; mapFingerprint?: unknown } | null;
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+
+  const stored = await loadProduct();
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  const work = await loadWorkState();
+  if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });
+
+  try {
+    const personaCheck = confirmPersonaCheck(stored.product, {
+      confirmedBy: text(body?.confirmedBy),
+      mapFingerprint: text(body?.mapFingerprint),
+      confirmedAt: new Date().toISOString(),
+    });
+    const saved = await saveWorkState({ ...work.state, workStateVersion: WORK_STATE_VERSION, personaCheck });
+    if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
+    return Response.json({ personaCheck: saved.state.personaCheck });
+  } catch (error) {
+    if (!(error instanceof DomainError)) throw error;
+    return Response.json({ issues: [{ code: "people_check_rejected", path: "personaCheck", message: error.message }] }, { status: 409 });
+  }
+}

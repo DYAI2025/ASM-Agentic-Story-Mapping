@@ -18,7 +18,7 @@ import { buildStoryMap } from "../domain/projection";
 import { reviewNarrative } from "../domain/review";
 import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
-import { resolveSelection, type SliceSelection } from "../domain/work-state";
+import { resolveSelection, type PersonaCheck, type SliceSelection } from "../domain/work-state";
 import { ActorSemantics } from "./ActorSemantics";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
@@ -159,13 +159,17 @@ function EditableCard({
 export function StoryMapEditor({
   initial,
   initialSelection,
+  initialPersonaCheck,
 }: {
   initial: ProductDocument;
   initialSelection: SliceSelection | null;
+  initialPersonaCheck: PersonaCheck | null;
 }) {
   const [product, setProduct] = useState(initial);
   // Work state, not part of the product: which slice a human selected.
   const [selection, setSelection] = useState(initialSelection);
+  // Work state as well: a human's confirmation that they considered who else is relevant.
+  const [personaCheck, setPersonaCheck] = useState(initialPersonaCheck);
   const [personaFilter, setPersonaFilter] = useState<string | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [approver, setApprover] = useState("");
@@ -200,7 +204,7 @@ export function StoryMapEditor({
   const approved = product.revision.status === "approved";
 
   // The guide is read from the product and the work state. Whether it is shown is view state only.
-  const guide = useMemo(() => deriveGuide(product, selection), [product, selection]);
+  const guide = useMemo(() => deriveGuide(product, selection, personaCheck), [product, selection, personaCheck]);
   const [guideOn, setGuideOn] = useState(true);
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
   // The server cannot know the preference; layout.tsx hides the panel by CSS until this has run.
@@ -430,6 +434,11 @@ export function StoryMapEditor({
         <SliceDrawer
           product={product}
           selection={selection}
+          personaCheck={personaCheck}
+          onPersonaCheck={(next) => {
+            setPersonaCheck(next);
+            setIssues([]);
+          }}
           onClose={() => setSlicesOpen(false)}
           onSelection={(next) => {
             setSelection(next);

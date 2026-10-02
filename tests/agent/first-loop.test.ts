@@ -14,7 +14,7 @@ import type { ProductDocument } from "../../src/domain/schema";
 import { proposeSlices } from "../../src/domain/slices";
 import { WORK_STATE_VERSION, selectSlice } from "../../src/domain/work-state";
 import { loadProduct, loadWorkState, saveProduct, saveWorkState, workStateFilePath } from "../../src/server/store";
-import { fixtureText } from "../domain/helpers";
+import { fixtureText, peopleCheck } from "../domain/helpers";
 
 const TRANSCRIPT = readFileSync(path.join(__dirname, "..", "fixtures", "workshop-transcript.txt"), "utf8");
 
@@ -89,7 +89,7 @@ describe("transcript to work order", () => {
     expect(proposed.candidates.length).toBeLessThanOrEqual(3);
     expect((await loadWorkState())).toEqual({ ok: true, state: { workStateVersion: WORK_STATE_VERSION } });
     const choice = { candidateId: "slice-outcome-thread", selectedBy: "Maya", selectedAt: "2026-10-02T09:00:00.000Z" };
-    await expect(async () => selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()) })).rejects.toThrow(/not approved/);
+    await expect(async () => selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()), personaCheck: null })).rejects.toThrow(/not approved/);
     expect(buildExecutionBrief(await canon(), undefined)).toMatchObject({ ok: false, issues: [{ code: "selection_required" }] });
 
     await save(approveRevision(await canon(), { approvedBy: "Maya", approvedAt: "2026-10-02T08:30:00.000Z" }));
@@ -97,9 +97,13 @@ describe("transcript to work order", () => {
 
     // 6. A human selects a slice. The selection goes to the work state; the product file keeps its bytes.
     const beforeSelect = await text();
+    // Approved, but nobody has confirmed who else is relevant: no slice yet.
+    await expect(async () => selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()), personaCheck: null })).rejects.toThrow(/considered who else is relevant/);
+    const personaCheck = peopleCheck(await canon());
     const written = await saveWorkState({
       workStateVersion: WORK_STATE_VERSION,
-      selection: selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()) }),
+      personaCheck,
+      selection: selectSlice(await canon(), { ...choice, mapFingerprint: fingerprint(await canon()), personaCheck }),
     });
     if (!written.ok) throw new Error(JSON.stringify(written.issues));
     expect(await text()).toBe(beforeSelect);

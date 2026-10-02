@@ -25,7 +25,7 @@ export function GuidePanel({
 }) {
   const current = guide.steps.find((s) => s.status === "current");
   const reached = guide.impacts.filter((i) => i.reached);
-  const stale = guide.steps.find((s) => s.stale && s.status !== "done");
+  const stale = guide.steps.filter((s) => s.stale && s.status !== "done");
 
   return (
     <section className="panel guide" aria-label="Guide" data-testid="guide" data-current-step={guide.currentStepId ?? "complete"}>
@@ -61,7 +61,7 @@ export function GuidePanel({
               </span>
               {step.stale && step.status !== "done" && (
                 <span className="badge stale" data-testid={`guide-stale-${step.id}`}>
-                  earlier choice is stale
+                  {step.id === "people_check" ? "earlier confirmation is stale" : "earlier choice is stale"}
                 </span>
               )}
             </span>
@@ -94,11 +94,18 @@ export function GuidePanel({
         )}
         {/* Always mounted, so that a stale note appearing later is announced. */}
         <div role="status" data-testid="guide-live">
-          {stale && (
-            <p className="guide-stale-note" data-testid="guide-stale-note">
-              <strong>A stored slice selection no longer fits this map:</strong> {stale.stale}. It is kept and shown as stale; nothing
-              was deleted or chosen for you. You pick again at the step “{stale.title}”.
-            </p>
+          {stale.map((step) =>
+            step.id === "people_check" ? (
+              <p key={step.id} className="guide-stale-note" data-testid="guide-stale-note-people_check">
+                <strong>An earlier confirmation no longer fits this map:</strong> {step.stale}. It is kept and shown as stale; nothing
+                was confirmed for you. You confirm again at the step “{step.title}”.
+              </p>
+            ) : (
+              <p key={step.id} className="guide-stale-note" data-testid="guide-stale-note">
+                <strong>A stored slice selection no longer fits this map:</strong> {step.stale}. It is kept and shown as stale; nothing
+                was deleted or chosen for you. You pick again at the step “{step.title}”.
+              </p>
+            ),
           )}
         </div>
         {proposalOpen ? (

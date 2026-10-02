@@ -3,7 +3,7 @@ import { reviewWithRules } from "../../src/agent/fake-review";
 import { fingerprint } from "../../src/domain/fingerprint";
 import { applyMapPatch } from "../../src/domain/map-patch";
 import { approveRevision, setWcbcOutcome, updateCard } from "../../src/domain/operations";
-import { buildReviewPatch, resolveReview, reviewNarrative, type AgentReviewOutput } from "../../src/domain/review";
+import { buildReviewPatch, resolveReview, reviewNarrative, type AgentReviewOutput, FINDING_LABEL } from "../../src/domain/review";
 import { exportProductYaml, parseProductText } from "../../src/domain/serialize";
 import { validateProduct } from "../../src/domain/validate";
 import { loadFixture, mutableFixture } from "./helpers";
@@ -252,5 +252,36 @@ describe("an agent finding cannot change the map without a human", () => {
 
   it("accepting nothing is refused", () => {
     expect(codes(applyMapPatch(loadFixture(), buildReviewPatch(resolved(), [])))).toEqual(["empty_patch"]);
+  });
+});
+
+describe("what a human has to look at before approving", () => {
+  it("every open decision is in the findings, as a note that names it; a decided one is not", () => {
+    const p = loadFixture();
+    const open = p.decisions.filter((d) => d.status === "open");
+    const found = reviewNarrative(p).filter((f) => f.code === "unresolved_decision");
+    expect(open.length).toBeGreaterThan(0);
+    expect(found.map((f) => f.id)).toEqual(open.map((d) => `unresolved_decision:${d.id}`));
+    for (const finding of found) {
+      const decision = open.find((d) => d.id === finding.relatesTo[0])!;
+      expect(finding.level).toBe("note");
+      expect(finding.message).toContain(decision.title);
+      expect(finding.relatesTo).toEqual([decision.id, ...decision.relatesTo]);
+    }
+  });
+
+  it("an open decision is not a gap: it does not count against a slice", () => {
+    const gaps = reviewNarrative(loadFixture()).filter((f) => f.level === "gap");
+    expect(gaps.some((f) => f.code === "unresolved_decision")).toBe(false);
+  });
+
+  it("every kind of finding has a plain label, and the kinds a review asks for are among them", () => {
+    const labels = Object.values(FINDING_LABEL);
+    expect(labels.every((label) => label.trim() !== "")).toBe(true);
+    for (const wanted of ["Missing actor", "Missing need", "Unjustified behaviour", "Unresolved decision"]) expect(labels).toContain(wanted);
+    expect(FINDING_LABEL.step_without_persona).toBe("Missing actor");
+    expect(FINDING_LABEL.persona_without_need).toBe("Missing need");
+    expect(FINDING_LABEL.behavior_without_need).toBe("Unjustified behaviour");
+    expect(FINDING_LABEL.unresolved_decision).toBe("Unresolved decision");
   });
 });

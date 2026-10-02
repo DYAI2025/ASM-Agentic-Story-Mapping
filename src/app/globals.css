@@ -804,3 +804,10 @@ html[data-guide="off"] .guide {
   padding: 0 4px;
   color: var(--muted);
 }
+
+/* People check in the slice drawer */
+
+.people-list {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
