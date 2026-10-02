@@ -124,6 +124,12 @@ code {
   border: 1px solid var(--worst);
 }
 
+.badge.neutral {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
 .badge.approved,
 .badge.decided {
   color: var(--approved);
@@ -775,4 +781,26 @@ html[data-guide="off"] .guide {
 #proposal-review:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Actors: roles and persona perspective */
+
+.actor {
+  margin: 6px 0;
+}
+
+.actor .chips {
+  margin-bottom: 4px;
+}
+
+.actor-form fieldset {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.actor-form legend {
+  padding: 0 4px;
+  color: var(--muted);
 }

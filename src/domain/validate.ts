@@ -48,9 +48,24 @@ function checkSemantics(p: ProductDocument): ValidationIssue[] {
   const needIds = new Set(p.needs.map((e) => e.id));
   const stepIds = new Set(p.narrative.map((e) => e.id));
 
+  p.personas.forEach((actor, i) => {
+    const roles = actor.roles ?? [];
+    roles.forEach((role, j) => {
+      if (roles.indexOf(role) !== j) add("duplicate_role", `personas[${i}].roles[${j}]`, `role "${role}" is named twice`);
+    });
+  });
+
+  const notPersona = new Set(p.personas.filter((e) => e.persona === false).map((e) => e.id));
   p.needs.forEach((need, i) => {
     if (!personaIds.has(need.personaId))
       add("unknown_persona", `needs[${i}].personaId`, `persona "${need.personaId}" does not exist`);
+    // A need on the map is a modelled need: whoever owns one is a persona by that fact.
+    if (notPersona.has(need.personaId))
+      add(
+        "need_of_non_persona",
+        `needs[${i}].personaId`,
+        `"${need.personaId}" is marked as not a persona but owns a need; an actor whose need is on the map is a persona`,
+      );
   });
 
   p.narrative.forEach((step, i) => {

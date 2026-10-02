@@ -27,7 +27,14 @@ export function canonicalize(p: ProductDocument): ProductDocument {
         : {}),
     },
     goal: { id: p.goal.id, statement: p.goal.statement },
-    personas: p.personas.map((e) => ({ id: e.id, name: e.name, description: e.description })),
+    // The optional fields appear only when the map states them, so a map that never did keeps its fingerprint.
+    personas: p.personas.map((e) => ({
+      id: e.id,
+      name: e.name,
+      description: e.description,
+      ...(e.roles ? { roles: [...e.roles] } : {}),
+      ...(e.persona !== undefined ? { persona: e.persona } : {}),
+    })),
     needs: p.needs.map((e) => ({ id: e.id, personaId: e.personaId, statement: e.statement })),
     narrative: [...p.narrative]
       .sort((a, b) => a.sequence - b.sequence)

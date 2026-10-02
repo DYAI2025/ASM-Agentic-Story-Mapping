@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPersona } from "./actors";
 import { fingerprint } from "./fingerprint";
 import { makeId } from "./ids";
 import {
@@ -39,6 +40,7 @@ export type FindingCode =
   | "main_path_single_step"
   | "orphan_need"
   | "orphan_persona"
+  | "persona_without_need"
   | "wcbc_without_outcome"
   | "need_persona_not_on_step";
 
@@ -111,10 +113,20 @@ export function reviewNarrative(p: ProductDocument): Finding[] {
     if (!servedNeeds.has(need.id))
       add("orphan_need", "gap", [need.id], `No step serves the need “${need.statement}”.`);
 
+  // Both checks are about personas only. An actor who is not a persona has no modelled need or behaviour to miss.
   const actingPersonas = new Set(steps.flatMap((s) => s.personaIds));
-  for (const persona of p.personas)
+  const needOwners = new Set(p.needs.map((n) => n.personaId));
+  for (const persona of p.personas.filter(isPersona)) {
     if (!actingPersonas.has(persona.id))
       add("orphan_persona", "gap", [persona.id], `Persona “${persona.name}” takes part in no step.`);
+    if (!needOwners.has(persona.id))
+      add(
+        "persona_without_need",
+        "gap",
+        [persona.id],
+        `Persona “${persona.name}” has no need on the map. This is unresolved: a human has to say what they need, or that they are not a persona.`,
+      );
+  }
 
   for (const branch of p.wcbc)
     if (branch.kind === "worst_case" && !branch.outcome)

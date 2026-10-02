@@ -1,4 +1,4 @@
-import { MAX_LAYOUT_ROW, type ProductDocument, type WcbcOutcome } from "./schema";
+import { MAX_LAYOUT_ROW, ValueChainRoleSchema, type ProductDocument, type ValueChainRole, type WcbcOutcome } from "./schema";
 import { validateProduct } from "./validate";
 
 export class DomainError extends Error {}
@@ -105,6 +105,39 @@ export function setWcbcOutcome(p: ProductDocument, wcbcId: string, outcome: Wcbc
       const { outcome: _outcome, ...rest } = b;
       return outcome ? { ...rest, outcome } : rest;
     }),
+  });
+}
+
+/**
+ * Says how an actor relates to the value chain. A semantic change. An empty
+ * list removes the statement: the actor then has no role stated.
+ */
+export function setActorRoles(p: ProductDocument, actorId: string, roles: readonly ValueChainRole[]): ProductDocument {
+  if (!p.personas.some((e) => e.id === actorId)) throw new DomainError(`no actor with id "${actorId}"`);
+  for (const role of roles)
+    if (!ValueChainRoleSchema.safeParse(role).success) throw new DomainError(`"${role}" is not a value-chain role`);
+  return assertValid({
+    ...p,
+    revision: reopenIfApproved(p),
+    personas: p.personas.map((e) => {
+      if (e.id !== actorId) return e;
+      const { roles: _roles, ...rest } = e;
+      return roles.length > 0 ? { ...rest, roles: [...roles] } : rest;
+    }),
+  });
+}
+
+/**
+ * Says whether an actor's needs and behaviour are modelled in the narrative.
+ * A human's answer, recorded as given; no role implies it. Refused for an
+ * actor who owns a need: remove or reassign the need first.
+ */
+export function setPersonaPerspective(p: ProductDocument, actorId: string, persona: boolean): ProductDocument {
+  if (!p.personas.some((e) => e.id === actorId)) throw new DomainError(`no actor with id "${actorId}"`);
+  return assertValid({
+    ...p,
+    revision: reopenIfApproved(p),
+    personas: p.personas.map((e) => (e.id === actorId ? { ...e, persona } : e)),
   });
 }
 

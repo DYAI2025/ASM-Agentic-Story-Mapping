@@ -1,3 +1,4 @@
+import { isPersona } from "./actors";
 import { hashText } from "./fingerprint";
 import { reviewNarrative } from "./review";
 import type { NarrativeStep, ProductDocument } from "./schema";
@@ -18,8 +19,9 @@ import { validateProduct, type ValidationIssue } from "./validate";
 /**
  * Version of the rules below that turn a map into candidates. Raise it with
  * every change to those rules: a selection made under another version is stale.
+ * 2: the primary persona is chosen among personas only.
  */
-export const SLICE_DERIVATION_VERSION = 1 as const;
+export const SLICE_DERIVATION_VERSION = 2 as const;
 
 export interface AcceptanceCriterion {
   text: string;
@@ -71,10 +73,14 @@ const ordered = (p: ProductDocument) => [...p.narrative].sort((a, b) => a.sequen
 const quote = (text: string) => `“${text}”`;
 const list = (ids: string[]) => ids.join(", ");
 
-/** The persona who takes part in the most steps; the first one listed wins a tie. */
+/**
+ * The persona who takes part in the most steps; the first one listed wins a
+ * tie. Actors who are not personas are not considered, however many steps they
+ * are on (version 2 of the rules).
+ */
 function primaryPersona(p: ProductDocument) {
   let best: { id: string; name: string; steps: number } | null = null;
-  for (const persona of p.personas) {
+  for (const persona of p.personas.filter(isPersona)) {
     const steps = p.narrative.filter((s) => s.personaIds.includes(persona.id)).length;
     if (steps > 0 && (!best || steps > best.steps)) best = { id: persona.id, name: persona.name, steps };
   }

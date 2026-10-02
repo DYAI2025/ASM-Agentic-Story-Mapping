@@ -1,13 +1,16 @@
 "use client";
 
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isPersona } from "../domain/actors";
 import { deriveGuide, type GuideAction } from "../domain/guide";
 import type { Touch } from "../domain/map-patch";
 import {
   DomainError,
   EDITABLE_FIELDS,
   moveStep,
+  setActorRoles,
   setCardRow,
+  setPersonaPerspective,
   updateCard,
   type CardKind,
 } from "../domain/operations";
@@ -16,6 +19,7 @@ import { reviewNarrative } from "../domain/review";
 import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
 import { resolveSelection, type SliceSelection } from "../domain/work-state";
+import { ActorSemantics } from "./ActorSemantics";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SliceDrawer } from "./SliceDrawer";
@@ -471,7 +475,9 @@ export function StoryMapEditor({
       </section>
 
       <section aria-label="Personas">
-        <h2>Personas</h2>
+        <h2>
+          People <span className="muted">who is involved, in what role, and whose needs the narrative models (personas)</span>
+        </h2>
         <div className="grid">
           {shown.personas.map((persona) => (
             <EditableCard
@@ -484,6 +490,20 @@ export function StoryMapEditor({
             >
               <h3>{persona.name}</h3>
               <p>{persona.description}</p>
+              <ActorSemantics
+                key={`${(persona.roles ?? []).join(",")}|${persona.persona}`}
+                actor={persona}
+                needCount={shown.needs.filter((need) => need.personaId === persona.id).length}
+                readOnly={reviewing}
+                onSave={(roles, asPersona) =>
+                  // One save: both statements change together or not at all. The persona answer is
+                  // written only when the human changed it, so saving roles adds nothing else to the map.
+                  apply((current) => {
+                    const next = setActorRoles(current, persona.id, roles);
+                    return isPersona(persona) === asPersona ? next : setPersonaPerspective(next, persona.id, asPersona);
+                  })
+                }
+              />
               <ul className="needs">
                 {shown.needs
                   .filter((need) => need.personaId === persona.id)

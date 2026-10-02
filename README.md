@@ -77,7 +77,7 @@ own.
 | Step | Done when |
 |---|---|
 | Say what you want to build | the product document validates (`validateProduct`). Always the case for a map that loads; it becomes a real step once a product can be started from nothing. |
-| Name who is involved and what they need | at least one persona and one need exist, or the revision is approved without them |
+| Name who is involved and what they need | there is at least one persona and no persona is without a need, or the revision is approved without that |
 | Lay out the ideal path | `reviewNarrative` reports no missing or single-step main path, or the revision is approved without one |
 | Check the story and approve it | the revision is `approved`: by the approve action, or because an imported file records an approval |
 | Compare first slices and pick one | the stored selection resolves against the current map (`resolveSelection`) |
@@ -104,6 +104,45 @@ own.
   an approved story with the approver's name (step 4), a work order (step 6).
 - *Hide guide* / *Show guide* is a per-browser preference in `localStorage`
   (`asm.guide`). It is not product or work state.
+
+## People: roles and persona
+
+Every entry in `personas` is an actor. The map can say two independent things
+about one (`src/domain/actors.ts`):
+
+- `roles`: how the actor relates to the value chain. One or more of
+  `customer`, `user`, `beneficiary`, `operator`, `seller`, `stakeholder`,
+  `delivery_participant`, `system`.
+- `persona`: whether the actor's needs and behaviour are modelled in the
+  narrative. `false` means involved, but not modelled.
+
+```yaml
+personas:
+  - id: persona-developer
+    name: Developer
+    description: Turns the approved narrative into a first delivery slice.
+    roles: [user, delivery_participant]   # optional
+    persona: true                          # optional
+```
+
+- A role never decides `persona`. A delivery participant is a persona only if
+  the map says so; the same developer can be a persona of one product and not
+  of another.
+- Both fields are optional and nothing adds them on its own. A map written
+  before they existed is read as before: no `roles` means no role is stated
+  (shown as "Role not stated", never guessed), no `persona` means the entry is
+  a persona, as it always was. Such a map keeps its fingerprint. A file that
+  uses the fields cannot be read by an older version of this code; remove the
+  two fields to go back.
+- A persona without a need is a review finding (`persona_without_need`) and is
+  shown on the card as unresolved. ASM does not create the need.
+- An actor marked `persona: false` cannot own a need: validation refuses the
+  file (`need_of_non_persona`).
+- Slice candidates choose the "primary persona" among personas only
+  (`SLICE_DERIVATION_VERSION` 2). The work order still lists everyone on the
+  included steps under personas; that contract is unchanged here.
+- In the UI, *Roles and persona…* on a card edits both. Saving is a change of
+  meaning: it reopens an approved revision like any other edit.
 
 ## From approved narrative to work order
 

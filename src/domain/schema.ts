@@ -40,10 +40,30 @@ export const GoalSchema = z.strictObject({
   statement: Text,
 });
 
+/** How an actor relates to the value chain. See `actors.ts`. */
+export const ValueChainRoleSchema = z.enum([
+  "customer",
+  "user",
+  "beneficiary",
+  "operator",
+  "seller",
+  "stakeholder",
+  "delivery_participant",
+  "system",
+]);
+
+/**
+ * An actor on the map. Both extra fields are optional so that a map written
+ * before they existed is read unchanged: no `roles` means no role is stated,
+ * no `persona` means the entry is a persona, as it always was.
+ */
 export const PersonaSchema = z.strictObject({
   id: IdSchema,
   name: Text,
   description: z.string(),
+  roles: z.array(ValueChainRoleSchema).min(1).optional(),
+  /** False: involved, but needs and behaviour are not modelled in the narrative. */
+  persona: z.boolean().optional(),
 });
 
 export const NeedSchema = z.strictObject({
@@ -135,6 +155,7 @@ export const ProductDocumentSchema = z.strictObject({
 });
 
 export type RevisionStatus = z.infer<typeof RevisionStatusSchema>;
+export type ValueChainRole = z.infer<typeof ValueChainRoleSchema>;
 export type Persona = z.infer<typeof PersonaSchema>;
 export type Need = z.infer<typeof NeedSchema>;
 export type NarrativeStep = z.infer<typeof NarrativeStepSchema>;

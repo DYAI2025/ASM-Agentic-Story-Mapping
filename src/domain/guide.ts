@@ -1,3 +1,4 @@
+import { isPersona } from "./actors";
 import { buildExecutionBrief } from "./brief";
 import { reviewNarrative } from "./review";
 import type { ProductDocument } from "./schema";
@@ -14,7 +15,7 @@ import { resolveSelection, type SliceSelection } from "./work-state";
  * `buildExecutionBrief`.
  *
  * The first three steps say what a map needs before it is worth reviewing: a
- * valid document, someone with a need, a path of more than one step. No gate
+ * valid document, personas who each have a need, a path of more than one step. No gate
  * requires them. They are the guide's own reading order, not a rule of the
  * product: a human who approves a map without them has decided so, and from
  * then on the guide follows the approval. Such a step is marked as approved
@@ -89,7 +90,8 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
   /** What the first three steps ask for, as it is on the map. */
   const present = {
     intent: validateProduct(product).ok,
-    people: product.personas.length > 0 && product.needs.length > 0,
+    // Someone whose needs are modelled, and no persona left without a need.
+    people: product.personas.some(isPersona) && !findings.some((f) => f.code === "persona_without_need"),
     main_path: !findings.some((f) => f.code === "main_path_missing" || f.code === "main_path_single_step"),
   };
   const brief = buildExecutionBrief(product, selection);
