@@ -472,6 +472,8 @@ test("the work order names who considered the people and states roles and person
   const form = page.getByTestId("actor-form-persona-developer");
   await form.getByLabel("Delivery participant").check();
   await form.getByRole("button", { name: "Save roles" }).click();
+  // The save has landed when the card shows the role; approving before that would race the two writes.
+  await expect(page.getByTestId("roles-persona-developer")).toHaveText("Delivery participant");
   await page.getByLabel("Approver name").fill(HUMAN);
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("revision-status")).toHaveText("approved");
