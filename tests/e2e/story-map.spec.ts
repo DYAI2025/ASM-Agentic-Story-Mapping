@@ -3,9 +3,10 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { E2E_PRODUCT_FILE } from "../../playwright.config";
+import { SCREENSHOTS } from "./artifacts";
 import { resetProductFile } from "./global-setup";
 
-const SCREENSHOT = path.join(__dirname, "..", "..", "docs", "screenshots", "asm-story-map.png");
+const SCREENSHOT = path.join(SCREENSHOTS, "asm-story-map.png");
 
 test.describe.configure({ mode: "serial" });
 test.beforeAll(resetProductFile);

@@ -6,8 +6,7 @@ import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { resetProductFile } from "./global-setup";
 
 const TRANSCRIPT_FILE = path.join(__dirname, "..", "fixtures", "workshop-transcript.txt");
-const SCREENSHOTS = path.join(__dirname, "..", "..", "docs", "screenshots");
-const EXAMPLES = path.join(__dirname, "..", "..", "docs", "examples");
+import { EXAMPLES, SCREENSHOTS } from "./artifacts";
 const HUMAN = "Maya (E2E)";
 
 test.describe.configure({ mode: "serial" });
@@ -337,6 +336,7 @@ test("a slice without a need: shown and selectable, exported only after an expli
   expect(markdown).toContain("- Value: VALUE_EXCEPTION_ACCEPTED. Exception accepted by Maya (E2E)");
   expect(markdown).toContain("briefVersion 2.");
   expect(markdown).toContain(RATIONALE);
+  await fs.mkdir(EXAMPLES, { recursive: true });
   await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.json"), await json.text());
   await fs.writeFile(path.join(EXAMPLES, "asm.work-order.exception.md"), markdown);
 

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, validate, unit, build, e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run validate
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      # Builds the app itself (see playwright.config.ts) and runs the browser tests against it.
+      - run: npm run test:e2e
+      - name: The run left the checkout unchanged
+        run: git diff --exit-code && test -z "$(git status --porcelain)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-artifacts-${{ github.sha }}
+          path: |
+            .e2e-artifacts/
+            test-results/
+          if-no-files-found: warn
+          include-hidden-files: true

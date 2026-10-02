@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "validate": "tsx scripts/validate-product.ts",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "docs:refresh": "ASM_E2E_ARTIFACTS=docs playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

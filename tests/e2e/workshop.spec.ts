@@ -6,7 +6,7 @@ import { E2E_PRODUCT_FILE } from "../../playwright.config";
 import { FIXTURE_FILE, resetProductFile } from "./global-setup";
 
 const TRANSCRIPT_FILE = path.join(__dirname, "..", "fixtures", "workshop-transcript.txt");
-const SCREENSHOTS = path.join(__dirname, "..", "..", "docs", "screenshots");
+import { SCREENSHOTS } from "./artifacts";
 const NEW_STEP = "card-step-walk-through-the-slice-with-the-team";
 
 test.describe.configure({ mode: "serial" });

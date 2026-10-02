@@ -3,19 +3,17 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
+import { SCREENSHOTS } from "./artifacts";
 import { resetProductFile } from "./global-setup";
 
-/** Not tracked: screenshots of the guide belong to the run that made them. */
-const SHOTS = path.join(__dirname, "..", "..", "test-results", "guide");
 const HUMAN = "Maya (E2E)";
 
 test.describe.configure({ mode: "serial" });
 test.beforeEach(resetProductFile);
-test.beforeAll(() => fs.mkdir(SHOTS, { recursive: true }));
 
 const storedText = () => fs.readFile(E2E_PRODUCT_FILE, "utf8");
 const workStateExists = () => fs.access(E2E_WORK_STATE_FILE).then(() => true, () => false);
-const shot = (name: string) => path.join(SHOTS, `guide-${name}.png`);
+const shot = (name: string) => path.join(SCREENSHOTS, `guide-${name}.png`);
 
 // The guide's own buttons are activated with the keyboard (focus, then Enter). The existing forms are used as they are.
 test("the guide follows the real state from approval to work order", async ({ page }) => {

@@ -249,7 +249,17 @@ npm run test:e2e           # builds, starts the app on :3311, runs browser tests
 ```
 
 The browser tests work on a scratch copy in `.e2e-tmp/`, not on the canonical
-file.
+file. Their screenshots and exported work orders go to `.e2e-artifacts/`, which
+git ignores, so a test run leaves the checkout unchanged. The copies under
+`docs/` are refreshed on purpose only:
+
+```bash
+npm run docs:refresh       # same browser tests, writing into docs/
+```
+
+`.github/workflows/ci.yml` runs the five checks above on every pull request,
+fails if the run changed a tracked file, and uploads `.e2e-artifacts/` named
+by commit.
 
 ## Not built
 
