@@ -1,5 +1,5 @@
 import { bootstrapProduct } from "../../../../domain/bootstrap";
-import { createProduct } from "../../../../server/store";
+import { createProduct, productFilePath } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,16 @@ export async function POST(request: Request) {
     return Response.json({ issues: result.issues }, { status: stale ? 409 : 422 });
   }
 
-  const created = await createProduct(result.product);
+  let created: Awaited<ReturnType<typeof createProduct>>;
+  try {
+    created = await createProduct(result.product);
+  } catch (error) {
+    // The file system refused (no permission, no space): say so; no product file exists.
+    return Response.json(
+      { issues: [{ code: "file_unwritable", path: productFilePath(), message: error instanceof Error ? error.message : String(error) }] },
+      { status: 500 },
+    );
+  }
   if (!created.ok) {
     const exists = created.issues.some((issue) => issue.code === "product_exists");
     return Response.json({ issues: created.issues }, { status: exists ? 409 : 422 });

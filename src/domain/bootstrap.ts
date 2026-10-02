@@ -21,8 +21,8 @@ export type BootstrapResult = { ok: true; product: ProductDocument } | { ok: fal
 /** The draft a first proposal is built against. Deterministic: the same name always gives the same draft. */
 export function blankProduct(nameInput: string): BlankResult {
   const name = nameInput.trim();
-  // One line of ordinary text: no line breaks or other control characters.
-  if (name === "" || name.length > MAX_NAME_LENGTH || /[\u0000-\u001f\u007f]/.test(name))
+  // One line of ordinary text: no line or paragraph breaks, no control or invisible format characters.
+  if (name === "" || name.length > MAX_NAME_LENGTH || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name))
     return {
       ok: false,
       issues: [{ code: "invalid_name", path: "name", message: `give the product a name: one line of at most ${MAX_NAME_LENGTH} characters` }],

@@ -161,6 +161,7 @@ test("accept creates the product as proposed revision 1 and opens the map on it"
   expect(doc.product).toEqual({ id: "parcel-locker-pickup", name: NAME, summary: doc.goal.statement });
   expect(doc.narrative.map((s: { sequence: number }) => s.sequence)).toEqual([1, 2, 3]);
   expect(doc.narrative.every((s: { needIds: string[] }) => s.needIds.length === 1)).toBe(true);
+  expect(doc.decisions).toHaveLength(1);
   expect(doc.decisions.every((d: { status: string }) => d.status === "open")).toBe(true);
   expect(doc.provenance.length).toBeGreaterThan(0);
   expect(JSON.stringify(doc)).not.toContain("Ignore all previous instructions");

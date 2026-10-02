@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { exportProductYaml, parseProductText } from "../domain/serialize";
@@ -48,9 +49,10 @@ export async function createProduct(input: unknown): Promise<ValidationResult> {
   if (!result.ok) return result;
   const file = productFilePath();
   await fs.mkdir(/* turbopackIgnore: true */ path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now()}.new`;
-  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), { encoding: "utf8", flag: "wx" });
+  // A name of its own for every call: two creations at the same moment must not meet on the temporary file.
+  const tmp = `${file}.${randomUUID()}.new`;
   try {
+    await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), { encoding: "utf8", flag: "wx" });
     await fs.link(/* turbopackIgnore: true */ tmp, file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;

@@ -70,7 +70,7 @@ describe("the blank draft a first product starts from", () => {
   });
 
   it("needs a name", () => {
-    for (const name of ["", "   ", "x".repeat(121), "Line one\nLine two", "a\u0000b", "tab\there"])
+    for (const name of ["", "   ", "x".repeat(121), "Line one\nLine two", "a\u0000b", "tab\there", "a\u0085b", "a\u2028b", "a\u202eb", "a\u007fb"])
       expect(codes(blankProduct(name)), JSON.stringify(name)).toEqual(["invalid_name"]);
     expect(blankProduct("x".repeat(120)).ok).toBe(true);
   });
@@ -195,6 +195,7 @@ describe("text that tries to give orders", () => {
     const result = bootstrapProduct(NAME, await proposal(NAME, HOSTILE));
     if (!result.ok) throw new Error(JSON.stringify(result.issues));
     expect(result.product.revision).toEqual({ number: 1, status: "proposed" });
+    expect(result.product.decisions.length).toBeGreaterThan(0);
     expect(result.product.decisions.every((d) => d.status === "open")).toBe(true);
   });
 
@@ -267,11 +268,15 @@ describe("the store creates a first product and never replaces one", () => {
   it("of two creations at the same moment exactly one wins, and the file is whole", async () => {
     const result = bootstrapProduct(NAME, await proposal());
     if (!result.ok) throw new Error(JSON.stringify(result.issues));
-    const outcomes = await Promise.all(Array.from({ length: 8 }, () => createProduct(result.product)));
-    expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
-    expect(outcomes.filter((o) => !o.ok).map(codes)).toEqual(Array.from({ length: 7 }, () => ["product_exists"]));
-    expect((await loadProduct()).ok).toBe(true);
-    expect(await fs.readdir(path.dirname(file))).toEqual(["first.product.yaml"]);
+    // Many rounds: the calls have to land in the same millisecond for the old defect (a shared temporary name) to show.
+    for (let round = 0; round < 25; round++) {
+      await fs.rm(file, { force: true });
+      const outcomes = await Promise.all(Array.from({ length: 8 }, () => createProduct(result.product)));
+      expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
+      expect(outcomes.filter((o) => !o.ok).map(codes)).toEqual(Array.from({ length: 7 }, () => ["product_exists"]));
+      expect((await loadProduct()).ok).toBe(true);
+      expect(await fs.readdir(path.dirname(file))).toEqual(["first.product.yaml"]);
+    }
   });
 });
 
