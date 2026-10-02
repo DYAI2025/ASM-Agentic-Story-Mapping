@@ -30,9 +30,12 @@ describe("fewer than two candidates, with the reason", () => {
     expect(proposal.candidates).toHaveLength(1);
     expect(proposal.candidates[0].id).toBe("slice-primary-persona");
     expect(proposal.fewerBecause).toBeDefined();
-    expect(proposal.fewerBecause).toContain("Thread to");
-    expect(proposal.fewerBecause).toContain("Steps shared between personas");
+    expect(proposal.fewerBecause).toContain("the reading “Thread to “Export execution-ready work”” has no steps");
+    expect(proposal.fewerBecause).toContain("the reading “Steps shared between personas” has no steps");
     expect(proposal.fewerBecause).toContain("no need");
+    // Readable: no doubled full stops, no quote nested in a quote of the same title.
+    expect(proposal.fewerBecause).not.toMatch(/\.\./);
+    expect(proposal.fewerBecause).not.toContain("“““");
   });
 
   it("two or three candidates come without such a note, and are what they were", () => {
@@ -58,7 +61,7 @@ describe("fewer than two candidates, with the reason", () => {
     expect(codes(proposeSlices(nobody))).toEqual(["too_few_candidates"]);
   });
 
-  it("the one candidate can be selected by a human like any other, and nothing selects it for them", () => {
+  it("the one candidate can be selected by a human like any other; no other id is a candidate", () => {
     const p = approved(oneReading());
     const selection = choose(p, "slice-primary-persona");
     expect(resolveSelection(p, selection).ok).toBe(true);
@@ -113,8 +116,8 @@ describe("work order contract version 3", () => {
     const lead = brief.personas.find((e) => e.id === "persona-product-lead")!;
     expect(lead.roles).toEqual([]);
     expect(lead.persona).toBe(true);
-    expect(exportBriefMarkdown(brief)).toContain("- **Developer** (`persona-developer`, User, Delivery participant) —");
-    expect(exportBriefMarkdown(brief)).toContain("- **Product Lead / Product Owner** (`persona-product-lead`, role not stated) —");
+    expect(exportBriefMarkdown(brief)).toContain("- **Developer** (`persona-developer`, User, Delivery participant, persona) —");
+    expect(exportBriefMarkdown(brief)).toContain("- **Product Lead / Product Owner** (`persona-product-lead`, role not stated, persona) —");
   });
 
   it("still binds revision, map fingerprint, candidate fingerprint and derivation version", () => {

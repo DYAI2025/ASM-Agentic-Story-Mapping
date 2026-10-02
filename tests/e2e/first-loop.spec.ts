@@ -447,8 +447,19 @@ test("a map with one reading offers one candidate with the reason, and only a hu
   expect(slices.selection).toBeNull();
   expect(await workStateExists()).toBe(false);
 
+  // Looking at the one candidate, over and over, with the people check in place, selects nothing.
   await page.getByLabel("Confirmed by").fill(HUMAN);
   await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("people-check-record")).toBeVisible();
+  for (let i = 0; i < 3; i++) expect((await page.request.get("/api/slices")).status()).toBe(200);
+  await page.reload();
+  await page.getByTestId("slices-open").click();
+  await expect(page.locator("[data-testid^='candidate-slice-']")).toHaveCount(1);
+  expect((await workState()).selection).toBeUndefined();
+  const unselected = await page.request.get("/api/brief?format=json");
+  expect(unselected.status()).toBe(409);
+  expect((await unselected.json()).issues[0].code).toBe("selection_required");
+
   await page.getByLabel("Selector name").fill(HUMAN);
   await page.getByTestId("select-slice-primary-persona").click();
   await expect(page.getByTestId("selection-record")).toContainText(HUMAN);
@@ -479,5 +490,5 @@ test("the work order names who considered the people and states roles and person
   expect(developer).toMatchObject({ roles: ["delivery_participant"], persona: true });
   const markdown = await (await page.request.get("/api/brief?format=md")).text();
   expect(markdown).toContain("- Who else matters: considered by Zoe (E2E) at ");
-  expect(markdown).toContain("(`persona-developer`, Delivery participant)");
+  expect(markdown).toContain("(`persona-developer`, Delivery participant, persona)");
 });

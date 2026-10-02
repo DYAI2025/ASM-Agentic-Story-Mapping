@@ -77,7 +77,8 @@ export type SliceProposal =
   | { ok: false; issues: ValidationIssue[] };
 
 const ordered = (p: ProductDocument) => [...p.narrative].sort((a, b) => a.sequence - b.sequence);
-const quote = (text: string) => `“${text}”`;
+/** Quotes a text; a text that already carries quotes is not quoted twice. */
+const quote = (text: string) => (/^“.*”$/.test(text) ? text : `“${text}”`);
 const list = (ids: string[]) => ids.join(", ");
 
 /**
@@ -249,16 +250,17 @@ export function proposeSlices(p: ProductDocument): SliceProposal {
   const seen = new Map<string, string>();
   const candidates: SliceCandidate[] = [];
   const dropped: string[] = [];
+  const trimDot = (text: string) => text.replace(/\.$/, "");
   if (!primary) dropped.push("no persona takes part in any step, so there is no primary-persona reading");
   for (const reading of readings) {
     const key = reading.steps.map((s) => s.id).join(" ");
     if (reading.steps.length === 0) {
-      dropped.push(`“${reading.title}” has no steps: ${reading.basis}`);
+      dropped.push(`the reading ${quote(reading.title)} has no steps (${trimDot(reading.basis)})`);
       continue;
     }
     const same = seen.get(key);
     if (same) {
-      dropped.push(`“${reading.title}” would be the same steps as “${same}”`);
+      dropped.push(`the reading ${quote(reading.title)} would be the same steps as ${quote(same)}`);
       continue;
     }
     seen.set(key, reading.title);

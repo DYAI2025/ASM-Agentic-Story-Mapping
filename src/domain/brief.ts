@@ -268,7 +268,7 @@ export function exportBriefMarkdown(brief: ExecutionBrief): string {
     "## PERSONAS / NEEDS",
     "",
     ...brief.personas.flatMap((persona) => [
-      `- **${persona.name}** (\`${persona.id}\`, ${persona.roles.length > 0 ? persona.roles.map((role) => ROLE_LABEL[role]).join(", ") : "role not stated"}) — ${persona.description}`,
+      `- **${persona.name}** (\`${persona.id}\`, ${persona.roles.length > 0 ? persona.roles.map((role) => ROLE_LABEL[role]).join(", ") : "role not stated"}, ${persona.persona ? "persona" : "involved, not a persona"}) — ${persona.description}`,
       ...brief.needs.filter((n) => n.personaId === persona.id).map((n) => `  - \`${n.id}\` ${n.statement}`),
     ]),
     "",
