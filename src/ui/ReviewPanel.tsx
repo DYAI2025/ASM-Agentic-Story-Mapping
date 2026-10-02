@@ -106,7 +106,8 @@ export function ReviewPanel({
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<NarrativeReview | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
-  const [status, setStatus] = useState("");
+  // The status line describes one revision; it is shown only while the map is still that revision.
+  const [status, setStatus] = useState<{ text: string; revision: ProductDocument["revision"] } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
@@ -132,7 +133,7 @@ export function ReviewPanel({
 
   async function run() {
     setBusy(true);
-    setStatus("");
+    setStatus(null);
     const answer = (await post<ReviewAnswer>("/api/review")) as ReviewAnswer;
     setBusy(false);
     if (!answer.review) {
@@ -155,9 +156,10 @@ export function ReviewPanel({
       setIssues(answer.issues ?? [{ code: "unknown_error", path: "/api/proposal/accept", message: "request failed" }]);
       return;
     }
-    setStatus(
-      `${count} finding${count === 1 ? "" : "s"} accepted. The map is now proposed revision ${answer.product.revision.number} and needs approval again.`,
-    );
+    setStatus({
+      text: `${count} finding${count === 1 ? "" : "s"} accepted. The map is now proposed revision ${answer.product.revision.number} and needs approval again.`,
+      revision: answer.product.revision,
+    });
     onAccepted(answer.product);
   }
 
@@ -276,9 +278,9 @@ export function ReviewPanel({
             {review.provider}: {review.summary}
           </span>
         )}
-        {status && (
+        {status && status.revision.number === product.revision.number && status.revision.status === product.revision.status && (
           <span className="muted" data-testid="review-status">
-            {status}
+            {status.text}
           </span>
         )}
       </div>
