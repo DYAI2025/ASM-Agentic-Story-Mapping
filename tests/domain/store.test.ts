@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { updateCard } from "../../src/domain/operations";
-import { loadProduct, productFilePath, saveProduct } from "../../src/server/store";
+import { loadProduct, productFilePath, saveProduct, loadFailureStatus } from "../../src/server/store";
 import { FIXTURE_PATH, fixtureText, loadFixture } from "./helpers";
 
 describe("file-backed store", () => {
@@ -47,10 +47,17 @@ describe("file-backed store", () => {
     expect(await fs.readFile(process.env.ASM_PRODUCT_FILE, "utf8")).toBe(fixtureText());
   });
 
-  it("reports a missing file as an issue instead of throwing", async () => {
+  it("reports a missing file as no_product, which routes answer with 404; any other read error stays file_unreadable", async () => {
     process.env.ASM_PRODUCT_FILE = path.join(dir, "missing.yaml");
     const result = await loadProduct();
     expect(result.ok).toBe(false);
-    expect(result.issues[0].code).toBe("file_unreadable");
+    expect(result.issues[0]).toMatchObject({ code: "no_product", message: "there is no product yet; start one from the start screen" });
+    expect(loadFailureStatus(result.issues)).toBe(404);
+
+    process.env.ASM_PRODUCT_FILE = dir; // a directory, not a file
+    const unreadable = await loadProduct();
+    expect(unreadable.ok).toBe(false);
+    expect(unreadable.issues[0].code).toBe("file_unreadable");
+    expect(loadFailureStatus(unreadable.issues)).toBe(500);
   });
 });

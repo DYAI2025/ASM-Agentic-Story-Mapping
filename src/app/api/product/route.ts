@@ -1,12 +1,12 @@
 import { exportProductJson, exportProductYaml, fingerprint, parseProductText } from "../../../domain/serialize";
-import { loadProduct, productFileExists, productFilePath, saveProduct } from "../../../server/store";
+import { loadProduct, productFileExists, productFilePath, saveProduct, loadFailureStatus } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
 
 /** Read the canonical product, or export it with `?format=yaml|json`. */
 export async function GET(request: Request) {
   const result = await loadProduct();
-  if (!result.ok) return Response.json({ issues: result.issues }, { status: 500 });
+  if (!result.ok) return Response.json({ issues: result.issues }, { status: loadFailureStatus(result.issues) });
 
   const format = new URL(request.url).searchParams.get("format");
   if (format === "yaml" || format === "json") {

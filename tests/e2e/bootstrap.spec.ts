@@ -189,3 +189,25 @@ test("where a product exists, a first product cannot be started and the file is 
   expect((await accept.json()).issues[0].code).toBe("product_exists");
   expect(await fs.readFile(E2E_PRODUCT_FILE, "utf8")).toBe(before);
 });
+
+test("with no product, every read and write that needs one answers 404 no_product and writes nothing", async ({ page }) => {
+  await fs.rm(E2E_PRODUCT_FILE, { force: true });
+  await fs.rm(E2E_WORK_STATE_FILE, { force: true });
+  const calls: [string, () => Promise<{ status(): number; json(): Promise<{ issues?: { code: string }[] }> }>][] = [
+    ["GET /api/product", () => page.request.get("/api/product")],
+    ["GET /api/slices", () => page.request.get("/api/slices")],
+    ["GET /api/brief", () => page.request.get("/api/brief?format=json")],
+    ["POST /api/product/approve", () => page.request.post("/api/product/approve", { data: { approvedBy: "Zoe" } })],
+    ["POST /api/people-check", () => page.request.post("/api/people-check", { data: { confirmedBy: "Zoe" } })],
+    ["POST /api/slices/select", () => page.request.post("/api/slices/select", { data: { candidateId: "x", selectedBy: "Zoe" } })],
+    ["POST /api/proposal", () => page.request.post("/api/proposal", { data: { transcript: "Goal: x." } })],
+    ["POST /api/review", () => page.request.post("/api/review", { data: {} })],
+  ];
+  for (const [name, call] of calls) {
+    const response = await call();
+    expect(response.status(), name).toBe(404);
+    expect((await response.json()).issues?.[0]?.code, name).toBe("no_product");
+  }
+  expect(await exists()).toBe(false);
+  expect(await fs.access(E2E_WORK_STATE_FILE).then(() => true, () => false)).toBe(false);
+});

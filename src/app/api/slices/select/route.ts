@@ -1,6 +1,6 @@
 import { DomainError } from "../../../../domain/operations";
 import { WORK_STATE_VERSION, selectSlice } from "../../../../domain/work-state";
-import { loadProduct, loadWorkState, saveWorkState } from "../../../../server/store";
+import { loadProduct, loadWorkState, saveWorkState, loadFailureStatus } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const text = (value: unknown) => (typeof value === "string" ? value : "");
 
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
 
   const work = await loadWorkState();
   if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });

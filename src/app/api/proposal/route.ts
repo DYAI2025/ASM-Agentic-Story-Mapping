@@ -1,6 +1,6 @@
 import { buildProposal, providerFromEnv } from "../../../agent/narrative-builder";
 import { ProviderError, type AgentProvider } from "../../../agent/provider";
-import { loadProduct } from "../../../server/store";
+import { loadProduct, loadFailureStatus } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   }
 
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
 
   const proposal = await buildProposal(stored.product, body.transcript, provider);
   if (!proposal.ok) {

@@ -2,7 +2,7 @@ import { providerFromEnv } from "../../../agent/narrative-builder";
 import { ProviderError, type ReviewProvider } from "../../../agent/provider";
 import { buildReview } from "../../../agent/reviewer";
 import { reviewNarrative } from "../../../domain/review";
-import { loadProduct } from "../../../server/store";
+import { loadProduct, loadFailureStatus } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ export async function POST() {
   }
 
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
 
   const deterministic = reviewNarrative(stored.product);
   const agent = await buildReview(stored.product, provider);

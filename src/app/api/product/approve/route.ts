@@ -1,5 +1,5 @@
 import { DomainError, approveRevision } from "../../../../domain/operations";
-import { loadProduct, saveProduct } from "../../../../server/store";
+import { loadProduct, saveProduct, loadFailureStatus } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const approvedBy = typeof body?.approvedBy === "string" ? body.approvedBy : "";
 
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
 
   try {
     const approved = approveRevision(stored.product, {

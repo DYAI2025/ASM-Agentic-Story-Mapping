@@ -1,5 +1,5 @@
 import { applyMapPatch } from "../../../../domain/map-patch";
-import { loadProduct, saveProduct } from "../../../../server/store";
+import { loadProduct, saveProduct, loadFailureStatus } from "../../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     );
 
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
 
   const applied = applyMapPatch(stored.product, body.patch);
   if (!applied.ok) {

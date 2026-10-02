@@ -1,7 +1,7 @@
 import { fingerprint } from "../../../domain/fingerprint";
 import { SLICE_DERIVATION_VERSION, proposeSlices } from "../../../domain/slices";
 import { resolvePersonaCheck, resolveSelection, valueStatus } from "../../../domain/work-state";
-import { loadProduct, loadWorkState } from "../../../server/store";
+import { loadProduct, loadWorkState, loadFailureStatus } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
   const work = await loadWorkState();
   if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });
 

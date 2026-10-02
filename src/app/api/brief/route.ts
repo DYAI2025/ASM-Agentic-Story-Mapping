@@ -1,5 +1,5 @@
 import { buildExecutionBrief, exportBriefJson, exportBriefMarkdown } from "../../../domain/brief";
-import { loadProduct, loadWorkState } from "../../../server/store";
+import { loadProduct, loadWorkState, loadFailureStatus } from "../../../server/store";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: 500 });
+  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
   const work = await loadWorkState();
   if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });
 

@@ -15,6 +15,9 @@ export async function loadProduct(): Promise<ValidationResult> {
   try {
     text = await fs.readFile(/* turbopackIgnore: true */ productFilePath(), "utf8");
   } catch (error) {
+    // No file is the ordinary state before the first map, not a failure: routes refuse with no_product.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { ok: false, issues: [{ code: "no_product", path: productFilePath(), message: "there is no product yet; start one from the start screen" }] };
     return {
       ok: false,
       issues: [
@@ -30,6 +33,11 @@ export async function loadProduct(): Promise<ValidationResult> {
 }
 
 /** Whether there is a product file at all. No file is how a first product starts; it is not an error. */
+/** The HTTP status for a failed load: a missing product is a refusal (404), anything else is the server's fault (500). */
+export function loadFailureStatus(issues: { code: string }[]): number {
+  return issues.some((issue) => issue.code === "no_product") ? 404 : 500;
+}
+
 export async function productFileExists(): Promise<boolean> {
   try {
     await fs.access(/* turbopackIgnore: true */ productFilePath());
