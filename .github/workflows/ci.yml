@@ -18,7 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # On a pull request, test the head commit itself, not GitHub's merge commit:
+      # the evidence has to belong to the candidate SHA.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Commit under test
+        run: git rev-parse HEAD
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -35,7 +41,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-artifacts-${{ github.sha }}
+          name: e2e-artifacts-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             .e2e-artifacts/
             test-results/
