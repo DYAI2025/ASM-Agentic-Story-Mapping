@@ -207,8 +207,14 @@ matters?* block in the slice drawer).
   shown as stale, not as never made; only a human confirming again replaces it.
 - `selectSlice` refuses without a current one, so no work order can exist
   without it. A selection records under whose confirmation it was made; a
-  selection without that record (a work-state file from before this gate, or a
-  hand-edited one) is stale.
+  selection without that record (a work-state file from before this gate) is
+  stale.
+- Boundary of this gate: it holds for every route and for the UI. The
+  work-state file itself is trusted as a record, like the product file: a
+  complete-looking confirmation or selection written into it by hand is taken
+  as one. A record with a field the schema does not know is refused as a
+  whole. Confirming again replaces the earlier confirmation; there is no
+  history of confirmations.
 - Slice candidates can still be looked at on a proposed map or before the
   confirmation; selecting and exporting cannot happen.
 
@@ -304,8 +310,9 @@ stubbed client only.
 - **Approval is explicit.** Only the approve action, with a named human, turns
   `proposed` into `approved`. Saving never approves, and a save that keeps an
   approval while changing what was approved is refused
-  (`approved_content_changed`): only where a card sits may change under an
-  approval. A semantic edit to an approved revision opens the next `proposed`
+  (`approved_content_changed`): only `layout` may change under an approval.
+  Everything the fingerprint covers counts as meaning, including provenance
+  and the product summary. A semantic edit to an approved revision opens the next `proposed`
   revision. Import is different on purpose: an imported file is taken as the
   record it claims to be, including an approval it records.
 - **An agent proposes, a human decides.** Building a proposal never writes the

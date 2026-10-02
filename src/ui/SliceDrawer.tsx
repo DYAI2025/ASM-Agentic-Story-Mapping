@@ -202,8 +202,10 @@ export function SliceDrawer({
                     <p className="stale" role="status" data-testid="people-check-stale">
                       <strong>⚠ Stale confirmation.</strong> {personaCheck.confirmedBy} confirmed this on{" "}
                       {personaCheck.confirmedAt} for revision {personaCheck.revision}
-                      {personaCheck.productId !== product.product.id ? " of another product" : ", made on an earlier map"}. The map has
-                      changed since, so it has to be made again. It is kept and shown as stale; nothing was confirmed for you.
+                      {personaCheck.productId !== product.product.id
+                        ? ` of another product ("${personaCheck.productId}"). It has to be made for this one.`
+                        : ". The map has changed since, so it has to be made again."}{" "}
+                      It is kept and shown as stale; nothing was confirmed for you.
                     </p>
                   )}
                   <p>
@@ -267,11 +269,16 @@ export function SliceDrawer({
                   type="button"
                   data-testid="reselect-candidates"
                   onClick={() => {
+                    // Selecting again starts at the people check when that is not current either.
+                    if (!people.ok) {
+                      document.getElementById("people-check-name")?.focus();
+                      return;
+                    }
                     comparison.current?.scrollIntoView({ block: "nearest" });
                     selectorInput.current?.focus();
                   }}
                 >
-                  Reselect from current candidates
+                  {people.ok ? "Reselect from current candidates" : "Confirm who else matters, then reselect"}
                 </button>
               </div>
             )}

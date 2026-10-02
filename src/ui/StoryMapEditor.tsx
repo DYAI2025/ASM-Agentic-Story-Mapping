@@ -18,7 +18,7 @@ import { buildStoryMap } from "../domain/projection";
 import { reviewNarrative } from "../domain/review";
 import { MAX_LAYOUT_ROW, type ProductDocument, type Provenance } from "../domain/schema";
 import { validateProduct, type ValidationIssue } from "../domain/validate";
-import { resolveSelection, type PersonaCheck, type SliceSelection } from "../domain/work-state";
+import { resolvePersonaCheck, resolveSelection, type PersonaCheck, type SliceSelection } from "../domain/work-state";
 import { ActorSemantics } from "./ActorSemantics";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
@@ -188,6 +188,7 @@ export function StoryMapEditor({
     return resolved?.ok ? resolved.candidate : null;
   }, [product, selection]);
   const selectionStale = selection !== null && selectedCandidate === null;
+  const personaCheckStale = personaCheck !== null && !resolvePersonaCheck(product, personaCheck).ok;
   const sliceSteps = useMemo(() => new Set(selectedCandidate?.stepIds ?? []), [selectedCandidate]);
 
   const view = useMemo(() => buildStoryMap(shown, personaFilter), [shown, personaFilter]);
@@ -375,6 +376,11 @@ export function StoryMapEditor({
           {selectionStale && (
             <span className="badge stale" data-testid="stale-slice-badge">
               Slice selection stale
+            </span>
+          )}
+          {personaCheckStale && (
+            <span className="badge stale" data-testid="stale-people-check-badge">
+              People check stale
             </span>
           )}
         </div>

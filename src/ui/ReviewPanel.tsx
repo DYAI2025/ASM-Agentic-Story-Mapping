@@ -263,6 +263,10 @@ export function ReviewPanel({
       </ul>
 
       <h2>Agent review</h2>
+      <p className="muted">
+        Missing transitions between steps, missing worst cases, contradictions, implementation wording and missing product questions are
+        looked for by the agent review, on request only. Its findings are proposals: nothing is selected or accepted for you.
+      </p>
       <div className="row actions">
         <button type="button" data-testid="agent-review-button" disabled={busy} onClick={() => void run()}>
           {busy ? "Reviewing…" : review ? "Run agent review again" : "Run agent review"}

@@ -75,7 +75,7 @@ describe("slice drawer: the people check comes before any selection", () => {
     expect(checkState(html)).toBe("stale");
     expect(part(html, "people-check-stale")).toContain("Stale confirmation");
     expect(part(html, "people-check-stale")).toContain("Maya");
-    expect(part(html, "people-check-stale")).toContain("made on an earlier map");
+    expect(part(html, "people-check-stale")).toContain("The map has changed since, so it has to be made again");
     expect(html).toContain(">I have considered who else is relevant</button>");
     expect(html.match(/data-testid="select-slice-[\w-]+" disabled=""/g)).toHaveLength(3);
   });

@@ -279,7 +279,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
 
   // The earlier people check is stale too, and shown as stale; selecting again needs a new one first.
   await expect(page.getByTestId("people-check")).toHaveAttribute("data-state", "stale");
-  await expect(page.getByTestId("people-check-stale")).toContainText("made on an earlier map");
+  await expect(page.getByTestId("people-check-stale")).toContainText("The map has changed since, so it has to be made again");
   await expect(page.getByTestId("select-slice-outcome-thread")).toBeDisabled();
   await page.getByLabel("Confirmed by").fill(HUMAN);
   await page.getByTestId("people-check-confirm").click();

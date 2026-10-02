@@ -174,7 +174,9 @@ test("who else matters: asked after approval, answered only by a named human, st
   expect((await workState()).selection).toBeUndefined();
 });
 
-test("a work-state file edited by hand cannot stand in for the human", async ({ page }) => {
+// The work-state file is trusted as a record, like the product file: a complete-looking record written by hand
+// is taken as one. What the file cannot do is leave the confirmation out, or claim more than a human can say.
+test("a hand-edited work-state file: a selection without the confirmation record is stale; a record that claims more is refused", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Approver name").fill(HUMAN);
   await page.getByTestId("approve-button").click();
@@ -216,4 +218,45 @@ test("a work-state file edited by hand cannot stand in for the human", async ({ 
   expect((await page.request.get("/api/slices")).status()).toBe(500);
   await page.reload();
   await expect(page.getByTestId("load-error")).toContainText("work-state file could not be loaded");
+});
+
+test("with the guide hidden, a stale people check is still visible on the toolbar, and reselecting starts there", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("guide-hide").click();
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  await page.getByTestId("slices-open").click();
+  await page.getByLabel("Confirmed by").fill(HUMAN);
+  await page.getByTestId("people-check-confirm").click();
+  await expect(page.getByTestId("people-check-record")).toBeVisible();
+  await page.getByLabel("Selector name").fill(HUMAN);
+  await page.getByTestId("select-slice-outcome-thread").click();
+  await expect(page.getByTestId("selection-record")).toBeVisible();
+  await page.getByTestId("slices-close").click();
+  await expect(page.getByTestId("stale-people-check-badge")).toHaveCount(0);
+
+  // A change of meaning, then approval again: both records are stale, and the toolbar says so without the guide.
+  const card = page.getByTestId("card-step-export-work");
+  await card.getByRole("button", { name: /^Edit/ }).click();
+  await card.locator("textarea[name='description']").fill("Changed after confirmation.");
+  await card.getByRole("button", { name: "Save" }).click();
+  await page.getByLabel("Approver name").fill(HUMAN);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("approved");
+  await expect(page.getByTestId("guide")).toHaveCount(0);
+  await expect(page.getByTestId("stale-slice-badge")).toBeVisible();
+  await expect(page.getByTestId("stale-people-check-badge")).toBeVisible();
+
+  // In the drawer, "reselect" leads to the people check first, because that comes first.
+  await page.getByTestId("slices-open").click();
+  await expect(page.getByTestId("reselect-candidates")).toHaveText("Confirm who else matters, then reselect");
+  await page.getByTestId("reselect-candidates").click();
+  await expect(page.getByLabel("Confirmed by")).toBeFocused();
+  await page.keyboard.type(HUMAN);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("people-check-record")).toBeVisible();
+  await expect(page.getByTestId("reselect-candidates")).toHaveText("Reselect from current candidates");
+  await page.getByTestId("reselect-candidates").click();
+  await expect(page.getByLabel("Selector name")).toBeFocused();
 });
