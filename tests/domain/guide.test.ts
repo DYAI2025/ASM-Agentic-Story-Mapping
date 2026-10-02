@@ -269,7 +269,21 @@ function nobody(): ProductDocument {
 function selectionsFor(p: ProductDocument): (SliceSelection | null)[] {
   const out: (SliceSelection | null)[] = [null];
   const proposal = proposeSlices(p);
-  if (!proposal.ok) return out;
+  // A map no slice can be derived from can still have a selection left in the work-state file.
+  if (!proposal.ok)
+    return [
+      null,
+      {
+        candidateId: "slice-outcome-thread",
+        productId: p.product.id,
+        revision: p.revision.number,
+        mapFingerprint: fingerprint(p),
+        candidateFingerprint: "00000000",
+        derivationVersion: SLICE_DERIVATION_VERSION,
+        selectedBy: "Grid",
+        selectedAt: "2026-10-02T09:00:00.000Z",
+      },
+    ];
   for (const candidate of proposal.candidates) {
     const forged: SliceSelection = {
       candidateId: candidate.id,
@@ -286,6 +300,7 @@ function selectionsFor(p: ProductDocument): (SliceSelection | null)[] {
       forged,
       { ...forged, valueException: exception },
       { ...forged, productId: "another-product" },
+      { ...forged, revision: p.revision.number + 1 },
       { ...forged, mapFingerprint: "00000000" },
       { ...forged, candidateFingerprint: "00000000" },
       { ...forged, derivationVersion: SLICE_DERIVATION_VERSION + 1 },
@@ -387,6 +402,42 @@ describe("guide: invariants over a grid of maps and selections", () => {
       const stale = c.selection !== null && !resolveSelection(c.product, c.selection).ok;
       expect(step(g, "select").stale !== undefined, c.name).toBe(stale);
     }
+  });
+});
+
+describe("guide: it says beforehand what a gate will refuse", () => {
+  const cases = grid();
+
+  it("before approval, when no slice could be derived from the map: the approval step says so, in the gate's words", () => {
+    let seen = 0;
+    for (const c of cases) {
+      const proposal = proposeSlices(c.product);
+      const warning = step(deriveGuide(c.product, c.selection), "approve").warning;
+      const expected = !proposal.ok && c.product.revision.status !== "approved";
+      expect(warning !== undefined, c.name).toBe(expected);
+      if (!proposal.ok && expected) {
+        seen++;
+        for (const issue of proposal.issues) expect(warning, c.name).toContain(issue.message);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it("a selected slice the export gate refuses: the work order step gives the gate's reason", () => {
+    let seen = 0;
+    for (const c of cases) {
+      const g = deriveGuide(c.product, c.selection);
+      const brief = buildExecutionBrief(c.product, c.selection);
+      const selected = c.selection !== null && resolveSelection(c.product, c.selection).ok;
+      const warning = step(g, "work_order").warning;
+      expect(warning !== undefined, c.name).toBe(selected && !brief.ok);
+      if (!brief.ok && selected) {
+        for (const issue of brief.issues) expect(warning, c.name).toContain(issue.message);
+        if (g.currentStepId === "work_order") seen++;
+      }
+    }
+    // The grid contains the state the reviewer named: approved, selected, value unresolved.
+    expect(seen).toBeGreaterThan(0);
   });
 });
 

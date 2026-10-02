@@ -86,11 +86,12 @@ own.
 - The last three steps read what the real gates read. The first three are the
   guide's own reading order: no gate requires a need or a second step, so once
   a human has approved a map without them the guide follows the approval. Such
-  a step is labelled "not on the map; approved as it is", and the readable-map
+  a step is labelled "not complete on the map; approved as it is", and the readable-map
   marker stays off.
 - If no slice can be derived from an approved map (`proposeSlices` refuses),
   the slice step shows that reason and its button leads to the input, not to
-  an empty comparison.
+  an empty comparison. The approval step says the same beforehand, and the
+  work order step shows why the export gate refuses a selected slice.
 - A step is done only when every step before it is done. The current step is
   the earliest one the state has not reached, so a change to the map leads back
   to it.

@@ -18,7 +18,7 @@ import { resolveSelection, type SliceSelection } from "./work-state";
  * requires them. They are the guide's own reading order, not a rule of the
  * product: a human who approves a map without them has decided so, and from
  * then on the guide follows the approval. Such a step is marked as approved
- * as it is, never as present, and the map marker stays off.
+ * as it is, never as complete, and the map marker stays off.
  *
  * Where the next gated step cannot be done on the map as it is (no slice can
  * be derived from it), the step says why, in the words of the function that
@@ -52,6 +52,8 @@ export interface GuideStep {
   approvedAsIs?: true;
   /** The step cannot be done on the map as it is: the reason, from the function that refuses. */
   blocked?: string;
+  /** Something the human should know before acting on this step, in the words of the gate that will refuse. */
+  warning?: string;
   /** Set when a stored result of this step exists and no longer matches the map: the reason. */
   stale?: string;
   action: GuideAction;
@@ -90,6 +92,7 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
     people: product.personas.length > 0 && product.needs.length > 0,
     main_path: !findings.some((f) => f.code === "main_path_missing" || f.code === "main_path_single_step"),
   };
+  const brief = buildExecutionBrief(product, selection);
   const candidates = proposeSlices(product);
   const noCandidates = candidates.ok ? undefined : candidates.issues.map((i) => i.message).join("; ");
 
@@ -99,8 +102,10 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
     main_path: approved || present.main_path,
     approve: approved,
     select: resolution?.ok === true,
-    work_order: buildExecutionBrief(product, selection).ok,
+    work_order: brief.ok,
   };
+  /** Why the export gate refuses, once a slice is selected. Before that the reason is simply that nothing is selected. */
+  const noWorkOrder = !brief.ok && resolution?.ok ? brief.issues.map((i) => i.message).join("; ") : undefined;
 
   const definitions: Omit<GuideStep, "status">[] = [
     {
@@ -128,6 +133,8 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
         gaps > 0
           ? `Read the map as a story. ${gaps} open point${gaps === 1 ? " is" : "s are"} listed for you to look at. Approval is yours alone: nothing is built on a story you have not approved.`
           : "Read the map as a story. Approval is yours alone: nothing is built on a story you have not approved.",
+      // Known before approval, so it is said before approval: approving this map would lead to a step that cannot be done.
+      ...(noCandidates && !approved ? { warning: `As the map is now, no first slice can be derived from it after approval: ${noCandidates}` } : {}),
       action: { kind: "focus_approval", label: "Review and approve" },
     },
     {
@@ -143,6 +150,7 @@ export function deriveGuide(product: ProductDocument, selection: SliceSelection 
       id: "work_order",
       title: "Export the work order",
       purpose: "The work order hands your approved story and chosen slice to whoever builds it, tied to this exact version of the map.",
+      ...(noWorkOrder ? { warning: `No work order can be exported yet: ${noWorkOrder}` } : {}),
       action: { kind: "open_slices", label: "Open the work order" },
     },
   ];

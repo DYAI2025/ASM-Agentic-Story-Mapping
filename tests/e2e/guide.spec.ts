@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import YAML from "yaml";
 import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
@@ -13,6 +13,25 @@ test.beforeEach(resetProductFile);
 
 const storedText = () => fs.readFile(E2E_PRODUCT_FILE, "utf8");
 const workStateExists = () => fs.access(E2E_WORK_STATE_FILE).then(() => true, () => false);
+/**
+ * Presses the guide's button and returns every request it caused that is not a GET.
+ * The guide may open and focus; it must not send anything. Requests are recorded when
+ * they are sent, so a write is seen even if its effect has not landed yet.
+ */
+async function pressGuideButton(page: Page): Promise<string[]> {
+  const sent: string[] = [];
+  const record = (request: Request) => {
+    if (request.method() !== "GET") sent.push(`${request.method()} ${new URL(request.url()).pathname}`);
+  };
+  page.on("request", record);
+  await page.getByTestId("guide-cta").focus();
+  await page.keyboard.press("Enter");
+  // Long enough for a request started by the key press to be sent.
+  await page.waitForTimeout(500);
+  page.off("request", record);
+  return sent;
+}
+
 const shot = (name: string) => path.join(SCREENSHOTS, `guide-${name}.png`);
 
 // The guide's own buttons are activated with the keyboard (focus, then Enter). The existing forms are used as they are.
@@ -28,8 +47,7 @@ test("the guide follows the real state from approval to work order", async ({ pa
 
   // The call to action takes the human to the approval form. It approves nothing.
   const before = await storedText();
-  await page.getByTestId("guide-cta").focus();
-  await page.keyboard.press("Enter");
+  expect(await pressGuideButton(page)).toEqual([]);
   await expect(page.getByLabel("Approver name")).toBeFocused();
   await expect(page.getByTestId("review-panel")).toBeVisible();
   await expect(page.getByTestId("revision-status")).toHaveText("proposed");
@@ -46,8 +64,7 @@ test("the guide follows the real state from approval to work order", async ({ pa
   await page.screenshot({ path: shot("02-select-is-current"), fullPage: true });
 
   // The call to action opens the slice comparison and moves focus into it. It selects nothing.
-  await page.getByTestId("guide-cta").focus();
-  await page.keyboard.press("Enter");
+  expect(await pressGuideButton(page)).toEqual([]);
   const drawer = page.getByTestId("slice-drawer");
   await expect(drawer).toBeFocused();
   await expect(drawer).toContainText("No slice is selected");
@@ -130,8 +147,7 @@ test("a map with nobody's needs on it: the guide points at the input, not at app
   await expect(guide).toHaveAttribute("data-current-step", "people");
   await expect(page.getByTestId("guide-progress")).toHaveText("1 of 6 steps done");
   await expect(page.getByTestId("impact-map")).toHaveCount(0);
-  await page.getByTestId("guide-cta").focus();
-  await page.keyboard.press("Enter");
+  expect(await pressGuideButton(page)).toEqual([]);
   await expect(page.getByTestId("transcript-input")).toBeFocused();
   expect(await storedText()).toBe(before);
   await page.screenshot({ path: shot("07-people-step-is-current"), fullPage: true });
@@ -144,8 +160,7 @@ test("an open proposal comes first, and the guide leaves the decision to the hum
   await page.getByTestId("structure-button").click();
   await expect(page.getByTestId("proposal-review")).toBeVisible();
   await expect(page.getByTestId("guide-cta")).toHaveText("Decide on the open proposal");
-  await page.getByTestId("guide-cta").focus();
-  await page.keyboard.press("Enter");
+  expect(await pressGuideButton(page)).toEqual([]);
   await expect(page.getByTestId("proposal-review")).toBeFocused();
   expect(await storedText()).toBe(before);
   await page.screenshot({ path: shot("06-open-proposal-first"), fullPage: true });

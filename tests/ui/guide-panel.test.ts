@@ -104,7 +104,7 @@ describe("guide panel", () => {
   it("an approved map with a single step: the path is marked 'approved as it is', and the slice step says why it is blocked", () => {
     const html = render(approved(singleStep()), null);
     expect(html).toContain('data-current-step="select"');
-    expect(part(html, "guide-as-is-main_path")).toBe("(not on the map; approved as it is)");
+    expect(part(html, "guide-as-is-main_path")).toBe("(not complete on the map; approved as it is)");
     expect(html).not.toContain('data-testid="guide-as-is-people"');
     expect(html).not.toContain('data-testid="impact-map"');
     expect(part(html, "guide-blocked")).toContain("slice candidates need a main path of at least two steps");
@@ -112,8 +112,21 @@ describe("guide panel", () => {
     expect(cta(html)).toBe("Add to the map");
   });
 
-  it("a complete map shows neither an 'as it is' label nor a blocked note", () => {
+  it("a single-step map before approval: the approval step warns that no slice will be derivable", () => {
+    const html = render(singleStep(), null);
+    expect(html).toContain('data-current-step="main_path"');
+    expect(html).not.toContain('data-testid="guide-warning"');
+    // The warning belongs to the approval step and shows once that step is the current one.
+    const twoSteps = structuredClone(loadFixture());
+    twoSteps.narrative.forEach((s) => ((s.personaIds = []), (s.needIds = [])));
+    const warned = render(twoSteps, null);
+    expect(warned).toContain('data-current-step="approve"');
+    expect(part(warned, "guide-warning")).toContain("no first slice can be derived from it after approval");
+  });
+
+  it("a complete map shows neither an 'as it is' label nor a blocked note nor a warning", () => {
     const html = render(approved(), null);
+    expect(html).not.toContain('data-testid="guide-warning"');
     expect(html).not.toContain("guide-as-is-");
     expect(html).not.toContain('data-testid="guide-blocked"');
     expect(cta(html)).toBe("Compare slices");
