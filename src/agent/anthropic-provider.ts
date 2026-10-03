@@ -53,14 +53,16 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
   readonly name: string;
   private readonly model: string;
   private readonly timeoutMs: number;
+  private readonly apiKey: string | undefined;
   private client: MessagesClient | undefined;
 
   /** The key value, only so that a message echoing it can be redacted; the SDK reads it from the environment itself. */
   private readonly secrets: readonly string[];
 
-  constructor(options: { model?: string; client?: MessagesClient; timeoutMs?: number; secrets?: readonly string[] } = {}) {
+  constructor(options: { model?: string; client?: MessagesClient; timeoutMs?: number; apiKey?: string; secrets?: readonly string[] } = {}) {
     this.model = options.model ?? DEFAULT_MODEL;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.apiKey = options.apiKey;
     this.client = options.client;
     this.secrets = options.secrets ?? [];
     this.name = `anthropic (${this.model})`;
@@ -76,7 +78,7 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
 
   private async ask(request: ReturnType<typeof buildRequest> | ReturnType<typeof buildReviewRequest>): Promise<unknown> {
     // A deadline, and the SDK's bounded retries on transient failures. Credentials resolve from the environment.
-    this.client ??= new Anthropic({ timeout: this.timeoutMs, maxRetries: 2 }).beta.messages;
+    this.client ??= new Anthropic({ ...(this.apiKey ? { apiKey: this.apiKey } : {}), timeout: this.timeoutMs, maxRetries: 2 }).beta.messages;
 
     let response;
     try {

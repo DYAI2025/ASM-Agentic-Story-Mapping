@@ -320,9 +320,11 @@ describe("the sources are data for every provider", () => {
 
 describe("provider selection from the environment", () => {
   it("knows the four names; an unknown one or a missing key is an error, never a fallback", () => {
+    expect(providerFromEnv({ ASM_AGENT_PROVIDER: "anthropic", ANTHROPIC_API_KEY: KEY }).name).toMatch(/^anthropic \(.+\)$/);
     expect(providerFromEnv({ ASM_AGENT_PROVIDER: "openai", OPENAI_API_KEY: KEY }).name).toBe(`openai (${OPENAI_DEFAULT_MODEL})`);
     expect(providerFromEnv({ ASM_AGENT_PROVIDER: "OpenAI", OPENAI_API_KEY: KEY, ASM_AGENT_MODEL: "gpt-x" }).name).toBe("openai (gpt-x)");
     expect(providerFromEnv({ ASM_AGENT_PROVIDER: "openrouter", OPENROUTER_API_KEY: KEY, ASM_AGENT_MODEL: "v/m" }).name).toBe("openrouter (v/m)");
+    expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "anthropic" })).toThrow(/ANTHROPIC_API_KEY/);
     expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "openai" })).toThrow(/OPENAI_API_KEY/);
     expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "openrouter", OPENROUTER_API_KEY: KEY })).toThrow(/ASM_AGENT_MODEL/);
     expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "openrouter", ASM_AGENT_MODEL: "v/m" })).toThrow(/OPENROUTER_API_KEY/);

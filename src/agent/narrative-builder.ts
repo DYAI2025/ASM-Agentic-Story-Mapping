@@ -80,7 +80,11 @@ export function providerFromEnv(env: Record<string, string | undefined> = proces
   const model = env.ASM_AGENT_MODEL?.trim() || undefined;
   const timeoutMs = timeoutFromEnv(env.ASM_AGENT_TIMEOUT_MS);
   if (name === "fake") return new FakeProvider();
-  if (name === "anthropic") return new AnthropicProvider({ model, timeoutMs, secrets: env.ANTHROPIC_API_KEY ? [env.ANTHROPIC_API_KEY] : [] });
+  if (name === "anthropic") {
+    if (!env.ANTHROPIC_API_KEY)
+      throw new ProviderError("ANTHROPIC_API_KEY is not set; the anthropic provider needs it in the server environment");
+    return new AnthropicProvider({ model, timeoutMs, apiKey: env.ANTHROPIC_API_KEY, secrets: [env.ANTHROPIC_API_KEY] });
+  }
   if (name === "openai") {
     if (!env.OPENAI_API_KEY) throw new ProviderError("OPENAI_API_KEY is not set; the openai provider needs it in the server environment");
     return new OpenAIProvider({ apiKey: env.OPENAI_API_KEY, model, baseUrl: env.OPENAI_BASE_URL?.trim() || undefined, timeoutMs });
