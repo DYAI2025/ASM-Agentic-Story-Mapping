@@ -1,0 +1,33 @@
+{
+  "name": "asm-agentic-story-mapping",
+  "version": "0.0.1",
+  "private": true,
+  "description": "ASM walking skeleton: narrative-first story map editor over a canonical, file-backed product model.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "validate": "tsx scripts/validate-product.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "docs:refresh": "ASM_E2E_ARTIFACTS=docs playwright test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

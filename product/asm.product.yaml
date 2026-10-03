@@ -1,0 +1,239 @@
+schemaVersion: 1
+product:
+  id: asm
+  name: ASM – Agentic Story Mapping
+  summary: A human-friendly, agent-readable story mapping product. Humans define product intent and approve meaning; agents later assist with structuring and critique.
+revision:
+  number: 1
+  status: proposed
+goal:
+  id: goal-faster-shared-narrative
+  statement: Software teams without prior AI experience can move from product discussion to a shared, understandable product narrative and first useful delivery slice substantially faster.
+personas:
+  - id: persona-product-lead
+    name: Product Lead / Product Owner
+    description: Owns product intent and approves what the narrative means.
+  - id: persona-domain-ux
+    name: Domain or UX Expert
+    description: Knows the real user situations, including where things go wrong.
+  - id: persona-developer
+    name: Developer
+    description: Turns the approved narrative into a first delivery slice.
+needs:
+  - id: need-shared-narrative
+    personaId: persona-product-lead
+    statement: Turn a product discussion into one narrative the whole team understands, without prior AI experience.
+  - id: need-approve-meaning
+    personaId: persona-product-lead
+    statement: Remain the one who approves meaning; nothing counts as agreed until I approve it.
+  - id: need-real-situations
+    personaId: persona-domain-ux
+    statement: See real user situations, including failure and recovery, represented in the narrative.
+  - id: need-see-gaps
+    personaId: persona-domain-ux
+    statement: Spot gaps and unresolved decisions before anything is built on them.
+  - id: need-buildable-slice
+    personaId: persona-developer
+    statement: Receive a first slice that is small, unambiguous and ready to execute.
+  - id: need-stable-references
+    personaId: persona-developer
+    statement: Rely on stable ids and explicit relations rather than on where a card happens to sit.
+narrative:
+  - id: step-start-product
+    sequence: 1
+    title: Start product
+    description: A new product map is created with an id and a name.
+    personaIds:
+      - persona-product-lead
+    needIds:
+      - need-shared-narrative
+  - id: step-describe-idea
+    sequence: 2
+    title: Describe idea / provide discussion
+    description: The team describes the idea or hands over an existing product discussion.
+    personaIds:
+      - persona-product-lead
+      - persona-domain-ux
+    needIds:
+      - need-shared-narrative
+  - id: step-confirm-intent
+    sequence: 3
+    title: Confirm product intent
+    description: The product goal is stated in one sentence and confirmed by a human.
+    personaIds:
+      - persona-product-lead
+    needIds:
+      - need-approve-meaning
+  - id: step-define-personas
+    sequence: 4
+    title: Define personas and needs
+    description: Who the product is for and what each persona needs from it.
+    personaIds:
+      - persona-product-lead
+      - persona-domain-ux
+    needIds:
+      - need-real-situations
+  - id: step-main-path
+    sequence: 5
+    title: Build main / best-case path
+    description: The main narrative is laid out as an ordered sequence of steps.
+    personaIds:
+      - persona-product-lead
+      - persona-domain-ux
+      - persona-developer
+    needIds:
+      - need-shared-narrative
+      - need-stable-references
+  - id: step-add-wcbc
+    sequence: 6
+    title: Add relevant WCBC / recovery paths
+    description: Worst-case and best-case branches are attached to the steps they belong to.
+    personaIds:
+      - persona-domain-ux
+      - persona-developer
+    needIds:
+      - need-real-situations
+  - id: step-review-gaps
+    sequence: 7
+    title: Review gaps and unresolved decisions
+    description: Open decisions and validation issues are made visible before approval.
+    personaIds:
+      - persona-product-lead
+      - persona-domain-ux
+      - persona-developer
+    needIds:
+      - need-see-gaps
+  - id: step-approve-narrative
+    sequence: 8
+    title: Human approves narrative
+    description: A named human moves the revision from proposed to approved.
+    personaIds:
+      - persona-product-lead
+    needIds:
+      - need-approve-meaning
+  - id: step-review-slices
+    sequence: 9
+    title: Review first slice candidates
+    description: Candidate first slices through the approved narrative are compared.
+    personaIds:
+      - persona-product-lead
+      - persona-developer
+    needIds:
+      - need-buildable-slice
+  - id: step-select-slice
+    sequence: 10
+    title: Human selects first slice
+    description: A human picks the first slice to deliver.
+    personaIds:
+      - persona-product-lead
+    needIds:
+      - need-approve-meaning
+      - need-buildable-slice
+  - id: step-export-work
+    sequence: 11
+    title: Export execution-ready work
+    description: The selected slice leaves ASM in a form a delivery team can execute.
+    personaIds:
+      - persona-developer
+    needIds:
+      - need-buildable-slice
+      - need-stable-references
+wcbc:
+  - id: wcbc-notes-provided
+    stepId: step-describe-idea
+    kind: best_case
+    title: Discussion notes already exist
+    description: The team hands over existing notes instead of starting from a blank page.
+    recovery: ""
+  - id: wcbc-vague-discussion
+    stepId: step-describe-idea
+    kind: worst_case
+    title: Discussion is vague or contradictory
+    description: The input does not support a single reading of what the product is for.
+    recovery: Record each contradiction as an open decision instead of guessing an answer.
+  - id: wcbc-intent-misread
+    stepId: step-confirm-intent
+    kind: worst_case
+    title: Proposed intent misreads the discussion
+    description: The stated goal is not what the product lead meant.
+    recovery: The human rewrites the goal; it stays proposed until a human confirms it.
+  - id: wcbc-coherent-story
+    stepId: step-main-path
+    kind: best_case
+    title: Main path reads as one story
+    description: A newcomer can follow the narrative from start to export without explanation.
+    recovery: ""
+  - id: wcbc-branches-swamp
+    stepId: step-add-wcbc
+    kind: worst_case
+    title: Recovery paths swamp the main narrative
+    description: So many branches are added that the main path is no longer readable.
+    recovery: Keep only branches that change what the first slice must handle.
+  - id: wcbc-changed-after-approval
+    stepId: step-approve-narrative
+    kind: worst_case
+    title: Narrative changes after approval
+    description: Someone edits the meaning of an approved map.
+    recovery: The edit opens a new proposed revision; approval has to be given again.
+  - id: wcbc-no-small-slice
+    stepId: step-select-slice
+    kind: worst_case
+    title: No candidate slice is small enough
+    description: Every candidate is too large to be a first delivery.
+    recovery: Return to the main path and cut a thinner slice through it.
+  - id: wcbc-export-invalid
+    stepId: step-export-work
+    kind: worst_case
+    title: Exported file fails validation on import
+    description: A product file was changed by hand and no longer validates.
+    recovery: Validation names the exact path of each issue; an invalid file is never written.
+decisions:
+  - id: dec-canonical-file
+    title: The canonical product model is a YAML file inside the repository
+    status: decided
+    rationale: Given by the slice brief (no database, no graph server). A file is diffable, reviewable and readable by agents.
+    relatesTo:
+      - asm
+  - id: dec-position-not-semantics
+    title: Visual position is never the sole source of semantics
+    status: decided
+    rationale: Narrative order lives in an explicit sequence field and relations in ids. Layout is stored separately and can change without touching meaning.
+    relatesTo:
+      - step-main-path
+      - need-stable-references
+  - id: dec-human-approves
+    title: Only an explicit human action approves a revision
+    status: decided
+    rationale: Narrative-first means humans define intent and approve meaning. Saving or editing never approves anything.
+    relatesTo:
+      - step-approve-narrative
+      - need-approve-meaning
+  - id: dec-measure-faster
+    title: What does "substantially faster" mean in measurable terms?
+    status: open
+    rationale: ""
+    relatesTo:
+      - goal-faster-shared-narrative
+  - id: dec-slice-criteria
+    title: What makes a slice candidate a "first useful" slice?
+    status: open
+    rationale: ""
+    relatesTo:
+      - step-review-slices
+      - step-select-slice
+  - id: dec-export-format
+    title: What form does "execution-ready work" take on export?
+    status: open
+    rationale: ""
+    relatesTo:
+      - step-export-work
+  - id: dec-agent-assistance
+    title: Which steps do agents assist with once agent integration exists?
+    status: open
+    rationale: ""
+    relatesTo:
+      - step-describe-idea
+      - step-review-gaps
+provenance: []
+layout:
+  cards: {}

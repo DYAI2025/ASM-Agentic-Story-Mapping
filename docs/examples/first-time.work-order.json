@@ -1,0 +1,232 @@
+{
+  "briefVersion": 3,
+  "kind": "asm.execution-brief",
+  "goal": {
+    "id": "goal-parcel-locker-pickup",
+    "statement": "Residents collect a parcel from the building locker without waiting for a courier.",
+    "slice": {
+      "id": "slice-outcome-thread",
+      "title": "Thread to “Resident reports a problem”"
+    }
+  },
+  "approvedContext": {
+    "approval": {
+      "revision": 2,
+      "approvedBy": "Noor (first-time Product Lead)",
+      "approvedAt": "2026-10-02T23:55:01.721Z"
+    },
+    "selection": {
+      "candidateId": "slice-outcome-thread",
+      "selectedBy": "Noor (first-time Product Lead)",
+      "selectedAt": "2026-10-02T23:55:02.271Z",
+      "candidateFingerprint": "f532f5ce",
+      "derivationVersion": 2
+    },
+    "peopleConsidered": {
+      "confirmedBy": "Noor (first-time Product Lead)",
+      "confirmedAt": "2026-10-02T23:55:02.054Z",
+      "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
+    },
+    "value": {
+      "status": "VALUE_RESOLVED",
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives-when",
+        "need-hand-over-every-parcel-in-one-stop"
+      ],
+      "note": "The slice references at least one need on the map. ASM has not measured any business value."
+    },
+    "whyThisSlice": [
+      "The last step “Resident reports a problem” (step-resident-reports-a-problem) serves need-get-my-parcel-on-the-day-it-arrives-when, need-hand-over-every-parcel-in-one-stop; this slice is every step that serves one of those needs.",
+      "Primary persona relevance: Resident (persona-resident) takes part in 3 of the 4 included steps.",
+      "Persona overlap: 1 of the 4 included steps involve more than one persona.",
+      "Need relation: serves 2 of 2 needs (need-get-my-parcel-on-the-day-it-arrives-when, need-hand-over-every-parcel-in-one-stop).",
+      "Main-path completeness: includes both the start “Courier loads the locker” and the end “Resident reports a problem”.",
+      "Scope: 4 of 4 main-path steps, with 1 worst-case branch(es) to handle.",
+      "Readiness: no open decision and no review gap touches this slice."
+    ],
+    "assumptions": [
+      "Assumes the included needs contribute to the goal [goal-parcel-locker-pickup]; the map relates steps to needs, not needs to the goal."
+    ],
+    "decidedDecisions": [],
+    "verified": [],
+    "note": "Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested."
+  },
+  "inScope": [
+    {
+      "id": "step-courier-loads-the-locker",
+      "sequence": 1,
+      "title": "Courier loads the locker",
+      "description": "One compartment per parcel.",
+      "personaIds": [
+        "persona-courier"
+      ],
+      "needIds": [
+        "need-hand-over-every-parcel-in-one-stop"
+      ],
+      "branches": [
+        {
+          "id": "wcbc-courier-loads-the-locker-cannot-be-compl",
+          "kind": "worst_case",
+          "title": "Courier loads the locker cannot be completed",
+          "description": "Template suggestion: say what goes wrong here before accepting it as it stands.",
+          "recovery": "Return to “Courier loads the locker” and try again.",
+          "outcome": {
+            "kind": "recovery",
+            "resumeStepId": "step-courier-loads-the-locker"
+          }
+        }
+      ]
+    },
+    {
+      "id": "step-resident-is-told-the-parcel-is-there",
+      "sequence": 2,
+      "title": "Resident is told the parcel is there",
+      "description": "A code arrives on the phone.",
+      "personaIds": [
+        "persona-resident"
+      ],
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives-when"
+      ],
+      "branches": []
+    },
+    {
+      "id": "step-resident-opens-the-compartment",
+      "sequence": 3,
+      "title": "Resident opens the compartment",
+      "description": "With the code, at any hour.",
+      "personaIds": [
+        "persona-resident"
+      ],
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives-when"
+      ],
+      "branches": []
+    },
+    {
+      "id": "step-resident-reports-a-problem",
+      "sequence": 4,
+      "title": "Resident reports a problem",
+      "description": "When the compartment will not open, the courier comes back.",
+      "personaIds": [
+        "persona-resident",
+        "persona-courier"
+      ],
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives-when",
+        "need-hand-over-every-parcel-in-one-stop"
+      ],
+      "branches": []
+    }
+  ],
+  "outOfScope": [],
+  "personas": [
+    {
+      "id": "persona-resident",
+      "name": "Resident",
+      "description": "Lives in the building and orders online.",
+      "roles": [
+        "customer",
+        "user"
+      ],
+      "persona": true
+    },
+    {
+      "id": "persona-courier",
+      "name": "Courier",
+      "description": "Delivers parcels to the building.",
+      "roles": [
+        "operator"
+      ],
+      "persona": true
+    }
+  ],
+  "needs": [
+    {
+      "id": "need-get-my-parcel-on-the-day-it-arrives-when",
+      "personaId": "persona-resident",
+      "statement": "Get my parcel on the day it arrives, whenever I come home."
+    },
+    {
+      "id": "need-hand-over-every-parcel-in-one-stop",
+      "personaId": "persona-courier",
+      "statement": "Hand over every parcel in one stop."
+    }
+  ],
+  "acceptanceCriteriaDraft": [
+    {
+      "id": "ac-1",
+      "text": "[step-courier-loads-the-locker] Courier can complete “Courier loads the locker”: One compartment per parcel.",
+      "refs": [
+        "step-courier-loads-the-locker",
+        "persona-courier"
+      ]
+    },
+    {
+      "id": "ac-2",
+      "text": "[wcbc-courier-loads-the-locker-cannot-be-compl] When “Courier loads the locker cannot be completed”, then: Return to “Courier loads the locker” and try again.",
+      "refs": [
+        "wcbc-courier-loads-the-locker-cannot-be-compl",
+        "step-courier-loads-the-locker"
+      ]
+    },
+    {
+      "id": "ac-3",
+      "text": "[step-resident-is-told-the-parcel-is-there] Resident can complete “Resident is told the parcel is there”: A code arrives on the phone.",
+      "refs": [
+        "step-resident-is-told-the-parcel-is-there",
+        "persona-resident"
+      ]
+    },
+    {
+      "id": "ac-4",
+      "text": "[step-resident-opens-the-compartment] Resident can complete “Resident opens the compartment”: With the code, at any hour.",
+      "refs": [
+        "step-resident-opens-the-compartment",
+        "persona-resident"
+      ]
+    },
+    {
+      "id": "ac-5",
+      "text": "[step-resident-reports-a-problem] Resident / Courier can complete “Resident reports a problem”: When the compartment will not open, the courier comes back.",
+      "refs": [
+        "step-resident-reports-a-problem",
+        "persona-resident",
+        "persona-courier"
+      ]
+    }
+  ],
+  "verificationExpectations": [
+    {
+      "criterionId": "ac-1",
+      "expectation": "Show step-courier-loads-the-locker working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-2",
+      "expectation": "Provoke the situation of wcbc-courier-loads-the-locker-cannot-be-compl and show, with a recorded run, that what follows matches the criterion."
+    },
+    {
+      "criterionId": "ac-3",
+      "expectation": "Show step-resident-is-told-the-parcel-is-there working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-4",
+      "expectation": "Show step-resident-opens-the-compartment working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-5",
+      "expectation": "Show step-resident-reports-a-problem working for each named persona with a recorded run (test output or screen recording), not a description."
+    }
+  ],
+  "openHumanDecisions": [],
+  "sourceMapRevision": {
+    "productId": "parcel-locker-pickup",
+    "productName": "Parcel Locker Pickup",
+    "schemaVersion": 1,
+    "revision": 2,
+    "status": "approved",
+    "approvedBy": "Noor (first-time Product Lead)",
+    "approvedAt": "2026-10-02T23:55:01.721Z",
+    "mapFingerprint": "57558cb5"
+  }
+}

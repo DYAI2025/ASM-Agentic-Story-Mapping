@@ -1,0 +1,428 @@
+{
+  "briefVersion": 3,
+  "kind": "asm.execution-brief",
+  "goal": {
+    "id": "goal-faster-shared-narrative",
+    "statement": "Software teams without prior AI experience can move from product discussion to a shared, understandable product narrative and first useful delivery slice substantially faster.",
+    "slice": {
+      "id": "slice-shared-steps",
+      "title": "Steps shared between personas"
+    }
+  },
+  "approvedContext": {
+    "approval": {
+      "revision": 1,
+      "approvedBy": "Maya (E2E)",
+      "approvedAt": "2026-10-02T23:54:58.752Z"
+    },
+    "selection": {
+      "candidateId": "slice-shared-steps",
+      "selectedBy": "Maya (E2E)",
+      "selectedAt": "2026-10-02T23:54:58.990Z",
+      "candidateFingerprint": "f66ec7d4",
+      "derivationVersion": 2
+    },
+    "peopleConsidered": {
+      "confirmedBy": "Maya (E2E)",
+      "confirmedAt": "2026-10-02T23:54:58.914Z",
+      "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
+    },
+    "value": {
+      "status": "VALUE_EXCEPTION_ACCEPTED",
+      "needIds": [],
+      "exception": {
+        "rationale": "The hand-over points have to work before we can observe which need they serve.",
+        "acceptedBy": "Maya (E2E)",
+        "acceptedAt": "2026-10-02T23:54:59.317Z"
+      },
+      "note": "No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value."
+    },
+    "whyThisSlice": [
+      "This slice is every step that more than one persona takes part in: the places where work passes between people.",
+      "Primary persona relevance: Product Lead / Product Owner (persona-product-lead) takes part in 5 of the 6 included steps.",
+      "Persona overlap: 6 of the 6 included steps involve more than one persona.",
+      "Scope: 6 of 11 main-path steps, with 2 worst-case branch(es) to handle."
+    ],
+    "assumptions": [
+      "Assumes “Start product” [step-start-product] has already happened outside this slice.",
+      "Assumes the steps skipped between included steps are done by hand: [step-confirm-intent] [step-approve-narrative].",
+      "Does not reach “Export execution-ready work” [step-export-work]: the outcome of this slice is an intermediate one.",
+      "Assumes these steps contribute to the goal [goal-faster-shared-narrative]; none of them names a need."
+    ],
+    "decidedDecisions": [
+      {
+        "id": "dec-canonical-file",
+        "title": "The canonical product model is a YAML file inside the repository",
+        "rationale": "Given by the slice brief (no database, no graph server). A file is diffable, reviewable and readable by agents.",
+        "relatesTo": [
+          "asm"
+        ]
+      },
+      {
+        "id": "dec-position-not-semantics",
+        "title": "Visual position is never the sole source of semantics",
+        "rationale": "Narrative order lives in an explicit sequence field and relations in ids. Layout is stored separately and can change without touching meaning.",
+        "relatesTo": [
+          "step-main-path",
+          "need-stable-references"
+        ]
+      }
+    ],
+    "verified": [],
+    "note": "Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested."
+  },
+  "inScope": [
+    {
+      "id": "step-describe-idea",
+      "sequence": 2,
+      "title": "Describe idea / provide discussion",
+      "description": "The team describes the idea or hands over an existing product discussion.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-domain-ux"
+      ],
+      "needIds": [],
+      "branches": [
+        {
+          "id": "wcbc-notes-provided",
+          "kind": "best_case",
+          "title": "Discussion notes already exist",
+          "description": "The team hands over existing notes instead of starting from a blank page.",
+          "recovery": ""
+        },
+        {
+          "id": "wcbc-vague-discussion",
+          "kind": "worst_case",
+          "title": "Discussion is vague or contradictory",
+          "description": "The input does not support a single reading of what the product is for.",
+          "recovery": "Record each contradiction as an open decision instead of guessing an answer."
+        }
+      ]
+    },
+    {
+      "id": "step-define-personas",
+      "sequence": 4,
+      "title": "Define personas and needs",
+      "description": "Who the product is for and what each persona needs from it.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-domain-ux"
+      ],
+      "needIds": [],
+      "branches": []
+    },
+    {
+      "id": "step-main-path",
+      "sequence": 5,
+      "title": "Build main / best-case path",
+      "description": "The main narrative is laid out as an ordered sequence of steps.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-domain-ux",
+        "persona-developer"
+      ],
+      "needIds": [],
+      "branches": [
+        {
+          "id": "wcbc-coherent-story",
+          "kind": "best_case",
+          "title": "Main path reads as one story",
+          "description": "A newcomer can follow the narrative from start to export without explanation.",
+          "recovery": ""
+        }
+      ]
+    },
+    {
+      "id": "step-add-wcbc",
+      "sequence": 6,
+      "title": "Add relevant WCBC / recovery paths",
+      "description": "Worst-case and best-case branches are attached to the steps they belong to.",
+      "personaIds": [
+        "persona-domain-ux",
+        "persona-developer"
+      ],
+      "needIds": [],
+      "branches": [
+        {
+          "id": "wcbc-branches-swamp",
+          "kind": "worst_case",
+          "title": "Recovery paths swamp the main narrative",
+          "description": "So many branches are added that the main path is no longer readable.",
+          "recovery": "Keep only branches that change what the first slice must handle."
+        }
+      ]
+    },
+    {
+      "id": "step-review-gaps",
+      "sequence": 7,
+      "title": "Review gaps and unresolved decisions",
+      "description": "Open decisions and validation issues are made visible before approval.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-domain-ux",
+        "persona-developer"
+      ],
+      "needIds": [],
+      "branches": []
+    },
+    {
+      "id": "step-review-slices",
+      "sequence": 9,
+      "title": "Review first slice candidates",
+      "description": "Candidate first slices through the approved narrative are compared.",
+      "personaIds": [
+        "persona-product-lead",
+        "persona-developer"
+      ],
+      "needIds": [],
+      "branches": []
+    }
+  ],
+  "outOfScope": [
+    "[step-start-product] Start product",
+    "[step-confirm-intent] Confirm product intent",
+    "[step-approve-narrative] Human approves narrative",
+    "[step-select-slice] Human selects first slice",
+    "[step-export-work] Export execution-ready work",
+    "[need-shared-narrative] Need not served by this slice: Turn a product discussion into one narrative the whole team understands, without prior AI experience.",
+    "[need-approve-meaning] Need not served by this slice: Remain the one who approves meaning; nothing counts as agreed until I approve it.",
+    "[need-real-situations] Need not served by this slice: See real user situations, including failure and recovery, represented in the narrative.",
+    "[need-see-gaps] Need not served by this slice: Spot gaps and unresolved decisions before anything is built on them.",
+    "[need-buildable-slice] Need not served by this slice: Receive a first slice that is small, unambiguous and ready to execute.",
+    "[need-stable-references] Need not served by this slice: Rely on stable ids and explicit relations rather than on where a card happens to sit."
+  ],
+  "personas": [
+    {
+      "id": "persona-product-lead",
+      "name": "Product Lead / Product Owner",
+      "description": "Owns product intent and approves what the narrative means.",
+      "roles": [],
+      "persona": true
+    },
+    {
+      "id": "persona-domain-ux",
+      "name": "Domain or UX Expert",
+      "description": "Knows the real user situations, including where things go wrong.",
+      "roles": [],
+      "persona": true
+    },
+    {
+      "id": "persona-developer",
+      "name": "Developer",
+      "description": "Turns the approved narrative into a first delivery slice.",
+      "roles": [],
+      "persona": true
+    }
+  ],
+  "needs": [],
+  "acceptanceCriteriaDraft": [
+    {
+      "id": "ac-1",
+      "text": "[step-describe-idea] Product Lead / Product Owner / Domain or UX Expert can complete “Describe idea / provide discussion”: The team describes the idea or hands over an existing product discussion.",
+      "refs": [
+        "step-describe-idea",
+        "persona-product-lead",
+        "persona-domain-ux"
+      ]
+    },
+    {
+      "id": "ac-2",
+      "text": "[wcbc-vague-discussion] When “Discussion is vague or contradictory”, then: Record each contradiction as an open decision instead of guessing an answer.",
+      "refs": [
+        "wcbc-vague-discussion",
+        "step-describe-idea"
+      ]
+    },
+    {
+      "id": "ac-3",
+      "text": "[step-define-personas] Product Lead / Product Owner / Domain or UX Expert can complete “Define personas and needs”: Who the product is for and what each persona needs from it.",
+      "refs": [
+        "step-define-personas",
+        "persona-product-lead",
+        "persona-domain-ux"
+      ]
+    },
+    {
+      "id": "ac-4",
+      "text": "[step-main-path] Product Lead / Product Owner / Domain or UX Expert / Developer can complete “Build main / best-case path”: The main narrative is laid out as an ordered sequence of steps.",
+      "refs": [
+        "step-main-path",
+        "persona-product-lead",
+        "persona-domain-ux",
+        "persona-developer"
+      ]
+    },
+    {
+      "id": "ac-5",
+      "text": "[step-add-wcbc] Domain or UX Expert / Developer can complete “Add relevant WCBC / recovery paths”: Worst-case and best-case branches are attached to the steps they belong to.",
+      "refs": [
+        "step-add-wcbc",
+        "persona-domain-ux",
+        "persona-developer"
+      ]
+    },
+    {
+      "id": "ac-6",
+      "text": "[wcbc-branches-swamp] When “Recovery paths swamp the main narrative”, then: Keep only branches that change what the first slice must handle.",
+      "refs": [
+        "wcbc-branches-swamp",
+        "step-add-wcbc"
+      ]
+    },
+    {
+      "id": "ac-7",
+      "text": "[step-review-gaps] Product Lead / Product Owner / Domain or UX Expert / Developer can complete “Review gaps and unresolved decisions”: Open decisions and validation issues are made visible before approval.",
+      "refs": [
+        "step-review-gaps",
+        "persona-product-lead",
+        "persona-domain-ux",
+        "persona-developer"
+      ]
+    },
+    {
+      "id": "ac-8",
+      "text": "[step-review-slices] Product Lead / Product Owner / Developer can complete “Review first slice candidates”: Candidate first slices through the approved narrative are compared.",
+      "refs": [
+        "step-review-slices",
+        "persona-product-lead",
+        "persona-developer"
+      ]
+    }
+  ],
+  "verificationExpectations": [
+    {
+      "criterionId": "ac-1",
+      "expectation": "Show step-describe-idea working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-2",
+      "expectation": "Provoke the situation of wcbc-vague-discussion and show, with a recorded run, that what follows matches the criterion."
+    },
+    {
+      "criterionId": "ac-3",
+      "expectation": "Show step-define-personas working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-4",
+      "expectation": "Show step-main-path working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-5",
+      "expectation": "Show step-add-wcbc working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-6",
+      "expectation": "Provoke the situation of wcbc-branches-swamp and show, with a recorded run, that what follows matches the criterion."
+    },
+    {
+      "criterionId": "ac-7",
+      "expectation": "Show step-review-gaps working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-8",
+      "expectation": "Show step-review-slices working for each named persona with a recorded run (test output or screen recording), not a description."
+    }
+  ],
+  "openHumanDecisions": [
+    {
+      "id": "dec-measure-faster",
+      "kind": "open_decision",
+      "text": "What does \"substantially faster\" mean in measurable terms?",
+      "relatesTo": [
+        "goal-faster-shared-narrative"
+      ]
+    },
+    {
+      "id": "dec-slice-criteria",
+      "kind": "open_decision",
+      "text": "What makes a slice candidate a \"first useful\" slice?",
+      "relatesTo": [
+        "step-review-slices",
+        "step-select-slice"
+      ]
+    },
+    {
+      "id": "dec-agent-assistance",
+      "kind": "open_decision",
+      "text": "Which steps do agents assist with once agent integration exists?",
+      "relatesTo": [
+        "step-describe-idea",
+        "step-review-gaps"
+      ]
+    },
+    {
+      "id": "behavior_without_need:step-describe-idea",
+      "kind": "review_gap",
+      "text": "Step “Describe idea / provide discussion” serves no need and no decided decision gives a rationale for it.",
+      "relatesTo": [
+        "step-describe-idea"
+      ]
+    },
+    {
+      "id": "behavior_without_need:step-define-personas",
+      "kind": "review_gap",
+      "text": "Step “Define personas and needs” serves no need and no decided decision gives a rationale for it.",
+      "relatesTo": [
+        "step-define-personas"
+      ]
+    },
+    {
+      "id": "behavior_without_need:step-add-wcbc",
+      "kind": "review_gap",
+      "text": "Step “Add relevant WCBC / recovery paths” serves no need and no decided decision gives a rationale for it.",
+      "relatesTo": [
+        "step-add-wcbc"
+      ]
+    },
+    {
+      "id": "behavior_without_need:step-review-gaps",
+      "kind": "review_gap",
+      "text": "Step “Review gaps and unresolved decisions” serves no need and no decided decision gives a rationale for it.",
+      "relatesTo": [
+        "step-review-gaps"
+      ]
+    },
+    {
+      "id": "behavior_without_need:step-review-slices",
+      "kind": "review_gap",
+      "text": "Step “Review first slice candidates” serves no need and no decided decision gives a rationale for it.",
+      "relatesTo": [
+        "step-review-slices"
+      ]
+    },
+    {
+      "id": "wcbc_without_outcome:wcbc-vague-discussion",
+      "kind": "review_gap",
+      "text": "Worst case “Discussion is vague or contradictory” does not say where it leads: no recovery step, termination or escalation is referenced.",
+      "relatesTo": [
+        "wcbc-vague-discussion",
+        "step-describe-idea"
+      ]
+    },
+    {
+      "id": "wcbc_without_outcome:wcbc-branches-swamp",
+      "kind": "review_gap",
+      "text": "Worst case “Recovery paths swamp the main narrative” does not say where it leads: no recovery step, termination or escalation is referenced.",
+      "relatesTo": [
+        "wcbc-branches-swamp",
+        "step-add-wcbc"
+      ]
+    },
+    {
+      "id": "flag-1",
+      "kind": "flag",
+      "text": "None of the included steps references a need: the map gives no reason for this slice.",
+      "relatesTo": []
+    }
+  ],
+  "sourceMapRevision": {
+    "productId": "asm",
+    "productName": "ASM – Agentic Story Mapping",
+    "schemaVersion": 1,
+    "revision": 1,
+    "status": "approved",
+    "approvedBy": "Maya (E2E)",
+    "approvedAt": "2026-10-02T23:54:58.752Z",
+    "mapFingerprint": "60c8e3c5"
+  }
+}

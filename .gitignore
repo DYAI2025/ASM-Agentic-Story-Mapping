@@ -1,0 +1,14 @@
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+test-results/
+playwright-report/
+.e2e-tmp/
+.e2e-artifacts/
+# Work state (which slice a human selected) is runtime state, not product canon.
+*.work-state.json
+.DS_Store
+.env
+.env.*
+!.env.example
