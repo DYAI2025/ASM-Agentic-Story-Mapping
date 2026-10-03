@@ -71,6 +71,31 @@ name + own words -> proposal against a blank draft -> preview -> accept
   the start screen shows the format. Free text without such lines needs the
   `anthropic` provider, which has only been tested against a stubbed client.
 
+### Clear input and start over
+
+Two different actions, so that throwing away a draft is never confused with
+throwing away the map.
+
+- **Clear input** (workshop panel, start screen) empties the text field and
+  drops a proposal under review. Both only ever existed in the browser; the
+  product file and the work state are not involved and stay byte-identical.
+- **Start over…** (editor toolbar) asks first, inline, with no undo. Confirmed,
+  `POST /api/product/reset` with `{ "confirm": "start over" }` removes the
+  product file and its work state (`resetProduct` in `src/server/store.ts`);
+  the page then reloads and, with no product, shows the start screen. No server
+  restart. Cancel, or a request without those words (400), changes nothing.
+- Order and failure: the work state goes first, the product last, and the store
+  re-checks that neither file is there before it answers `ok`. The start screen
+  can only appear once the product file is gone, so a reset that fails half-way
+  (500, `reset_failed`) leaves the old map on screen with the reason; it never
+  leaves a stored people check or selection behind that a later product could
+  pick up as stale state. The two files are not removed atomically; the order
+  is what makes it fail closed.
+- The repository's own map is not a user workspace: with no `ASM_PRODUCT_FILE`,
+  or one that resolves to `product/asm.product.yaml`, the reset is refused
+  (409, `seed_protected`) and nothing is touched. Start over works on the
+  workspace path you set.
+
 ## From discussion to map
 
 ```
@@ -436,6 +461,7 @@ table says which.
 | Dropping `sequence` while the narrative is still sorted by it | ASM-20, `6972e89` | equivalent mutant (behaviour unchanged); replaced by sorting by id, which is red |
 | Against the first-time-user test at its first version: people gate removed from `selectSlice`; GET `/api/slices` selects when nothing is selected; fingerprint blind to the goal; bootstrap accept ignores the exclusion | ASM-21, `8eac934` | **three of four survived** (the gate was asserted only as a disabled button; no read happened before the selection; the reopen hid the fingerprint); the fourth red |
 | Same four, plus an unnamed button inside a label and a button whose only text is hidden from assistive technology | ASM-21, the spec's second version | all red |
+| Seed never protected (both conditions); only the unset-variable condition dropped; path compared as a string instead of resolved (`product/./asm.product.yaml`); only the work state removed; only the product removed; every failure reported as success (unlink errors and the final existence check ignored) | ASM-23, `tests/domain/reset.test.ts` | all red (the first seed mutant deleted the real seed in the working tree before the test was moved to a scratch copy of the repository layout; the string-comparison mutant survived until the test used a path spelled differently) |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 

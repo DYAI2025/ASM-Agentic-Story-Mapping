@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { exportProductYaml, parseProductText } from "../domain/serialize";
-import { validateProduct, type ValidationResult } from "../domain/validate";
+import { validateProduct, type ValidationIssue, type ValidationResult } from "../domain/validate";
 import { EMPTY_WORK_STATE, exportWorkStateJson, validateWorkState, type WorkStateResult } from "../domain/work-state";
 
 /** The canonical product file. Overridable so tests never write to the fixture. */
@@ -116,6 +116,71 @@ export async function loadWorkState(): Promise<WorkStateResult> {
     };
   }
   return validateWorkState(data);
+}
+
+/** The checked-in self-map: the product the repository ships with. A normal reset never removes it. */
+export function seedProductFilePath(): string {
+  return path.join(process.cwd(), "product", "asm.product.yaml");
+}
+
+/** Whether the configured product is the repository seed: no explicit workspace path, or one that resolves to the seed. */
+export function productIsSeed(): boolean {
+  if (!process.env.ASM_PRODUCT_FILE) return true;
+  return path.resolve(productFilePath()) === path.resolve(seedProductFilePath());
+}
+
+export type ResetResult =
+  | { ok: true; removed: { product: string; workState: string | null } }
+  | { ok: false; issues: ValidationIssue[] };
+
+/**
+ * Start over: removes the user-workspace product and its work state.
+ *
+ * Work state first, product last. The start screen appears only once the
+ * product file is gone, so a reset that fails half-way leaves the old product
+ * in place and reports the failure; it never leaves a work state behind that
+ * could become effective again for a later product. Nothing here is atomic
+ * across two files; the order and the final check are what make it fail
+ * closed.
+ *
+ * The repository seed is not a user workspace: without an explicit
+ * `ASM_PRODUCT_FILE`, or with one that resolves to the seed, the reset is
+ * refused and nothing is touched.
+ */
+export async function resetProduct(): Promise<ResetResult> {
+  const product = productFilePath();
+  const work = workStateFilePath();
+  if (productIsSeed())
+    return {
+      ok: false,
+      issues: [{ code: "seed_protected", path: product, message: "this is the repository's own map; set ASM_PRODUCT_FILE to a workspace path to start over" }],
+    };
+  if (!(await productFileExists()))
+    return { ok: false, issues: [{ code: "no_product", path: product, message: "there is no product to start over from" }] };
+
+  const failed = (file: string, error: unknown): ResetResult => ({
+    ok: false,
+    issues: [{ code: "reset_failed", path: file, message: error instanceof Error ? error.message : String(error) }],
+  });
+
+  let workRemoved: string | null = null;
+  try {
+    await fs.unlink(/* turbopackIgnore: true */ work);
+    workRemoved = work;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return failed(work, error);
+  }
+  try {
+    await fs.unlink(/* turbopackIgnore: true */ product);
+  } catch (error) {
+    return failed(product, error);
+  }
+  // Success is what is on disk now, not what the calls reported.
+  for (const file of [product, work]) {
+    const stillThere = await fs.access(/* turbopackIgnore: true */ file).then(() => true, () => false);
+    if (stillThere) return failed(file, new Error("the file is still there after the reset"));
+  }
+  return { ok: true, removed: { product, workState: workRemoved } };
 }
 
 /** Validates, then replaces the work-state file atomically. Never touches the product file. */

@@ -226,6 +226,22 @@ textarea {
   background: var(--worst-bg);
 }
 
+/* Destructive: start over. Same red as a worst case, so it reads as what it is. */
+.panel.danger {
+  border-color: var(--worst);
+  background: var(--worst-bg);
+}
+
+button.danger {
+  border-color: var(--worst);
+  background: var(--worst);
+}
+
+button.secondary.danger {
+  background: var(--surface);
+  color: var(--worst);
+}
+
 .card {
   position: relative;
   padding: 10px 12px;

@@ -99,6 +99,12 @@ export function WorkshopPanel({
     setStatus(message);
   }
 
+  /** Clear input: only what was typed here and never sent anywhere. The map is not involved. */
+  function clear() {
+    setTranscript("");
+    close("Input cleared. The map was not changed.");
+  }
+
   async function structure() {
     setBusy(true);
     setStatus("");
@@ -175,6 +181,15 @@ export function WorkshopPanel({
               onClick={() => void structure()}
             >
               {busy ? (labels?.busy ?? "Structuring…") : (labels?.button ?? "Structure discussion")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              data-testid="clear-input"
+              disabled={busy || transcript === ""}
+              onClick={clear}
+            >
+              Clear input
             </button>
             {blocked && (
               <span className="muted" data-testid="proposal-blocked">
