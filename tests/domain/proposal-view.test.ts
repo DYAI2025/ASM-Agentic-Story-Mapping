@@ -114,6 +114,38 @@ describe("alternatives for the goal are a human choice", () => {
     expect(applyMapPatch(blank.product, none).ok).toBe(false);
   });
 
+  it("an alternative goal is checked like every other item: its quote must occur in its source, and it needs a goal to be an alternative to", () => {
+    // Found by the independent verifier on 1d44fc9: alternatives passed through unvalidated stayed green.
+    const blank = blankProduct("Parcel lockers");
+    if (!blank.ok) throw new Error("blank");
+    const honest = structureWithMarkers(TWO_GOALS, blank.product);
+    const alternative = honest.goalAlternatives![0];
+
+    const misquoted = { ...honest, goalAlternatives: [{ ...alternative, source: { ...alternative.source, snippet: "Something nobody wrote." } }] };
+    expect(codes(resolveProposal(blank.product, misquoted, TWO_GOALS, "test"))).toEqual(["snippet_not_in_source"]);
+
+    const bundle = { sources: [{ id: "src-1", label: "Pasted text", kind: "pasted" as const, text: TWO_GOALS }, { id: "src-2", label: "b.txt", kind: "file" as const, text: "Nothing here." }] };
+    const unattributed = { ...honest, goalAlternatives: [{ ...alternative, source: { ...alternative.source, sourceId: undefined } }] };
+    const attributed = {
+      ...unattributed,
+      goal: { ...honest.goal!, source: { ...honest.goal!.source, sourceId: "src-1" } },
+      personas: honest.personas.map((p) => ({ ...p, source: { ...p.source, sourceId: "src-1" } })),
+      needs: honest.needs.map((n) => ({ ...n, source: { ...n.source, sourceId: "src-1" } })),
+      steps: honest.steps.map((s) => ({ ...s, source: { ...s.source, sourceId: "src-1" } })),
+      unresolvedQuestions: honest.unresolvedQuestions.map((q) => ({ ...q, source: { ...q.source, sourceId: "src-1" } })),
+    };
+    expect(codes(resolveProposal(blank.product, attributed, bundle, "test"))).toEqual(["source_required"]);
+
+    const orphan = { ...honest, goal: null, goalAlternatives: [alternative] };
+    expect(codes(resolveProposal(blank.product, orphan, TWO_GOALS, "test"))).toContain("alternative_without_goal");
+
+    // And the honest one records where the alternative came from.
+    const ok = resolveProposal(blank.product, honest, TWO_GOALS, "test");
+    const last = ok.ok ? ok.patch.operations.at(-1) : null;
+    expect(last?.op).toBe("set_goal");
+    expect(last?.source).toMatchObject({ sourceId: "src-1", sourceLabel: "Pasted text" });
+  });
+
   it("a model cannot smuggle a choice tag onto anything but a goal, and the schema still has no approve", () => {
     const { product, patch } = proposal();
     const tagged = { ...patch, operations: patch.operations.map((o) => (o.op === "add_persona" ? { ...o, choice: "goal" } : o)) };

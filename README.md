@@ -561,6 +561,8 @@ table says which.
 | Verifier on `5ed740f`: unknown name → fake; OpenAI 429 → `{}`; OpenRouter error-in-200 ignored; `buildProposal` falling back to the fake on any provider error; Anthropic `fallbacks` restored; `postJson` without the abort signal | ASM-25, `5ed740f` | all red (31 failures for the silent fallback); `additionalProperties = false` removed from the schema builder was an equivalent mutant — zod 4.6.5 already emits it for every `strictObject`, measured on all 25 object nodes |
 | Verifier's own: the OpenRouter review sent with the proposal's instructions; `ASM_AGENT_TIMEOUT_MS` bounds dropped | ASM-25, `5ed740f` | **both survived** — closed by asserting the review system message and by refusing `0`, `999`, `600001`, `1.5`, `-5000` |
 | Two goals applied with the last one winning; the dry run on the whole patch instead of per option; actors grouped as personas; the goal suggesting itself; the primary goal untagged in a choice | ASM-26, `tests/domain/proposal-view.test.ts` | all red |
+| Verifier on `1d44fc9`: `conflicting_goal` removed; first goal radio always checked; no chips; questions grouped as other; quote outside the disclosure | ASM-26, `1d44fc9` | all red; the first goal pre-chosen in the panel's state is observable only by the browser spec (which CI ran) |
+| Verifier's own: a rejected item opening its edit fields under Edit all; an alternative goal's quote and source passed through unvalidated | ASM-26, `1d44fc9` | **both survived** — closed by a render test with a rejected item under Edit all and by tests for a misquoted, unattributed and orphaned alternative |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 

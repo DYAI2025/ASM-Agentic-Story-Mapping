@@ -120,4 +120,14 @@ describe("the proposal review shows product meaning, grouped", () => {
     expect(html).not.toMatch(/<textarea name="op-3-/);
     expect(html).not.toContain('data-testid="chip-op-3');
   });
+
+  it("a rejected item never opens its fields, even under Edit all", () => {
+    // Found by the independent verifier on 1d44fc9: editing a rejected item was unobserved.
+    const html = render({ editing: new Set(["op-1", "op-2", "op-3", "op-4", "op-5", "op-6"]), excluded: new Set(["op-5", "op-7"]) });
+    expect(html).not.toMatch(/<textarea name="op-5-/);
+    expect(html).not.toContain('data-testid="chip-op-5');
+    expect(html).not.toContain('data-testid="edit-op-5"');
+    expect(html).toMatch(/<textarea name="op-4-statement"/);
+    expect(part(html, "diff-op-5")).toContain("Rejected");
+  });
 });
