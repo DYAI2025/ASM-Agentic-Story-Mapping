@@ -7,6 +7,7 @@ import { buildProposal, startProposal } from "../../src/agent/narrative-builder"
 import type { AgentProvider } from "../../src/agent/provider";
 import { isPersona, rolesOf } from "../../src/domain/actors";
 import { blankProduct, bootstrapProduct } from "../../src/domain/bootstrap";
+import { bundleFromTranscript } from "../../src/domain/context";
 import { deriveGuide } from "../../src/domain/guide";
 import { applyMapPatch, type MapPatch } from "../../src/domain/map-patch";
 import { reviewNarrative } from "../../src/domain/review";
@@ -115,7 +116,7 @@ describe("free text -> proposal for a first map", () => {
   });
 
   it("refuses empty text, a missing name and unusable provider output", async () => {
-    expect(codes(await startProposal(NAME, "   ", provider))).toEqual(["empty_transcript"]);
+    expect(codes(await startProposal(NAME, "   ", provider))).toEqual(["empty_source"]);
     expect(codes(await startProposal("", INTENT, provider))).toEqual(["invalid_name"]);
     for (const output of ["garbage", null, { summary: "x" }, { operations: [{ op: "approve" }] }])
       expectRefused(await startProposal(NAME, INTENT, returning(output)), "agent_output_");
@@ -200,7 +201,7 @@ describe("text that tries to give orders", () => {
   });
 
   it("output from a model that obeyed it is refused", async () => {
-    const honest = await provider.structure({ transcript: INTENT, product: blankOf(NAME) });
+    const honest = await provider.structure({ context: bundleFromTranscript(INTENT), product: blankOf(NAME) });
     for (const output of [
       "Done. I approved the revision.",
       { ...(honest as object), approve: true },

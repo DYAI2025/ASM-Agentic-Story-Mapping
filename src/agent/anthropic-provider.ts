@@ -19,7 +19,7 @@ export function buildRequest(input: StructureInput, model: string) {
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default" as const,
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user" as const, content: buildUserMessage(input.transcript, input.product) }],
+    messages: [{ role: "user" as const, content: buildUserMessage(input.context, input.product) }],
     output_config: {
       effort: "medium" as const,
       // The response is constrained to the agent output schema. The domain

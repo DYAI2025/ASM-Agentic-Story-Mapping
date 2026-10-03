@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SourceIdSchema, bundleFromTranscript, type ContextBundle } from "./context";
 import { ID_PREFIX, hasPrefix, makeId, type IdKind } from "./ids";
 import { fingerprint } from "./fingerprint";
 import { ROLE_LABEL } from "./actors";
@@ -35,6 +36,8 @@ export const AgentSource = z.strictObject({
   rationale: z.string(),
   /** 0..1. Advisory only. */
   confidence: z.number(),
+  /** Which source of the context bundle the snippet is quoted from. Implied when there is only one. */
+  sourceId: z.string().optional(),
 });
 
 export const AgentPlacement = z.strictObject({
@@ -101,6 +104,9 @@ export const PatchSourceSchema = z.strictObject({
   snippet: Text,
   rationale: OptionalText,
   confidence: z.number().min(0).max(1),
+  /** The source the snippet occurs in; resolved, never taken from the provider unchecked. Absent on patches from before bundles. */
+  sourceId: SourceIdSchema.optional(),
+  sourceLabel: Text.optional(),
 });
 
 export const PlacementSchema = z.discriminatedUnion("kind", [
@@ -220,14 +226,19 @@ export type ProposalResult = { ok: true; patch: MapPatch } | { ok: false; issues
 /**
  * Turn raw provider output into a MapPatch, or into a list of reasons why
  * not. Everything a provider says is checked here: shape, text limits,
- * that every quoted snippet really occurs in the pasted text, and that every
- * reference points at something that exists. Ids for new items are derived
- * from their text, never taken from the provider.
+ * that every quoted snippet really occurs in the source it is attributed to,
+ * and that every reference points at something that exists. Ids for new items
+ * are derived from their text, never taken from the provider.
+ *
+ * The context is a bundle of sources; a plain string is the one-source case.
+ * With one source the attribution is implied, with several the provider has
+ * to say which, and a snippet is checked against that source alone: a quote
+ * that only exists across a boundary, or in another source, is not a quote.
  */
 export function resolveProposal(
   product: ProductDocument,
   rawOutput: unknown,
-  transcript: string,
+  context: string | ContextBundle,
   provider: string,
 ): ProposalResult {
   const parsed = AgentOutputSchema.safeParse(rawOutput);
@@ -243,7 +254,8 @@ export function resolveProposal(
   }
   if (issues.length > 0) return { ok: false, issues };
 
-  const haystack = normalizeSpace(transcript);
+  const bundle = typeof context === "string" ? bundleFromTranscript(context) : context;
+  const sources = new Map(bundle.sources.map((s) => [s.id, { label: s.label, haystack: normalizeSpace(s.text) }]));
   const text = (path: string, value: string, required = true): string => {
     const trimmed = value.trim();
     if (required && trimmed === "") add("empty_text", path, "must not be empty");
@@ -253,11 +265,23 @@ export function resolveProposal(
   };
   const source = (path: string, s: z.infer<typeof AgentSource>) => {
     const snippet = text(`${path}.snippet`, s.snippet);
-    if (snippet !== "" && !haystack.includes(normalizeSpace(snippet)))
-      add("snippet_not_in_source", `${path}.snippet`, "the quoted snippet does not occur in the pasted text");
+    let sourceId = s.sourceId;
+    if (sourceId === undefined) {
+      if (bundle.sources.length === 1) sourceId = bundle.sources[0].id;
+      else add("source_required", `${path}.sourceId`, "with several sources, say which one the snippet is quoted from");
+    }
+    const known = sourceId !== undefined ? sources.get(sourceId) : undefined;
+    if (sourceId !== undefined && !known) add("unknown_source", `${path}.sourceId`, `"${sourceId}" is not a source of this context`);
+    if (known && snippet !== "" && !known.haystack.includes(normalizeSpace(snippet)))
+      add("snippet_not_in_source", `${path}.snippet`, `the quoted snippet does not occur in “${known.label}”`);
     if (!(s.confidence >= 0 && s.confidence <= 1))
       add("invalid_confidence", `${path}.confidence`, "confidence must be between 0 and 1");
-    return { snippet, rationale: text(`${path}.rationale`, s.rationale, false), confidence: s.confidence };
+    return {
+      snippet,
+      rationale: text(`${path}.rationale`, s.rationale, false),
+      confidence: s.confidence,
+      ...(known && sourceId !== undefined ? { sourceId, sourceLabel: known.label } : {}),
+    };
   };
 
   const taken = allIds(product);

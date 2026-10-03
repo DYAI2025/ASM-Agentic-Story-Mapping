@@ -98,8 +98,8 @@ function EditableCard({
                 <footer>
                   {entry.rationale}{" "}
                   <span className="muted">
-                    · {entry.change} in revision {entry.revision} · {entry.provider} · confidence{" "}
-                    {entry.confidence.toFixed(2)} (advisory only)
+                    {entry.sourceLabel && <>· from “{entry.sourceLabel}” </>}· {entry.change} in revision {entry.revision} · {entry.provider} ·
+                    confidence {entry.confidence.toFixed(2)} (advisory only)
                   </span>
                 </footer>
               </blockquote>

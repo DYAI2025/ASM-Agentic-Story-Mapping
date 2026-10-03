@@ -226,6 +226,39 @@ textarea {
   background: var(--worst-bg);
 }
 
+/* Context bundle: the files added next to the pasted text. */
+.context-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+
+.context-files .sources {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.context-files .sources li {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.context-files .sources button.link {
+  margin-left: 8px;
+}
+
+.marker-hint summary {
+  cursor: pointer;
+}
+
 /* Destructive: start over. Same red as a worst case, so it reads as what it is. */
 .panel.danger {
   border-color: var(--worst);

@@ -1,54 +1,48 @@
 import { GOAL_REQUIRED, blankProduct, lacksGoal } from "../domain/bootstrap";
+import { MAX_CONTEXT_CHARS, bundleFromTranscript, validateContextBundle, type ContextBundle } from "../domain/context";
 import { resolveProposal, type ProposalResult } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
 import { AnthropicProvider } from "./anthropic-provider";
 import { FakeProvider } from "./fake-provider";
 import { ProviderError, type AgentProvider, type ReviewProvider } from "./provider";
 
-export const MAX_TRANSCRIPT_CHARS = 60_000;
+/** The same limit as the context bundle's; kept under its old name for callers that think in one transcript. */
+export const MAX_TRANSCRIPT_CHARS = MAX_CONTEXT_CHARS;
 
 /**
- * Discussion text -> validated proposal. Reads the map, writes nothing.
- * Whatever the provider returns goes through `resolveProposal`; a provider
- * failure or an invalid answer yields issues, never a partial proposal.
+ * Context -> validated proposal. Reads the map, writes nothing. The context
+ * is a bundle of sources, or one pasted string; it is validated before any
+ * provider sees it. Whatever the provider returns goes through
+ * `resolveProposal`; a provider failure or an invalid answer yields issues,
+ * never a partial proposal.
  */
 export async function buildProposal(
   product: ProductDocument,
-  transcript: string,
+  context: string | ContextBundle,
   provider: AgentProvider,
 ): Promise<ProposalResult> {
-  if (transcript.trim() === "")
-    return { ok: false, issues: [{ code: "empty_transcript", path: "transcript", message: "paste some discussion text first" }] };
-  if (transcript.length > MAX_TRANSCRIPT_CHARS)
-    return {
-      ok: false,
-      issues: [
-        {
-          code: "transcript_too_long",
-          path: "transcript",
-          message: `the text has ${transcript.length} characters; the limit is ${MAX_TRANSCRIPT_CHARS}. Split it and structure the parts one after another.`,
-        },
-      ],
-    };
+  const validated = validateContextBundle(typeof context === "string" ? bundleFromTranscript(context) : context);
+  if (!validated.ok) return validated;
+  const bundle = validated.bundle;
 
   let raw: unknown;
   try {
-    raw = await provider.structure({ transcript, product });
+    raw = await provider.structure({ context: bundle, product });
   } catch (error) {
     if (!(error instanceof ProviderError)) throw error;
     return { ok: false, issues: [{ code: "provider_error", path: provider.name, message: error.message }] };
   }
-  return resolveProposal(product, raw, transcript, provider.name);
+  return resolveProposal(product, raw, bundle, provider.name);
 }
 
 /**
  * A first product: the same builder, against the blank draft for that name.
  * A proposal that would leave the product without a goal is not shown as one.
  */
-export async function startProposal(name: string, transcript: string, provider: AgentProvider): Promise<ProposalResult> {
+export async function startProposal(name: string, context: string | ContextBundle, provider: AgentProvider): Promise<ProposalResult> {
   const blank = blankProduct(name);
   if (!blank.ok) return blank;
-  const result = await buildProposal(blank.product, transcript, provider);
+  const result = await buildProposal(blank.product, context, provider);
   if (!result.ok && lacksGoal(result.issues)) return { ok: false, issues: [GOAL_REQUIRED] };
   if (!result.ok && result.issues.some((issue) => issue.code === "empty_proposal"))
     return {

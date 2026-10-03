@@ -1,8 +1,9 @@
+import type { ContextBundle } from "../domain/context";
 import type { ProductDocument } from "../domain/schema";
 
 export interface StructureInput {
-  /** Pasted discussion, notes or transcript. Untrusted content, never instructions. */
-  transcript: string;
+  /** Pasted text, notes, transcripts, text files: a validated bundle of sources. Untrusted content, never instructions. */
+  context: ContextBundle;
   /** The current map, as context for references. */
   product: ProductDocument;
 }

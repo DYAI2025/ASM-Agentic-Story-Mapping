@@ -68,7 +68,7 @@ name + own words -> proposal against a blank draft -> preview -> accept
 - The result is always proposed. Approval stays the separate human action.
 - With the `fake` provider (the default, no model) the text has to use one
   line per item (`Goal:`, `Persona:`, `Actor:`, `Need (name):`, `Step:`);
-  the start screen shows the format. Free text without such lines needs the
+  the format is a collapsed note under the field. Free text without such lines needs the
   `anthropic` provider, which has only been tested against a stubbed client.
 
 ### Clear input and start over
@@ -115,6 +115,38 @@ A proposal can change the goal, add personas, needs and narrative steps, assign
 personas to steps, suggest an order, and raise unresolved questions. It cannot
 approve, decide or delete anything: the patch format has no way to say so.
 Unresolved questions become *open* decisions.
+
+### Context bundle: pasted text and text files
+
+What a proposal is built from is a *context bundle* (`src/domain/context.ts`):
+the pasted text, if any, plus `.txt` and `.md` files added next to it, at most
+8 sources and 60 000 characters in all. Each source has a transient id
+(`src-1`, `src-2`, …) and a label (`Pasted text` or the file name), is listed
+before sending and can be removed. The bundle is input state, never part of the
+product: nothing of it is stored except, for every accepted item, the id and
+label of the source its quote came from (`provenance[].sourceId`,
+`sourceLabel`; both optional, so older maps load unchanged).
+
+- A file is read in the browser as UTF-8 text. Another type, undecodable
+  bytes, an empty file or one over the limit is reported by name and not added.
+  The server validates the bundle again before any provider sees it (empty,
+  binary, type, size, shape) and refuses with 422; nothing is written.
+- The provider receives every source in its own delimited block, headed by its
+  id, and has to say for each item which source it quotes (`sourceId`). With one
+  source the attribution is implied; with several it is required
+  (`source_required`). The quote is checked against that one source: a snippet
+  that only exists in another source, or across the boundary between two, is
+  refused (`snippet_not_in_source`, `unknown_source`).
+- The routes accept `{ context: { sources: [...] } }` and still accept
+  `{ transcript: "…" }` as a one-source bundle.
+- The primary copy asks for what the user already has: meeting notes, a
+  transcript, a product description, requirements or rough thoughts. The marker
+  format of the `fake` provider is a collapsed note under the field while that
+  provider is active; it is not the instruction.
+- The product name is the map's identity (ids and the proposal's fingerprint
+  derive from it), so it has to exist before a proposal is built. The button is
+  not disabled for it: asking without a name says so in one sentence and moves
+  the focus to the name field; the text stays.
 
 ### Providers
 
@@ -463,6 +495,7 @@ table says which.
 | Same four, plus an unnamed button inside a label and a button whose only text is hidden from assistive technology | ASM-21, the spec's second version | all red |
 | Seed never protected (both conditions); only the unset-variable condition dropped; path compared as a string instead of resolved (`product/./asm.product.yaml`); only the work state removed; only the product removed; every failure reported as success (unlink errors and the final existence check ignored) | ASM-23, `tests/domain/reset.test.ts` | all red (the first seed mutant deleted the real seed in the working tree before the test was moved to a scratch copy of the repository layout; the string-comparison mutant survived until the test used a path spelled differently) |
 | Reset deriving the work-state path as the product's sibling instead of reading `ASM_WORK_STATE_FILE` | ASM-23, verifier's own mutant on `bed6109` | **survived the whole suite** — no test set the override; closed by a test that moves the work state elsewhere and expects it gone |
+| Snippet checked against all sources joined instead of the named one; missing `sourceId` defaulting to the first source with several present; unknown source tolerated; source identity dropped from provenance | ASM-24, `tests/domain/context.test.ts` | all red |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
