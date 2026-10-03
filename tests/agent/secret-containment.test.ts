@@ -146,6 +146,55 @@ const expectContained = (text: string, secret: string, label: string) => {
   expect(text, label).not.toContain(tail(secret));
 };
 
+describe("credentials the SDK would send on its own", () => {
+  it("an ambient ANTHROPIC_AUTH_TOKEN is never sent: ASM chose the API key, and only that is contained (external review round 11)", async () => {
+    const ambient = "ambient-bearer-token-tail-5555";
+    const before = process.env.ANTHROPIC_AUTH_TOKEN;
+    process.env.ANTHROPIC_AUTH_TOKEN = ambient;
+    const headersSeen: Array<Record<string, string>> = [];
+    const fetch: typeof globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      headersSeen.push(Object.fromEntries(new Headers(init?.headers).entries()));
+      return new Response(JSON.stringify(envelope.anthropic.ok(JSON.stringify({ ...honestProposal(), summary: `echo ${ambient}` }))), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof globalThis.fetch;
+    try {
+      const provider = new AnthropicProvider({ apiKey: "the-chosen-key-0001", secrets: ["the-chosen-key-0001"], fetch, timeoutMs: 5000 });
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      expect(headersSeen).toHaveLength(1);
+      expect(Object.keys(headersSeen[0]).map((k) => k.toLowerCase())).not.toContain("authorization");
+      expect(JSON.stringify(headersSeen[0])).not.toContain(ambient);
+      // What the server could not have received, it cannot have echoed; the proposal stands on its own.
+      expect(result.ok).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
+      else process.env.ANTHROPIC_AUTH_TOKEN = before;
+    }
+  });
+});
+
+describe("an error is an error whatever shape it has (external review round 11)", () => {
+  it("a 200 with valid output and an error object without a message is a failure, not a proposal", async () => {
+    const text = JSON.stringify(honestProposal());
+    const cases: Array<[string, AgentProvider]> = [
+      ["openai", new OpenAIProvider({ apiKey: "k-0001", fetch: stubFetch({ body: { ...envelope.openai.ok(text), error: { code: 502, metadata: { raw: "upstream disconnected" } } } }) })],
+      ["openrouter top-level", new OpenRouterProvider({ apiKey: "k-0001", model: "v/m", fetch: stubFetch({ body: { ...envelope.openrouter.ok(text), error: { code: 502, metadata: { raw: "upstream disconnected" } } } }) })],
+      ["openrouter choice-level with finish_reason stop", new OpenRouterProvider({ apiKey: "k-0001", model: "v/m", fetch: stubFetch({ body: { choices: [{ finish_reason: "stop", error: { code: 502 }, message: { role: "assistant", content: text } }] } }) })],
+      ["openrouter error: null is not an error", new OpenRouterProvider({ apiKey: "k-0001", model: "v/m", fetch: stubFetch({ body: { ...envelope.openrouter.ok(text), error: null } }) })],
+    ];
+    for (const [channel, provider] of cases) {
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      if (channel.endsWith("is not an error")) {
+        expect(result.ok, channel).toBe(true);
+        continue;
+      }
+      expect(result.ok, channel).toBe(false);
+      expect(result.ok === false && result.issues[0].code, channel).toBe("provider_error");
+    }
+  });
+});
+
 describe("secret containment: no channel, no spelling, no adapter", () => {
   it("output values and keys, recursively, for proposals and reviews", async () => {
     const fixture = loadFixture();

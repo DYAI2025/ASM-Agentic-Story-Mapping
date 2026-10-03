@@ -9,7 +9,7 @@ import { POST as approve } from "../../src/app/api/product/approve/route";
 import { POST as peopleCheck } from "../../src/app/api/people-check/route";
 import { POST as select } from "../../src/app/api/slices/select/route";
 import { POST as exception } from "../../src/app/api/slices/exception/route";
-import { approveRevision } from "../../src/domain/operations";
+import { approveRevision, updateCard } from "../../src/domain/operations";
 import { parseProductText } from "../../src/domain/serialize";
 import { proposeSlices } from "../../src/domain/slices";
 import { valueStatus } from "../../src/domain/work-state";
@@ -111,7 +111,7 @@ describe("a value exception is bound to the map and selection the human saw, acr
     // Browser B: changes the goal (new proposed revision), approves, confirms the people, selects x again on the new map.
     const changed = { ...(await current()), goal: { ...first.goal, statement: "A different goal altogether." } };
     const put = await import("../../src/app/api/product/route");
-    const saved = await put.PUT(new Request("http://127.0.0.1:3311/api/product", { method: "PUT", headers: { host: "127.0.0.1:3311" }, body: YAML.stringify({ ...changed, revision: { number: changed.revision.number + 1, status: "proposed" } }) }));
+    const saved = await put.PUT(new Request("http://127.0.0.1:3311/api/product", { method: "PUT", headers: { host: "127.0.0.1:3311", "if-match": `"${fingerprint(first)}"` }, body: YAML.stringify({ ...changed, revision: { number: changed.revision.number + 1, status: "proposed" } }) }));
     expect(saved.status).toBe(200);
     const second = await current();
     const fp2 = fingerprint(second);
@@ -134,6 +134,58 @@ describe("a value exception is bound to the map and selection the human saw, acr
     const fresh = await exception(request("/api/slices/exception", { rationale: "Built first because of the hand-over points.", acceptedBy: "Ben", candidateId: x, mapFingerprint: fp3 }));
     expect(fresh.status).toBe(200);
     expect(JSON.parse(await fs.readFile(workStateFilePath(), "utf8")).selection.valueException.acceptedBy).toBe("Ben");
+  });
+});
+
+describe("an editor save names the map it edits (external review round 11)", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "asm-put-")));
+    process.env.ASM_PRODUCT_FILE = path.join(dir, "asm.product.yaml");
+    await fs.writeFile(process.env.ASM_PRODUCT_FILE, fixtureText());
+  });
+  afterEach(async () => {
+    delete process.env.ASM_PRODUCT_FILE;
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  const putDoc = async (doc: unknown, ifMatch?: string) => {
+    const { PUT } = await import("../../src/app/api/product/route");
+    const headers: Record<string, string> = { host: "127.0.0.1:3311" };
+    if (ifMatch !== undefined) headers["if-match"] = ifMatch;
+    return PUT(new Request("http://127.0.0.1:3311/api/product", { method: "PUT", headers, body: YAML.stringify(doc) }));
+  };
+  const get = async () => {
+    const { GET } = await import("../../src/app/api/product/route");
+    return GET(new Request("http://127.0.0.1:3311/api/product"));
+  };
+
+  it("GET answers with an ETag that is the map fingerprint, quoted", async () => {
+    const response = await get();
+    expect(response.headers.get("etag")).toBe(`"${fingerprint(loadFixture())}"`);
+  });
+
+  it("a save from a tab that still shows the old product does not replace the product made after a reset", async () => {
+    const old = loadFixture();
+    const oldTag = `"${fingerprint(old)}"`;
+    // Reset, then a different product in the same place.
+    const fresh = { ...old, product: { ...old.product, name: "Other" }, goal: { ...old.goal, statement: "Something else entirely." } };
+    await fs.writeFile(productFilePath(), YAML.stringify(fresh));
+    const edited = updateCard(old, "step-start-product", { title: "An edit made on the old product" });
+    const stale = await putDoc(edited, oldTag);
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).issues[0].code).toBe("stale_save");
+    const storedName = async () => {
+      const stored = parseProductText(await fs.readFile(productFilePath(), "utf8"));
+      return stored.ok ? stored.product.product.name : stored.issues;
+    };
+    expect(await storedName()).toBe("Other");
+    // Without saying what it edits, a save is refused too.
+    expect((await putDoc(edited)).status).toBe(409);
+    expect(await storedName()).toBe("Other");
+    // Naming the product as it is now, the save lands.
+    const current = await get();
+    const ok = await putDoc(updateCard(fresh, "step-start-product", { title: "An edit made on the new product" }), current.headers.get("etag") ?? "");
+    expect(ok.status).toBe(200);
   });
 });
 

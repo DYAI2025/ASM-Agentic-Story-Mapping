@@ -1,6 +1,6 @@
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, apiErrorMessage, contained, parseModelJson, postJson } from "./http";
+import { DEFAULT_TIMEOUT_MS, apiErrorMessage, contained, hasApiError, parseModelJson, postJson } from "./http";
 import { strictOutputSchema } from "./json-schema";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
@@ -77,7 +77,7 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
       throw new ProviderError("OpenAI rate limit reached; try again shortly");
     }
     if (status < 200 || status >= 300) throw new ProviderError(`OpenAI API error ${status}: ${message ?? "no details"}`);
-    if (message !== null) throw new ProviderError(`OpenAI API error: ${message}`);
+    if (hasApiError(body)) throw new ProviderError(`OpenAI API error: ${message ?? "no details"}`);
 
     const response = (body ?? {}) as ResponsesBody;
     if (response.status === "incomplete") {

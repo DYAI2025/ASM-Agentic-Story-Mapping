@@ -254,10 +254,10 @@ export function StoryMapEditor({
     }
   }
 
-  async function send(url: string, method: string, body: string): Promise<boolean> {
+  async function send(url: string, method: string, body: string, headers?: Record<string, string>): Promise<boolean> {
     let result: ApiResult;
     try {
-      const response = await fetch(url, { method, body });
+      const response = await fetch(url, { method, body, headers });
       result = (await response.json()) as ApiResult;
     } catch (error) {
       setIssues([
@@ -283,7 +283,8 @@ export function StoryMapEditor({
       setIssues([{ code: "operation_rejected", path: "(editor)", message: error.message }]);
       return false;
     }
-    return send("/api/product", "PUT", JSON.stringify(next));
+    // The save names the map as this page shows it; the server refuses it if the map moved meanwhile.
+    return send("/api/product", "PUT", JSON.stringify(next), { "if-match": `"${fingerprint(product)}"` });
   }
 
   const saveCard = (id: string, patch: Record<string, string>) =>

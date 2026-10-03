@@ -1,6 +1,6 @@
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, apiErrorMessage, contained, parseModelJson, postJson } from "./http";
+import { DEFAULT_TIMEOUT_MS, apiErrorMessage, contained, hasApiError, parseModelJson, postJson } from "./http";
 import { strictOutputSchema } from "./json-schema";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
@@ -72,15 +72,16 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
     if (status === 401) throw new ProviderError("OpenRouter rejected the credentials; check OPENROUTER_API_KEY");
     if (status === 429) throw new ProviderError("OpenRouter rate limit reached; try again shortly");
     if (status < 200 || status >= 300) throw new ProviderError(`OpenRouter API error ${status}: ${message ?? "no details"}`);
-    if (message !== null) {
+    if (hasApiError(body)) {
       // An error inside a 200: OpenRouter's own code, when it gives one.
       const code = (body as { error?: { code?: unknown } }).error?.code;
-      throw new ProviderError(`OpenRouter API error${typeof code === "number" ? ` ${code}` : ""}: ${message}`);
+      throw new ProviderError(`OpenRouter API error${typeof code === "number" ? ` ${code}` : ""}: ${message ?? "no details"}`);
     }
 
     const choice = ((body ?? {}) as ChatBody).choices?.[0];
     if (!choice) throw new ProviderError("the model returned no text output");
-    if (choice.finish_reason === "error") {
+    // A choice carrying an error is an error whatever its finish reason says (external review round 11).
+    if (choice.finish_reason === "error" || hasApiError({ error: choice.error })) {
       const detail = apiErrorMessage({ error: choice.error }) ?? "no details";
       throw new ProviderError(`OpenRouter reported a model error: ${detail}`);
     }

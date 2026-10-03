@@ -6,6 +6,9 @@ import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
 import { resetProductFile } from "./global-setup";
 
+/** The entity tag a save has to name: the map fingerprint as GET /api/product reports it. */
+const etag = async (p: { request: { get(url: string): Promise<{ headers(): Record<string, string> }> } }) => (await p.request.get("/api/product")).headers()["etag"];
+
 const HUMAN = "Maya (E2E)";
 
 test.describe.configure({ mode: "serial" });
@@ -68,18 +71,18 @@ test("approval is a named human's, for one revision; saving cannot keep it while
   // The same approval record, another meaning: refused, file unchanged.
   const tampered = structuredClone(approved);
   tampered.goal.statement = "Something nobody approved.";
-  const put = await page.request.put("/api/product", { data: YAML.stringify(tampered) });
+  const put = await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(tampered) });
   expect(put.status()).toBe(409);
   expect((await put.json()).issues[0].code).toBe("approved_content_changed");
   const added = structuredClone(approved);
   added.personas.push({ id: "persona-sneaked-in", name: "Sneaked in", description: "" });
-  expect((await page.request.put("/api/product", { data: YAML.stringify(added) })).status()).toBe(409);
+  expect((await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(added) })).status()).toBe(409);
   expect(await storedText()).toBe(bytes);
 
   // Only where a card sits may change under an approval.
   const moved = structuredClone(approved);
   moved.layout.cards["step-main-path"] = { row: 2 };
-  expect((await page.request.put("/api/product", { data: YAML.stringify(moved) })).status()).toBe(200);
+  expect((await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(moved) })).status()).toBe(200);
   expect((await stored()).revision).toEqual(approved.revision);
 
   // An edit through the editor is a change of meaning: it opens the next revision and the approval is gone.
@@ -305,7 +308,7 @@ test("saving an approved map with one changed need, step order or role under the
   for (const [name, change] of changes) {
     const doc = structuredClone(approved);
     change(doc);
-    const put = await page.request.put("/api/product", { data: YAML.stringify(doc) });
+    const put = await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(doc) });
     expect(put.status(), name).toBe(409);
     expect((await put.json()).issues[0].code, name).toBe("approved_content_changed");
   }

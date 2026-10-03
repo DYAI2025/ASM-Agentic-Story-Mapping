@@ -19,7 +19,8 @@ export async function GET(request: Request) {
       },
     });
   }
-  return Response.json({ product: result.product });
+  // The map fingerprint as an entity tag: what a save has to name in If-Match (external review round 11).
+  return Response.json({ product: result.product }, { headers: { etag: `"${fingerprint(result.product)}"` } });
 }
 
 /**
@@ -42,10 +43,30 @@ export async function PUT(request: Request) {
 
 // One transaction: the approval check is against the file as it is when this writes (external review round 4).
   return transaction(async (store) => {
+    // A save names the map it edits: If-Match carries the fingerprint the editor showed, and it has to be the
+    // map as it is now. A tab holding an old product, or one from before a start-over, cannot replace what is
+    // there (external review round 11).
+    const stored = await store.loadProduct();
+    if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
+    const named = (request.headers.get("if-match") ?? "").trim().replace(/^W\//, "").replace(/^"|"$/g, "");
+    if (named === "" || named !== fingerprint(stored.product))
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "stale_save",
+              path: "If-Match",
+              message:
+                named === ""
+                  ? "say which map you are saving: send its fingerprint in If-Match"
+                  : "the map has changed since you loaded it; reload before saving",
+            },
+          ],
+        },
+        { status: 409 },
+      );
     if (incoming.product.revision.status === "approved") {
-      const stored = await store.loadProduct();
       const sameApproval =
-        stored.ok &&
         stored.product.revision.status === "approved" &&
         stored.product.revision.number === incoming.product.revision.number &&
         JSON.stringify(stored.product.revision.approval) ===
@@ -65,7 +86,7 @@ export async function PUT(request: Request) {
         );
       }
       // The approval stands for what was approved. Only where a card sits may change under it.
-      if (stored.ok && fingerprint(stored.product) !== fingerprint(incoming.product)) {
+      if (fingerprint(stored.product) !== fingerprint(incoming.product)) {
         return Response.json(
           {
             issues: [

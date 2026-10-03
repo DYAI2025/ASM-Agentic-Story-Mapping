@@ -6,6 +6,9 @@ import { E2E_PRODUCT_FILE } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
 import { resetProductFile } from "./global-setup";
 
+/** The entity tag a save has to name: the map fingerprint as GET /api/product reports it. */
+const etag = async (p: { request: { get(url: string): Promise<{ headers(): Record<string, string> }> } }) => (await p.request.get("/api/product")).headers()["etag"];
+
 const SCREENSHOT = path.join(SCREENSHOTS, "asm-story-map.png");
 
 test.describe.configure({ mode: "serial" });
@@ -110,7 +113,7 @@ test("export and import round-trip over HTTP, and invalid or implicitly approved
     status: "approved",
     approval: { approvedBy: "Nobody", approvedAt: "2026-10-01T10:00:00.000Z" },
   };
-  const refused = await request.put("/api/product", { data: YAML.stringify(sneaky) });
+  const refused = await request.put("/api/product", { headers: { "if-match": await etag({ request }) }, data: YAML.stringify(sneaky) });
   expect(refused.status()).toBe(409);
   expect(await fs.readFile(E2E_PRODUCT_FILE, "utf8")).toBe(yaml);
 });

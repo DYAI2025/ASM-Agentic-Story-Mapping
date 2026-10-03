@@ -82,10 +82,22 @@ export async function postJson(
   return { status: response.status, body: parsed };
 }
 
-/** The message an API put in its error object, or null when there is none. Redaction happens once, at `contained`. */
-export function apiErrorMessage(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
+/**
+ * Whether an API put an error in its body: anything under `error` that is not
+ * null or undefined, whatever shape it has. Presence is judged separately
+ * from the message, so an error without a readable message is still an error
+ * (external review round 11).
+ */
+export function hasApiError(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) return false;
   const error = (body as { error?: unknown }).error;
+  return error !== null && error !== undefined;
+}
+
+/** The message an API put in its error object, or null when it has none readable. Redaction happens once, at `contained`. */
+export function apiErrorMessage(body: unknown): string | null {
+  if (!hasApiError(body)) return null;
+  const error = (body as { error: unknown }).error;
   if (typeof error === "string") return error;
   if (typeof error === "object" && error !== null && typeof (error as { message?: unknown }).message === "string")
     return (error as { message: string }).message;
