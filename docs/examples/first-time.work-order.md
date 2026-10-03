@@ -1,6 +1,6 @@
 # Work order: Thread to “Resident reports a problem”
 
-Slice `slice-outcome-thread` of Parcel Locker Pickup, revision 2 (`8cf76f88`).
+Slice `slice-outcome-thread` of Parcel Locker Pickup, revision 2 (`a0585c96`).
 
 Work order contract: `asm.execution-brief`, briefVersion 3.
 
@@ -10,9 +10,9 @@ Residents collect a parcel from the building locker without waiting for a courie
 
 ## VERIFIED / APPROVED CONTEXT
 
-- Approved: revision 2 by Noor (first-time Product Lead) at 2026-10-03T14:01:31.596Z.
-- Who else matters: considered by Noor (first-time Product Lead) at 2026-10-03T14:01:31.928Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
-- Slice selected by Noor (first-time Product Lead) at 2026-10-03T14:01:32.178Z (candidate `f532f5ce`, derivation rules version 2).
+- Approved: revision 2 by Noor (first-time Product Lead) at 2026-10-03T15:17:45.258Z.
+- Who else matters: considered by Noor (first-time Product Lead) at 2026-10-03T15:17:45.592Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
+- Slice selected by Noor (first-time Product Lead) at 2026-10-03T15:17:45.809Z (candidate `f532f5ce`, derivation rules version 2).
 - Value: VALUE_RESOLVED (`need-get-my-parcel-on-the-day-it-arrives-when`, `need-hand-over-every-parcel-in-one-stop`). The slice references at least one need on the map. ASM has not measured any business value.
 - Verified: nothing. Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested.
 
@@ -79,5 +79,5 @@ A draft derived from the map. A human has to confirm it before it binds anyone.
 
 - Product: Parcel Locker Pickup (`parcel-locker-pickup`), schema version 1
 - Revision: 2 (approved)
-- Approved by: Noor (first-time Product Lead) at 2026-10-03T14:01:31.596Z
-- Map fingerprint: `8cf76f88`
+- Approved by: Noor (first-time Product Lead) at 2026-10-03T15:17:45.258Z
+- Map fingerprint: `a0585c96`
