@@ -58,6 +58,20 @@ function part(html: string, testId: string): string | null {
   return match ? match[2].replace(/<[^>]+>/g, "") : null;
 }
 
+describe("while an acceptance is being submitted (external review round 12)", () => {
+  it("every control is disabled: the include boxes, the goal radios, the per-item Edit, and the chips", () => {
+    const { patch } = proposal();
+    const html = render({ pending: true, editing: new Set(patch.operations.map((o) => o.opId)) });
+    // No enabled input or button at all: whatever was sent is what will land.
+    const enabled = (html.match(/<(input|button)\b[^>]*>/g) ?? []).filter((tag) => !/\bdisabled\b/.test(tag));
+    expect(enabled).toEqual([]);
+    expect(html).toContain('data-pending="true"');
+    // Without pending, the same controls are live.
+    const live = render({ editing: new Set(patch.operations.map((o) => o.opId)) });
+    expect((live.match(/<(input|button)\b[^>]*>/g) ?? []).some((tag) => !/\bdisabled\b/.test(tag))).toBe(true);
+  });
+});
+
 describe("the proposal review shows product meaning, grouped", () => {
   it("sections in reading order with their titles, every op in one of them, ids kept", () => {
     const html = render();

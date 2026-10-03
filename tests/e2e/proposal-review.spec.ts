@@ -106,6 +106,33 @@ test("grouped review: choose a goal, edit a need with a chip, reject a step, acc
   await page.screenshot({ path: shot("03-first-map-from-choices"), fullPage: true });
 });
 
+test("while Accept is in flight, Reject and every edit control are disabled; the acceptance lands as sent (external review round 12)", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("product-name-input").fill(NAME);
+  await page.getByTestId("transcript-input").fill(TEXT.split("\n").filter((line) => !line.startsWith("Goal: Couriers")).join("\n"));
+  await page.getByTestId("structure-button").click();
+  await expect(page.getByTestId("proposal-review")).toBeVisible();
+
+  // Hold the accept response until the test releases it.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/bootstrap/accept", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByTestId("proposal-accept").click();
+  await expect(page.getByTestId("proposal-accept")).toBeDisabled();
+  await expect(page.getByTestId("proposal-reject")).toBeDisabled();
+  await expect(page.getByTestId("proposal-edit")).toBeDisabled();
+  await expect(page.getByTestId("proposal-review")).toHaveAttribute("data-pending", "true");
+  // Nothing in the review can be changed any more: no enabled input or button inside it.
+  await expect(page.getByTestId("proposal-review").locator("input:enabled, button:enabled")).toHaveCount(0);
+  await expect(page.getByTestId("proposal-status")).toContainText("Accepting");
+  release();
+  await expect(page.getByTestId("product-name")).toHaveText(NAME);
+  await page.unroute("**/api/bootstrap/accept");
+});
+
 test("the server refuses a patch that still carries both goals: a choice cannot be skipped by a client", async ({ page }) => {
   await page.goto("/");
   const proposed = await page.request.post("/api/bootstrap", { data: { name: NAME, transcript: TEXT } });

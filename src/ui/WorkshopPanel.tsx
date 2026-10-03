@@ -196,8 +196,9 @@ export function WorkshopPanel({
   }
 
   async function accept() {
-    if (!effective) return;
+    if (!effective || busy) return;
     setBusy(true);
+    // Until the answer is in, nothing about the proposal can change: what was sent is what will land.
     const answer = await post(endpoints.accept, { ...extra, patch: effective });
     setBusy(false);
     if (!answer.product) {
@@ -328,7 +329,7 @@ export function WorkshopPanel({
       )}
 
       {patch && (
-        <div id="proposal-review" tabIndex={-1} data-testid="proposal-review">
+        <div id="proposal-review" tabIndex={-1} data-testid="proposal-review" data-pending={busy ? "true" : "false"}>
           <p>
             <strong>Proposal</strong> <span className="muted">from {patch.provider}</span>
           </p>
@@ -343,6 +344,7 @@ export function WorkshopPanel({
             onChooseGoal={chooseGoal}
             onEdit={editOperation}
             onEditToggle={toggleEditing}
+            pending={busy}
           />
 
           <div className="row actions">
@@ -358,6 +360,7 @@ export function WorkshopPanel({
               type="button"
               className="secondary"
               data-testid="proposal-edit"
+              disabled={busy}
               onClick={() => setEditing(editing.size > 0 ? new Set() : new Set(patch.operations.map((o) => o.opId)))}
             >
               {editing.size > 0 ? "Done editing" : "Edit all"}
@@ -366,12 +369,15 @@ export function WorkshopPanel({
               type="button"
               className="secondary"
               data-testid="proposal-reject"
+              disabled={busy}
               onClick={() => close("Proposal rejected. The map was not changed.")}
             >
               Reject
             </button>
-            <span className="muted">
-              {labels?.acceptNote ?? `Accepting creates proposed revision ${product.revision.number + 1}. It does not approve it.`}
+            <span className="muted" data-testid="proposal-status" aria-live="polite">
+              {busy
+                ? "Accepting… the changes as sent are being written; nothing here can change until that is done."
+                : (labels?.acceptNote ?? `Accepting creates proposed revision ${product.revision.number + 1}. It does not approve it.`)}
             </span>
           </div>
         </div>

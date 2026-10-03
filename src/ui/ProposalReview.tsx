@@ -16,6 +16,7 @@ export function ProposalReview({
   patch,
   excluded,
   editing,
+  pending = false,
   onToggle,
   onChooseGoal,
   onEdit,
@@ -23,6 +24,8 @@ export function ProposalReview({
 }: {
   product: ProductDocument;
   patch: MapPatch;
+  /** An acceptance is being submitted: what was sent is what will land, so nothing here can change any more. */
+  pending?: boolean;
   /** Op ids the human rejected (or, for goals, did not choose). */
   excluded: Set<string>;
   /** Op ids whose fields are open for editing. */
@@ -44,6 +47,7 @@ export function ProposalReview({
         <textarea
           name={`${operation.opId}-${field}`}
           rows={2}
+          disabled={pending}
           value={String((operation as Record<string, unknown>)[field] ?? "")}
           onChange={(event) => onEdit(operation.opId, field, event.target.value)}
         />
@@ -53,6 +57,7 @@ export function ProposalReview({
               key={i}
               type="button"
               className="chip"
+              disabled={pending}
               data-testid={`chip-${operation.opId}-${field}-${i}`}
               onClick={() => onEdit(operation.opId, field, suggestion.text)}
             >
@@ -64,7 +69,7 @@ export function ProposalReview({
     ));
 
   return (
-    <div className="proposal-sections">
+    <div className="proposal-sections" data-pending={pending ? "true" : "false"} aria-busy={pending}>
       {sections.map((section) => (
         <section key={section.group} className={`proposal-section ${section.group}`} data-testid={`proposal-section-${section.group}`}>
           <h3>
@@ -82,11 +87,11 @@ export function ProposalReview({
                 return (
                   <div key={goal.opId} className={`diff-entry set_goal ${chosen ? "" : "excluded"}`} data-testid={`diff-${goal.opId}`} data-op="set_goal" data-state={chosen ? "used" : "open"}>
                     <label className="row">
-                      <input type="radio" name="goal-choice" aria-label={`Choose ${goal.opId}`} checked={chosen} onChange={() => onChooseGoal(goal.opId)} />
+                      <input type="radio" name="goal-choice" aria-label={`Choose ${goal.opId}`} checked={chosen} disabled={pending} onChange={() => onChooseGoal(goal.opId)} />
                       <strong>{goal.statement}</strong>
                     </label>
                     {editing.has(goal.opId) ? fields(operation) : null}
-                    <ItemActions opId={goal.opId} editing={editing.has(goal.opId)} onEditToggle={onEditToggle} />
+                    <ItemActions pending={pending} opId={goal.opId} editing={editing.has(goal.opId)} onEditToggle={onEditToggle} />
                     <Source operation={operation} />
                   </div>
                 );
@@ -109,7 +114,7 @@ export function ProposalReview({
                     data-state={included ? "used" : "rejected"}
                   >
                     <label className="row">
-                      <input type="checkbox" checked={included} aria-label={`Include ${entry.opId}`} onChange={() => onToggle(entry.opId)} />
+                      <input type="checkbox" checked={included} aria-label={`Include ${entry.opId}`} disabled={pending} onChange={() => onToggle(entry.opId)} />
                       <span className="use">{included ? "Use" : "Rejected"}</span>
                       <strong>{entry.headline}</strong>
                     </label>
@@ -121,7 +126,7 @@ export function ProposalReview({
                         {entry.after && <p className="after">+ {entry.after}</p>}
                       </>
                     )}
-                    {included && <ItemActions opId={entry.opId} editing={editing.has(entry.opId)} onEditToggle={onEditToggle} />}
+                    {included && <ItemActions pending={pending} opId={entry.opId} editing={editing.has(entry.opId)} onEditToggle={onEditToggle} />}
                     <Source operation={operation} />
                   </li>
                 );
@@ -133,10 +138,10 @@ export function ProposalReview({
   );
 }
 
-function ItemActions({ opId, editing, onEditToggle }: { opId: string; editing: boolean; onEditToggle: (opId: string) => void }) {
+function ItemActions({ opId, editing, pending, onEditToggle }: { opId: string; editing: boolean; pending: boolean; onEditToggle: (opId: string) => void }) {
   return (
     <div className="row item-actions">
-      <button type="button" className="link" data-testid={`edit-${opId}`} onClick={() => onEditToggle(opId)}>
+      <button type="button" className="link" data-testid={`edit-${opId}`} disabled={pending} onClick={() => onEditToggle(opId)}>
         {editing ? "Done" : "Edit"}
       </button>
     </div>
