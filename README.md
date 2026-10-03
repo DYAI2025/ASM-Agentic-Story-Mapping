@@ -95,6 +95,10 @@ throwing away the map.
   or one that resolves to `product/asm.product.yaml`, the reset is refused
   (409, `seed_protected`) and nothing is touched. Start over works on the
   workspace path you set.
+- The work-state target is removed first, so it has to be a work state: an
+  `ASM_WORK_STATE_FILE` that is not named `*.work-state.json`, or that is the
+  product file or the seed (by name or by what a symlink resolves to), is
+  refused (`work_state_path_invalid`) before anything is touched.
 
 ## From discussion to map
 
@@ -594,17 +598,27 @@ table says which.
 | Tutorial not remembered after Finish | ASM-27, `tests/e2e/tutorial.spec.ts` | red (the reload assertion) |
 | Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
 | Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
+| External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
 ### What a green run does not prove
 
-The deterministic provider has no understanding; the Anthropic provider has
-only ever run against a stubbed client. The store is last-writer-wins for two
-writes from one browser. An imported file keeps the approval it records. The
-accessibility check is a smoke test, not an audit. The visual and usability
-verdict is a human's, on one exact commit, and is recorded on the ticket, not
-in this repository.
+The deterministic provider has no understanding; the live providers have only
+run against stubbed transports except for the recorded live smoke. The store is
+last-writer-wins: every replacement uses a temporary file of its own, but there
+is no lock and no compare-and-swap, so two browsers saving at once race (the
+fingerprint-bound gates catch a stale accept, approval or selection, not a
+lost edit). `POST /api/product/import` replaces the product with the file it
+is given, approval record included, without the proposal path: it is the way
+to bring your own file, and it is a human's own file, but a client on the
+network could use it the same way. Nothing authenticates a request: every
+mutation route trusts whoever can reach the port. This prototype is for one
+person on localhost; before it is exposed on a LAN or a VPS, the import route
+and the mutation routes need authentication and origin checks (that is the
+next slice, not this one). The accessibility check is a smoke test, not an
+audit. The visual and usability verdict is a human's, on one exact commit, and
+is recorded on the ticket, not in this repository.
 
 ## Not built
 

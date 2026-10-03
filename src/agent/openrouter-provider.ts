@@ -1,6 +1,6 @@
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson, redactSecrets } from "./http";
+import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson } from "./http";
 import { strictOutputSchema } from "./json-schema";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
@@ -64,10 +64,10 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
         provider: { require_parameters: true },
         max_tokens: MAX_TOKENS,
       },
-      { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenRouter" },
+      { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenRouter", secrets: [this.apiKey] },
     );
 
-    const message = apiErrorMessage(body);
+    const message = apiErrorMessage(body, [this.apiKey]);
     if (status === 401) throw new ProviderError("OpenRouter rejected the credentials; check OPENROUTER_API_KEY");
     if (status === 429) throw new ProviderError("OpenRouter rate limit reached; try again shortly");
     if (status < 200 || status >= 300) throw new ProviderError(`OpenRouter API error ${status}: ${message ?? "no details"}`);
@@ -80,8 +80,8 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
     const choice = ((body ?? {}) as ChatBody).choices?.[0];
     if (!choice) throw new ProviderError("the model returned no text output");
     if (choice.finish_reason === "error") {
-      const detail = apiErrorMessage({ error: choice.error }) ?? "no details";
-      throw new ProviderError(`OpenRouter reported a model error: ${redactSecrets(detail)}`);
+      const detail = apiErrorMessage({ error: choice.error }, [this.apiKey]) ?? "no details";
+      throw new ProviderError(`OpenRouter reported a model error: ${detail}`);
     }
     if (choice.finish_reason === "length") throw new ProviderError("the model's answer was cut off; try a shorter text");
     if (choice.finish_reason === "content_filter") throw new ProviderError("the model declined to process this text (content filter)");

@@ -79,7 +79,8 @@ export async function saveProduct(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
   const file = productFilePath();
-  const tmp = `${file}.${process.pid}.tmp`;
+  // A name of its own per call: two saves at the same moment must not meet on the temporary file (external review F5).
+  const tmp = `${file}.${randomUUID()}.tmp`;
   await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
   await fs.rename(/* turbopackIgnore: true */ tmp, file);
   return result;
@@ -157,6 +158,10 @@ export async function resetProduct(): Promise<ResetResult> {
     };
   if (!(await productFileExists()))
     return { ok: false, issues: [{ code: "no_product", path: product, message: "there is no product to start over from" }] };
+  // The work-state target is removed first, so it has to be a work state: named like one, not the
+  // product, not the seed — by name and, where the files exist, by what they resolve to (external review F1).
+  const invalidWorkState = await workStatePathProblem(work, product);
+  if (invalidWorkState) return { ok: false, issues: [{ code: "work_state_path_invalid", path: work, message: invalidWorkState }] };
 
   const failed = (file: string, error: unknown): ResetResult => ({
     ok: false,
@@ -183,12 +188,28 @@ export async function resetProduct(): Promise<ResetResult> {
   return { ok: true, removed: { product, workState: workRemoved } };
 }
 
+/** Why a configured work-state path may not be removed by a reset; null when it is a work state of this product. */
+async function workStatePathProblem(work: string, product: string): Promise<string | null> {
+  if (!work.endsWith(".work-state.json")) return "ASM_WORK_STATE_FILE must name a .work-state.json file";
+  const resolved = async (file: string) => {
+    try {
+      return await fs.realpath(/* turbopackIgnore: true */ file);
+    } catch {
+      return path.resolve(file);
+    }
+  };
+  const [workReal, productReal, seedReal] = await Promise.all([resolved(work), resolved(product), resolved(seedProductFilePath())]);
+  if (workReal === productReal) return "the work-state path is the product file";
+  if (workReal === seedReal || path.resolve(work) === path.resolve(seedProductFilePath())) return "the work-state path is the repository's own map";
+  return null;
+}
+
 /** Validates, then replaces the work-state file atomically. Never touches the product file. */
 export async function saveWorkState(input: unknown): Promise<WorkStateResult> {
   const result = validateWorkState(input);
   if (!result.ok) return result;
   const file = workStateFilePath();
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${randomUUID()}.tmp`;
   await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
   await fs.rename(/* turbopackIgnore: true */ tmp, file);
   return result;

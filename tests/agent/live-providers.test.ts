@@ -143,6 +143,22 @@ describe("OpenAI provider (Responses API)", () => {
     expect(result.ok === false && result.issues[0].message).toMatch(message);
   });
 
+  it("redacts the configured key itself, whatever its shape, not only sk-/or- patterns", async () => {
+    // External review F4 on 2ff9ccf: a key of another shape echoed back by the API reached the browser.
+    const odd = "token-123456789-of-unusual-shape";
+    for (const provider of [
+      new OpenAIProvider({ apiKey: odd, fetch: fetchStub([{ status: 400, body: { error: { message: `Bad header: Bearer ${odd}` } } }]).fetch }),
+      new OpenRouterProvider({ apiKey: odd, model: "v/m", fetch: fetchStub([{ status: 400, body: { error: { code: 400, message: `Bad header: Bearer ${odd}` } } }]).fetch }),
+      new OpenRouterProvider({ apiKey: odd, model: "v/m", fetch: fetchStub([{ throws: new TypeError(`connect failed for ${odd}`) }]).fetch }),
+    ]) {
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      const text = JSON.stringify(result);
+      expect(text, provider.name).not.toContain(odd);
+      expect(text, provider.name).not.toContain("123456789");
+      expect(text, provider.name).toContain("[redacted]");
+    }
+  });
+
   it("never lets the key through, even when the API echoes it back", async () => {
     // A 400, not a 401: the 401 message is fixed text, so only a verbatim API message exercises the redaction.
     const echoed = `Unsupported value for key ${KEY}; also or-${KEY.slice(3)} and a word.`;

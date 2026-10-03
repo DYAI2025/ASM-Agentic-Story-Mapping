@@ -55,7 +55,7 @@ describe("reset: start over on a user workspace", () => {
 
   it("removes the work state where it really is: an ASM_WORK_STATE_FILE elsewhere, not a sibling guessed from the product path", async () => {
     // Found by the independent verifier on bed6109: a reset that derived the sibling path would leave the real work state behind.
-    const elsewhere = path.join(dir, "state", "somewhere-else.json");
+    const elsewhere = path.join(dir, "state", "somewhere-else.work-state.json");
     await fs.mkdir(path.dirname(elsewhere), { recursive: true });
     await fs.rename(workStateFilePath(), elsewhere);
     process.env.ASM_WORK_STATE_FILE = elsewhere;
@@ -65,6 +65,50 @@ describe("reset: start over on a user workspace", () => {
     expect(result).toEqual({ ok: true, removed: { product: productFilePath(), workState: elsewhere } });
     expect(await exists(elsewhere)).toBe(false);
     expect(await exists(productFilePath())).toBe(false);
+  });
+
+  describe("a work-state override that is not a work state is refused before anything is touched", () => {
+    // External review F1 on 2ff9ccf: the override was unlinked first, whatever it pointed at.
+    it("the repository seed as the work-state path", async () => {
+      const seed = path.join(dir, "repo", "product", "asm.product.yaml");
+      await fs.mkdir(path.dirname(seed), { recursive: true });
+      await fs.copyFile(FIXTURE_PATH, seed);
+      const cwd = process.cwd();
+      process.chdir(path.join(dir, "repo"));
+      process.env.ASM_WORK_STATE_FILE = "product/asm.product.yaml";
+      try {
+        const result = await resetProduct();
+        expect(result.ok).toBe(false);
+        expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      } finally {
+        process.chdir(cwd);
+      }
+      expect(await fs.readFile(seed, "utf8")).toBe(fixtureText());
+      expect(await exists(productFilePath())).toBe(true);
+    });
+
+    it("the product itself as the work-state path", async () => {
+      process.env.ASM_WORK_STATE_FILE = productFilePath();
+      const result = await resetProduct();
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      expect(await fs.readFile(productFilePath(), "utf8")).toBe(fixtureText());
+    });
+
+    it("a path that is not named like a work state, or a symlink to the product", async () => {
+      process.env.ASM_WORK_STATE_FILE = path.join(dir, "notes.json");
+      await fs.writeFile(process.env.ASM_WORK_STATE_FILE, "{}");
+      let result = await resetProduct();
+      expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      expect(await exists(path.join(dir, "notes.json"))).toBe(true);
+
+      const link = path.join(dir, "linked.work-state.json");
+      await fs.symlink(productFilePath(), link);
+      process.env.ASM_WORK_STATE_FILE = link;
+      result = await resetProduct();
+      expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      expect(await fs.readFile(productFilePath(), "utf8")).toBe(fixtureText());
+    });
   });
 
   it("nothing to reset: a missing product is no_product, and an unrelated work state is left alone", async () => {

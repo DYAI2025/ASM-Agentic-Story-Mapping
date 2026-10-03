@@ -2,9 +2,15 @@ import { ProviderError } from "./provider";
 
 export const DEFAULT_TIMEOUT_MS = 120_000;
 
-/** A key never appears in a message, whatever an API echoes back. */
-export function redactSecrets(text: string): string {
-  return text.replace(/\b(sk|or)-[A-Za-z0-9_-]{8,}/g, "[redacted]");
+/**
+ * A key never appears in a message, whatever an API echoes back: the exact
+ * configured values first (any shape), then the common key patterns as a
+ * second net (external review F4).
+ */
+export function redactSecrets(text: string, secrets: readonly string[] = []): string {
+  let out = text;
+  for (const secret of secrets) if (secret.length >= 4) out = out.split(secret).join("[redacted]");
+  return out.replace(/\b(sk|or)-[A-Za-z0-9_-]{8,}/g, "[redacted]");
 }
 
 export type JsonResponse = { status: number; body: unknown };
@@ -19,8 +25,9 @@ export async function postJson(
   url: string,
   headers: Record<string, string>,
   body: unknown,
-  options: { timeoutMs: number; fetch?: typeof globalThis.fetch; apiName: string },
+  options: { timeoutMs: number; fetch?: typeof globalThis.fetch; apiName: string; secrets?: readonly string[] },
 ): Promise<JsonResponse> {
+  const redact = (text: string) => redactSecrets(text, options.secrets ?? []);
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
@@ -35,7 +42,7 @@ export async function postJson(
   } catch (error) {
     if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError"))
       throw new ProviderError(`${options.apiName} timed out after ${options.timeoutMs} ms; try again or shorten the text`);
-    throw new ProviderError(`${options.apiName} could not be reached: ${redactSecrets(error instanceof Error ? error.message : String(error))}`);
+    throw new ProviderError(`${options.apiName} could not be reached: ${redact(error instanceof Error ? error.message : String(error))}`);
   } finally {
     clearTimeout(timer);
   }
@@ -49,12 +56,12 @@ export async function postJson(
 }
 
 /** The message an API put in its error object, redacted; or a plain status when there is none. */
-export function apiErrorMessage(body: unknown): string | null {
+export function apiErrorMessage(body: unknown, secrets: readonly string[] = []): string | null {
   if (typeof body !== "object" || body === null) return null;
   const error = (body as { error?: unknown }).error;
-  if (typeof error === "string") return redactSecrets(error);
+  if (typeof error === "string") return redactSecrets(error, secrets);
   if (typeof error === "object" && error !== null && typeof (error as { message?: unknown }).message === "string")
-    return redactSecrets((error as { message: string }).message);
+    return redactSecrets((error as { message: string }).message, secrets);
   return null;
 }
 

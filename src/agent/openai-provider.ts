@@ -64,10 +64,10 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
         max_output_tokens: MAX_OUTPUT_TOKENS,
         store: false,
       },
-      { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenAI" },
+      { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenAI", secrets: [this.apiKey] },
     );
 
-    const message = apiErrorMessage(body);
+    const message = apiErrorMessage(body, [this.apiKey]);
     if (status === 401) throw new ProviderError("OpenAI rejected the credentials; check OPENAI_API_KEY");
     if (status === 429) {
       // OpenAI answers an exhausted balance with 429 too; that is not something a retry fixes.

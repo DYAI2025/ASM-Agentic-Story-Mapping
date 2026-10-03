@@ -21,7 +21,15 @@ function routes(dir: string): string[] {
 
 describe("routes that answer GET only read", () => {
   const files = routes(API);
-  const readers = files.filter((file) => /export async function GET\b/.test(readFileSync(file, "utf8")));
+  // Both spellings of a handler export, so a GET written as a const is not a way around the check (external review F6).
+  const GET_EXPORT = /export (?:async function|const|function) GET\b/;
+  const readers = files.filter((file) => GET_EXPORT.test(readFileSync(file, "utf8")));
+
+  it("the guard recognises a handler written as a const as well", () => {
+    expect(GET_EXPORT.test("export const GET = async () => {}")).toBe(true);
+    expect(GET_EXPORT.test("export async function GET(request: Request) {")).toBe(true);
+    expect(GET_EXPORT.test("export function GET() {")).toBe(true);
+  });
 
   it("finds the readers", () => {
     expect(readers.map((f) => path.relative(API, f)).sort()).toEqual(["brief/route.ts", "product/route.ts", "slices/route.ts"]);
@@ -31,9 +39,9 @@ describe("routes that answer GET only read", () => {
     for (const file of readers) {
       const source = readFileSync(file, "utf8");
       // product/route.ts also exports PUT, which saves: only its GET body is checked.
-      const start = source.indexOf("export async function GET");
-      const end = source.indexOf("export async function", start + 1);
-      const body = source.slice(start, end === -1 ? undefined : end);
+      const start = source.search(GET_EXPORT);
+      const rest = source.slice(start + 1).search(/export (?:async function|const|function) /);
+      const body = source.slice(start, rest === -1 ? undefined : start + 1 + rest);
       expect(WRITERS.test(body), `${path.relative(API, file)}: GET body`).toBe(false);
       expect(/\b(selectSlice|confirmPersonaCheck|acceptValueException|approveRevision)\b/.test(body), `${path.relative(API, file)}: GET body`).toBe(false);
       if (!source.includes("export async function PUT") && !source.includes("export async function POST"))
