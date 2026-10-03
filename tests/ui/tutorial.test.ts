@@ -44,6 +44,11 @@ describe("the tutorial says how ASM is used, in four steps, verbatim from the co
     expect(first).not.toContain('data-testid="tutorial-back"');
     expect(first).not.toContain('data-testid="tutorial-finish"');
 
+    // Found by the independent verifier on ad76f53: the progress line was asserted only for step 1.
+    for (const step of [2, 3, 4]) expect(part(card(step), "tutorial-progress")).toBe(`Step ${step} of 4 · How ASM is used`);
+    expect(part(card(2), "tutorial-title")).toBe("Review, don't rewrite");
+    expect(part(card(3), "tutorial-title")).toBe("Check the story");
+
     const last = card(4);
     expect(part(last, "tutorial-title")).toBe("Turn understanding into work");
     expect(last).toContain('data-testid="tutorial-back"');

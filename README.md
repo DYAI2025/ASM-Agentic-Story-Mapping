@@ -578,6 +578,8 @@ table says which.
 | Verifier on `1d44fc9`: `conflicting_goal` removed; first goal radio always checked; no chips; questions grouped as other; quote outside the disclosure | ASM-26, `1d44fc9` | all red; the first goal pre-chosen in the panel's state is observable only by the browser spec (which CI ran) |
 | Verifier's own: a rejected item opening its edit fields under Edit all; an alternative goal's quote and source passed through unvalidated | ASM-26, `1d44fc9` | **both survived** — closed by a render test with a rejected item under Edit all and by tests for a misquoted, unattributed and orphaned alternative |
 | Tutorial not remembered after Finish | ASM-27, `tests/e2e/tutorial.spec.ts` | red (the reload assertion) |
+| Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
+| Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
