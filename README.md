@@ -462,6 +462,7 @@ table says which.
 | Against the first-time-user test at its first version: people gate removed from `selectSlice`; GET `/api/slices` selects when nothing is selected; fingerprint blind to the goal; bootstrap accept ignores the exclusion | ASM-21, `8eac934` | **three of four survived** (the gate was asserted only as a disabled button; no read happened before the selection; the reopen hid the fingerprint); the fourth red |
 | Same four, plus an unnamed button inside a label and a button whose only text is hidden from assistive technology | ASM-21, the spec's second version | all red |
 | Seed never protected (both conditions); only the unset-variable condition dropped; path compared as a string instead of resolved (`product/./asm.product.yaml`); only the work state removed; only the product removed; every failure reported as success (unlink errors and the final existence check ignored) | ASM-23, `tests/domain/reset.test.ts` | all red (the first seed mutant deleted the real seed in the working tree before the test was moved to a scratch copy of the repository layout; the string-comparison mutant survived until the test used a path spelled differently) |
+| Reset deriving the work-state path as the product's sibling instead of reading `ASM_WORK_STATE_FILE` | ASM-23, verifier's own mutant on `bed6109` | **survived the whole suite** — no test set the override; closed by a test that moves the work state elsewhere and expects it gone |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 

@@ -53,6 +53,20 @@ describe("reset: start over on a user workspace", () => {
     expect(await exists(productFilePath())).toBe(false);
   });
 
+  it("removes the work state where it really is: an ASM_WORK_STATE_FILE elsewhere, not a sibling guessed from the product path", async () => {
+    // Found by the independent verifier on bed6109: a reset that derived the sibling path would leave the real work state behind.
+    const elsewhere = path.join(dir, "state", "somewhere-else.json");
+    await fs.mkdir(path.dirname(elsewhere), { recursive: true });
+    await fs.rename(workStateFilePath(), elsewhere);
+    process.env.ASM_WORK_STATE_FILE = elsewhere;
+    expect(workStateFilePath()).toBe(elsewhere);
+
+    const result = await resetProduct();
+    expect(result).toEqual({ ok: true, removed: { product: productFilePath(), workState: elsewhere } });
+    expect(await exists(elsewhere)).toBe(false);
+    expect(await exists(productFilePath())).toBe(false);
+  });
+
   it("nothing to reset: a missing product is no_product, and an unrelated work state is left alone", async () => {
     await fs.rm(productFilePath());
     const result = await resetProduct();
