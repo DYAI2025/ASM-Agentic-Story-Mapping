@@ -1,16 +1,54 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  EDITABLE_OP_FIELDS,
-  applyMapPatch,
-  describePatch,
-  type MapPatch,
-  type PatchOperation,
-  type Touch,
-} from "../domain/map-patch";
+  MAX_CONTEXT_CHARS,
+  MAX_CONTEXT_SOURCES,
+  PASTED_LABEL,
+  supportedFileName,
+  type ContextBundle,
+  type ContextSource,
+} from "../domain/context";
+import { applyMapPatch, type MapPatch, type PatchOperation, type Touch } from "../domain/map-patch";
+import { goalChoice } from "../domain/proposal-view";
 import type { ProductDocument } from "../domain/schema";
 import type { ValidationIssue } from "../domain/validate";
+import { ProposalReview } from "./ProposalReview";
+
+/**
+ * Reads the files the human picked as UTF-8 text. A file that is not a text
+ * file, not UTF-8, empty or over the limit is reported, not added. Ids are
+ * `src-N` and never reused within one panel, so a removed source cannot be
+ * confused with a later one.
+ */
+async function readFiles(files: File[], nextId: () => string): Promise<{ sources: ContextSource[]; issues: ValidationIssue[] }> {
+  const sources: ContextSource[] = [];
+  const issues: ValidationIssue[] = [];
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  for (const file of files) {
+    if (!supportedFileName(file.name)) {
+      issues.push({ code: "unsupported_type", path: file.name, message: `"${file.name}" is not a .txt or .md file; only text and markdown files are read` });
+      continue;
+    }
+    if (file.size > MAX_CONTEXT_CHARS * 4) {
+      issues.push({ code: "source_too_large", path: file.name, message: `"${file.name}" is too large; the limit is ${MAX_CONTEXT_CHARS} characters per source` });
+      continue;
+    }
+    let text: string;
+    try {
+      text = decoder.decode(await file.arrayBuffer());
+    } catch {
+      issues.push({ code: "invalid_text_encoding", path: file.name, message: `"${file.name}" could not be read as UTF-8 text` });
+      continue;
+    }
+    if (text.trim() === "") {
+      issues.push({ code: "empty_source", path: file.name, message: `"${file.name}" has no text in it` });
+      continue;
+    }
+    sources.push({ id: nextId(), label: file.name, kind: "file", text });
+  }
+  return { sources, issues };
+}
 
 export interface ProposalPreview {
   product: ProductDocument;
@@ -55,7 +93,7 @@ export function WorkshopPanel({
   extra = NO_EXTRA,
   labels,
   hint,
-  blocked,
+  gate,
 }: {
   product: ProductDocument;
   onPreview: (preview: ProposalPreview | null) => void;
@@ -66,23 +104,37 @@ export function WorkshopPanel({
   extra?: Record<string, unknown>;
   labels?: { heading: string; intro: string; placeholder: string; button: string; busy: string; acceptNote: string };
   hint?: ReactNode;
-  /** Why a proposal cannot be asked for yet. The text can still be written. */
-  blocked?: string;
+  /**
+   * Asked when the human wants a proposal. A message means: not yet, and
+   * why; the caller has already moved the focus to what is missing. The
+   * button itself is never disabled for it, so the reason is always readable.
+   */
+  gate?: () => string | null;
 }) {
   const [transcript, setTranscript] = useState("");
+  // Files the human added, in the order added. The pasted text is not one of them; it becomes src-1 at send time.
+  const [files, setFiles] = useState<ContextSource[]>([]);
+  const nextFileId = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [status, setStatus] = useState("");
   const [patch, setPatch] = useState<MapPatch | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<Set<string>>(new Set());
+
+  /** What would be sent: the pasted text first, when there is any, then the files. */
+  const bundle = useMemo<ContextBundle>(() => {
+    const pasted: ContextSource[] = transcript.trim() === "" ? [] : [{ id: "src-1", label: PASTED_LABEL, kind: "pasted", text: transcript }];
+    return { sources: [...pasted, ...files] };
+  }, [transcript, files]);
+  const hasContext = bundle.sources.length > 0;
 
   const effective = useMemo(
     () => (patch ? { ...patch, operations: patch.operations.filter((o) => !excluded.has(o.opId)) } : null),
     [patch, excluded],
   );
   const result = useMemo(() => (effective ? applyMapPatch(product, effective) : null), [product, effective]);
-  const entries = useMemo(() => (patch ? describePatch(product, patch) : []), [product, patch]);
 
   useEffect(() => {
     onPreview(result?.ok ? { product: result.product, touched: result.touched } : null);
@@ -94,29 +146,59 @@ export function WorkshopPanel({
   function close(message: string) {
     setPatch(null);
     setExcluded(new Set());
-    setEditing(false);
+    setEditing(new Set());
     setIssues([]);
     setStatus(message);
   }
 
+  /** Clear input: only what was typed or added here and never sent anywhere. The map is not involved. */
+  function clear() {
+    setTranscript("");
+    setFiles([]);
+    close("Input cleared. The map was not changed.");
+  }
+
+  async function addFiles(picked: File[]) {
+    if (picked.length === 0) return;
+    const room = MAX_CONTEXT_SOURCES - 1 - files.length;
+    // src-1 is the pasted text; files count up from src-2 and an id is never reused after a removal.
+    const { sources, issues: refused } = await readFiles(picked.slice(0, Math.max(room, 0)), () => `src-${(nextFileId.current += 1) + 1}`);
+    if (picked.length > room)
+      refused.push({ code: "too_many_sources", path: "files", message: `at most ${MAX_CONTEXT_SOURCES - 1} files at a time; ${picked.length - Math.max(room, 0)} not added` });
+    setFiles([...files, ...sources]);
+    setIssues(refused);
+    setStatus("");
+  }
+
+  function removeFile(id: string) {
+    setFiles(files.filter((source) => source.id !== id));
+  }
+
   async function structure() {
+    const why = gate?.() ?? null;
+    if (why) {
+      setStatus(why);
+      return;
+    }
     setBusy(true);
     setStatus("");
-    const answer = await post(endpoints.propose, { ...extra, transcript });
+    const answer = await post(endpoints.propose, { ...extra, context: bundle });
     setBusy(false);
     if (!answer.patch) {
       setIssues(answer.issues ?? [{ code: "unknown_error", path: endpoints.propose, message: "request failed" }]);
       return;
     }
     setIssues([]);
-    setExcluded(new Set());
-    setEditing(false);
+    // A goal offered in several readings starts with none chosen: the human picks, nobody else.
+    setExcluded(new Set(goalChoice(answer.patch).map((goal) => goal.opId)));
+    setEditing(new Set());
     setPatch(answer.patch);
   }
 
   async function accept() {
-    if (!effective) return;
+    if (!effective || busy) return;
     setBusy(true);
+    // Until the answer is in, nothing about the proposal can change: what was sent is what will land.
     const answer = await post(endpoints.accept, { ...extra, patch: effective });
     setBusy(false);
     if (!answer.product) {
@@ -126,6 +208,7 @@ export function WorkshopPanel({
     const revision = answer.product.revision.number;
     onAccepted(answer.product);
     setTranscript("");
+    setFiles([]);
     close(`Proposal accepted. The map is now proposed revision ${revision}.`);
   }
 
@@ -144,6 +227,24 @@ export function WorkshopPanel({
     setExcluded(next);
   }
 
+  /** Exactly one goal of the choice is kept; the others are left out of what is sent. */
+  function chooseGoal(opId: string) {
+    if (!patch) return;
+    const next = new Set(excluded);
+    for (const goal of goalChoice(patch)) {
+      if (goal.opId === opId) next.delete(goal.opId);
+      else next.add(goal.opId);
+    }
+    setExcluded(next);
+  }
+
+  function toggleEditing(opId: string) {
+    const next = new Set(editing);
+    if (next.has(opId)) next.delete(opId);
+    else next.add(opId);
+    setEditing(next);
+  }
+
   const shownIssues = issues.length > 0 ? issues : result && !result.ok ? result.issues : [];
   const includedCount = effective?.operations.length ?? 0;
 
@@ -153,11 +254,10 @@ export function WorkshopPanel({
 
       {!patch && (
         <>
-          <p className="muted">
+          <p className="muted" data-testid="intake-intro">
             {labels?.intro ??
-              "Paste a product discussion, notes or a workshop transcript. The text is treated as material to analyse, never as instructions. You get a proposal to review; the map does not change until you accept it."}
+              "Paste anything you already have: a product discussion, notes, a workshop transcript. The text is treated as material to analyse, never as instructions. You get a proposal to review; the map does not change until you accept it."}
           </p>
-          {hint}
           <textarea
             id="workshop-input"
             data-testid="transcript-input"
@@ -167,20 +267,58 @@ export function WorkshopPanel({
             value={transcript}
             onChange={(event) => setTranscript(event.target.value)}
           />
+          <div className="context-files" data-testid="context-bundle">
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".txt,.md"
+              multiple
+              hidden
+              data-testid="context-files"
+              aria-label="Text or markdown files"
+              onChange={async (event) => {
+                // Copied before the input is reset: the FileList is live and empties with it.
+                const picked = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                await addFiles(picked);
+              }}
+            />
+            <button type="button" className="secondary" data-testid="add-files" disabled={busy} onClick={() => fileInput.current?.click()}>
+              Add text or markdown files
+            </button>
+            {files.length > 0 && (
+              <ul className="sources" data-testid="context-sources" aria-label="Added files">
+                {files.map((source) => (
+                  <li key={source.id} data-testid={`context-source-${source.id}`} data-source-id={source.id}>
+                    <code>{source.id}</code> <strong>{source.label}</strong>{" "}
+                    <span className="muted">{source.text.length.toLocaleString("en")} characters</span>
+                    <button type="button" className="link" aria-label={`Remove ${source.label}`} onClick={() => removeFile(source.id)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {hint}
           <div className="row actions">
             <button
               type="button"
               data-testid="structure-button"
-              disabled={busy || transcript.trim() === "" || blocked !== undefined}
+              disabled={busy || !hasContext}
               onClick={() => void structure()}
             >
               {busy ? (labels?.busy ?? "Structuring…") : (labels?.button ?? "Structure discussion")}
             </button>
-            {blocked && (
-              <span className="muted" data-testid="proposal-blocked">
-                {blocked}
-              </span>
-            )}
+            <button
+              type="button"
+              className="secondary"
+              data-testid="clear-input"
+              disabled={busy || (transcript === "" && files.length === 0)}
+              onClick={clear}
+            >
+              Clear input
+            </button>
             {status && (
               <span className="muted" data-testid="proposal-status">
                 {status}
@@ -191,66 +329,23 @@ export function WorkshopPanel({
       )}
 
       {patch && (
-        <div id="proposal-review" tabIndex={-1} data-testid="proposal-review">
+        <div id="proposal-review" tabIndex={-1} data-testid="proposal-review" data-pending={busy ? "true" : "false"}>
           <p>
             <strong>Proposal</strong> <span className="muted">from {patch.provider}</span>
           </p>
           {patch.summary && <p className="muted">{patch.summary}</p>}
 
-          <ol className="diff">
-            {entries.map((entry) => {
-              const operation = patch.operations.find((o) => o.opId === entry.opId)!;
-              const included = !excluded.has(entry.opId);
-              const fields = EDITABLE_OP_FIELDS[operation.op];
-              return (
-                <li
-                  key={entry.opId}
-                  className={`diff-entry ${entry.op} ${included ? "" : "excluded"}`}
-                  data-testid={`diff-${entry.opId}`}
-                  data-op={entry.op}
-                >
-                  <label className="row">
-                    <input
-                      type="checkbox"
-                      checked={included}
-                      aria-label={`Include ${entry.opId}`}
-                      onChange={() => toggle(entry.opId)}
-                    />
-                    <strong>{entry.headline}</strong>
-                  </label>
-
-                  {editing && included && fields.length > 0 ? (
-                    fields.map((field) => (
-                      <label key={field} className="field">
-                        <span>{field}</span>
-                        <textarea
-                          name={`${entry.opId}-${field}`}
-                          rows={2}
-                          value={String((operation as Record<string, unknown>)[field] ?? "")}
-                          onChange={(event) => editOperation(entry.opId, field, event.target.value)}
-                        />
-                      </label>
-                    ))
-                  ) : (
-                    <>
-                      {entry.before !== undefined && <p className="before">− {entry.before}</p>}
-                      {entry.after && <p className="after">+ {entry.after}</p>}
-                    </>
-                  )}
-
-                  <blockquote className="source">
-                    “{entry.source.snippet}”
-                    <footer>
-                      {entry.source.rationale}{" "}
-                      <span className="muted">
-                        · confidence {entry.source.confidence.toFixed(2)} (advisory only) · <code>{entry.targetId}</code>
-                      </span>
-                    </footer>
-                  </blockquote>
-                </li>
-              );
-            })}
-          </ol>
+          <ProposalReview
+            product={product}
+            patch={patch}
+            excluded={excluded}
+            editing={editing}
+            onToggle={toggle}
+            onChooseGoal={chooseGoal}
+            onEdit={editOperation}
+            onEditToggle={toggleEditing}
+            pending={busy}
+          />
 
           <div className="row actions">
             <button
@@ -265,20 +360,24 @@ export function WorkshopPanel({
               type="button"
               className="secondary"
               data-testid="proposal-edit"
-              onClick={() => setEditing(!editing)}
+              disabled={busy}
+              onClick={() => setEditing(editing.size > 0 ? new Set() : new Set(patch.operations.map((o) => o.opId)))}
             >
-              {editing ? "Done editing" : "Edit"}
+              {editing.size > 0 ? "Done editing" : "Edit all"}
             </button>
             <button
               type="button"
               className="secondary"
               data-testid="proposal-reject"
+              disabled={busy}
               onClick={() => close("Proposal rejected. The map was not changed.")}
             >
               Reject
             </button>
-            <span className="muted">
-              {labels?.acceptNote ?? `Accepting creates proposed revision ${product.revision.number + 1}. It does not approve it.`}
+            <span className="muted" data-testid="proposal-status" aria-live="polite">
+              {busy
+                ? "Accepting… the changes as sent are being written; nothing here can change until that is done."
+                : (labels?.acceptNote ?? `Accepting creates proposed revision ${product.revision.number + 1}. It does not approve it.`)}
             </span>
           </div>
         </div>

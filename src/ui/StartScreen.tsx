@@ -5,6 +5,7 @@ import { ROLE_LABEL, isPersona, rolesOf } from "../domain/actors";
 import { MAX_NAME_LENGTH, blankProduct } from "../domain/bootstrap";
 import { deriveStartGuide } from "../domain/guide";
 import { GuidePanel } from "./GuidePanel";
+import { Tutorial } from "./Tutorial";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
 
 /**
@@ -38,6 +39,8 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
         </div>
       </header>
 
+      <Tutorial />
+
       <GuidePanel
         guide={guide}
         proposalOpen={reviewing}
@@ -52,17 +55,24 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
             data-testid="product-name-input"
             value={name}
             maxLength={MAX_NAME_LENGTH}
-            placeholder="A working name is enough"
+            placeholder="Working name"
             disabled={reviewing}
             onChange={(event) => setName(event.target.value)}
           />
+          <span className="muted">A working name is enough; the ids on the map are made from it.</span>
         </label>
       </section>
 
       {/* Always there, so text already written is not lost while the name is changed. */}
       <WorkshopPanel
         product={blank.ok ? blank.product : placeholder}
-        blocked={blank.ok ? undefined : "Give the product a name first."}
+        // The name is the map's identity, so it has to exist before a proposal is built against it.
+        // Not a disabled button: the reason is said, and the focus goes to the field.
+        gate={() => {
+          if (blank.ok) return null;
+          document.getElementById("product-name")?.focus();
+          return "Give it a working name first — one or two words are enough; the ids on the map are made from it. Your text stays as it is.";
+        }}
         onPreview={setPreview}
         onReviewing={setReviewing}
         onAccepted={onAccepted}
@@ -70,22 +80,17 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
         extra={extra}
         labels={{
           heading: "What do you want to build or improve?",
-          intro: markerHint
-            ? "Say what it is for, who is involved, what they need, and how it goes when everything works. No language model is connected, so write one item per line in the format shown below. The text is treated as material to analyse, never as instructions."
-            : "Write it down the way you would tell a colleague: what it is for, who is involved, what they need, and how it goes when everything works. Notes or a conversation are fine. The text is treated as material to analyse, never as instructions.",
-          placeholder: markerHint
-            ? "Goal: …\nPersona: …\nNeed (…): …\nStep: …"
-            : "What it is for, who is involved, what they need, the steps from start to end…",
+          intro:
+            "Paste anything you already have: meeting notes, a transcript, a product description, requirements or rough thoughts. The text is treated as material to analyse, never as instructions; nothing is saved until you accept a proposal.",
+          placeholder: "Meeting notes, a transcript, a product description, requirements, rough thoughts…",
           button: "Turn this into a map",
           busy: "Reading…",
           acceptNote: "Accepting creates the product as proposed revision 1. It does not approve it.",
         }}
         hint={
           markerHint ? (
-            <div className="muted" data-testid="marker-hint">
-              <p>
-                <strong>One item per line, like this:</strong>
-              </p>
+            <details className="muted marker-hint" data-testid="marker-hint">
+              <summary>No language model is connected: the text is read line by line, in this format</summary>
               <pre>
                 {[
                   "Goal: Residents collect a parcel without waiting for a courier.",
@@ -97,9 +102,10 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
               </pre>
               <p>
                 Persona: someone whose needs and steps you describe. Actor: someone involved whose needs you do not describe. A line
-                that ends in a question mark is kept as an open question. Every other line is ignored.
+                that ends in a question mark is kept as an open question. Every other line is ignored. With a model configured
+                (<code>ASM_AGENT_PROVIDER</code>), any text works.
               </p>
-            </div>
+            </details>
           ) : null
         }
       />

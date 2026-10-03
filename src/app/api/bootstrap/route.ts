@@ -1,6 +1,8 @@
 import { providerFromEnv, startProposal } from "../../../agent/narrative-builder";
 import { ProviderError, type AgentProvider } from "../../../agent/provider";
+import { contextFromBody } from "../../../domain/context";
 import { productFileExists, productFilePath } from "../../../server/store";
+import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +11,13 @@ export const dynamic = "force-dynamic";
  * file exists. Writes nothing: the proposal only exists in the response.
  */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as { name?: unknown; transcript?: unknown } | null;
-  if (typeof body?.name !== "string" || typeof body?.transcript !== "string")
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
+  const body = (await request.json().catch(() => null)) as { name?: unknown } | null;
+  const context = contextFromBody(body);
+  if (typeof body?.name !== "string" || !context)
     return Response.json(
-      { issues: [{ code: "invalid_request", path: "(body)", message: "expected { name: string, transcript: string }" }] },
+      { issues: [{ code: "invalid_request", path: "(body)", message: "expected { name: string, context: { sources: [...] } } or { name, transcript: string }" }] },
       { status: 400 },
     );
 
@@ -33,7 +38,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const proposal = await startProposal(body.name, body.transcript, provider);
+  const proposal = await startProposal(body.name, context, provider);
   if (!proposal.ok) {
     const providerFailed = proposal.issues.some((issue) => issue.code === "provider_error");
     return Response.json({ issues: proposal.issues, provider: provider.name }, { status: providerFailed ? 502 : 422 });

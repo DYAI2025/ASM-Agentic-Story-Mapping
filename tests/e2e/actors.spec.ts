@@ -6,6 +6,9 @@ import { E2E_PRODUCT_FILE } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
 import { resetProductFile } from "./global-setup";
 
+/** The entity tag a save has to name: the map fingerprint as GET /api/product reports it. */
+const etag = async (p: { request: { get(url: string): Promise<{ headers(): Record<string, string> }> } }) => (await p.request.get("/api/product")).headers()["etag"];
+
 test.describe.configure({ mode: "serial" });
 test.beforeEach(resetProductFile);
 
@@ -110,7 +113,7 @@ test("a delivery participant who is not a persona, then a persona without a need
 test("a file with a role that does not exist is refused, not reinterpreted", async ({ page }) => {
   const doc = await stored();
   doc.personas[0].roles = ["developer"];
-  const response = await page.request.put("/api/product", { data: YAML.stringify(doc) });
+  const response = await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(doc) });
   expect(response.status()).toBe(422);
   expect((await response.json()).issues[0].path).toBe("personas.0.roles.0");
 });

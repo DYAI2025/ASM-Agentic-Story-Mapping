@@ -5,6 +5,9 @@ import YAML from "yaml";
 import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { EXAMPLES, SCREENSHOTS } from "./artifacts";
 
+/** The entity tag a save has to name: the map fingerprint as GET /api/product reports it. */
+const etag = async (p: { request: { get(url: string): Promise<{ headers(): Record<string, string> }> } }) => (await p.request.get("/api/product")).headers()["etag"];
+
 /**
  * The whole first-time-user path, in the order the prototype contract names
  * it, in one browser session and with the deterministic provider:
@@ -254,7 +257,7 @@ test("a first-time Product Lead goes from own words to a work order, then change
   const approvedBytes = await fs.readFile(E2E_PRODUCT_FILE, "utf8");
   const tampered = structuredClone(approvedDoc);
   tampered.needs[0].statement = "Changed under the same approval.";
-  const put = await page.request.put("/api/product", { data: YAML.stringify(tampered) });
+  const put = await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(tampered) });
   expect(put.status()).toBe(409);
   expect((await put.json()).issues[0].code).toBe("approved_content_changed");
   expect(await fs.readFile(E2E_PRODUCT_FILE, "utf8")).toBe(approvedBytes);

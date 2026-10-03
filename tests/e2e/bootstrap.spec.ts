@@ -40,12 +40,15 @@ test("no product yet: a start screen, not an error, and the guide is at its firs
   await expect(page.getByTestId("guide")).toHaveAttribute("data-current-step", "intent");
   await expect(page.getByTestId("guide-progress")).toHaveText("0 of 7 steps done");
   await expect(page.getByTestId("guide-hide")).toHaveCount(0);
-  // The text can be written before the product has a name; a proposal cannot be asked for yet.
+  // The text can be written before the product has a name; asking for a proposal then says what is missing (ASM-24) and writes nothing.
   await page.getByTestId("transcript-input").fill("Goal: Something.");
-  await expect(page.getByTestId("structure-button")).toBeDisabled();
-  await expect(page.getByTestId("proposal-blocked")).toHaveText("Give the product a name first.");
-  // The format is shown from the start, not behind a click, because no model is connected in this run.
-  await expect(page.getByTestId("marker-hint")).toContainText("One item per line");
+  await expect(page.getByTestId("structure-button")).toBeEnabled();
+  await page.getByTestId("structure-button").click();
+  await expect(page.getByTestId("proposal-status")).toContainText("Give it a working name first");
+  await expect(page.getByTestId("product-name-input")).toBeFocused();
+  await expect(page.getByTestId("proposal-review")).toHaveCount(0);
+  // No model is connected in this run: the line format is there as a note, not as the instruction.
+  await expect(page.getByTestId("marker-hint")).toContainText("No language model is connected");
   // The guide's button leads to the first thing to fill in.
   await page.getByTestId("guide-cta").click();
   await expect(page.getByTestId("product-name-input")).toBeFocused();

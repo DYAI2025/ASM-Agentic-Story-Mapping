@@ -29,7 +29,7 @@ test file, constant `INTENT`. Nothing you do touches `product/asm.product.yaml`.
 
 ### 1. Product intent — nothing exists yet
 
-The start screen. The guide is at its first step and uses no ASM term. No file
+The start screen. The Product Flow (the guide, renamed in ASM-27) is at its first step and uses no ASM term; the tutorial is shown above it on a first visit. No file
 has been written.
 
 ![1 — product intent](screenshots/first-time-01-product-intent.png)
@@ -48,7 +48,7 @@ yet; the user can drop or edit any change.
 The user dropped the open question and accepted the rest. The map exists on
 disk as revision 1, proposed. The impact line shows the first of three layers
 reached: the thinking is a readable map (sensemaking and delivery appear as
-they are reached). The guide moves to "Check the story and approve it".
+they are reached). The Product Flow moves to "Check the story and approve it".
 
 ![3 — first map](screenshots/first-time-03-first-map.png)
 
@@ -63,7 +63,7 @@ one, which opens revision 2 (proposed).
 ### 6. Approval by a named human
 
 The approval form takes a name. Only then is the revision approved, and only
-then does the guide move on to "Confirm who else matters".
+then does the Product Flow move on to "Confirm who else matters".
 
 ![5 — approved](screenshots/first-time-05-approved.png)
 
@@ -90,7 +90,7 @@ The user selects one, with a name. The value status is a label, not a number.
 
 ### 10. All steps done — the work order is available
 
-Seven of seven guide steps done; the delivery layer of the impact line is
+Seven of seven Product Flow steps done; the delivery layer of the impact line is
 lit. The work order (`/api/brief?format=json` and `?format=md`) names the
 approver, the person who confirmed the people, the selection, the map
 fingerprint and the contract version. The exported copies are

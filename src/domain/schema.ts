@@ -138,6 +138,12 @@ export const ProvenanceSchema = z.strictObject({
   confidence: z.number().min(0).max(1),
   provider: Text,
   revision: z.number().int().min(1),
+  /**
+   * The source of the context bundle the snippet was quoted from (`src-1`) and
+   * its label. Both optional: a map accepted before bundles existed has neither.
+   */
+  sourceId: z.string().regex(/^src-\d+$/).optional(),
+  sourceLabel: Text.optional(),
 });
 
 export const ProductDocumentSchema = z.strictObject({

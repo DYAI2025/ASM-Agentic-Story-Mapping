@@ -117,7 +117,8 @@ export function SliceDrawer({
   const confirmPeople = () => post("/api/people-check", { confirmedBy: confirmer, mapFingerprint });
 
   const select = (candidateId: string) => post("/api/slices/select", { candidateId, selectedBy: selector, mapFingerprint });
-  const acceptException = () => post("/api/slices/exception", { rationale, acceptedBy: accepter });
+  // The exception is for the slice shown as selected; the server refuses it if the selection moved meanwhile.
+  const acceptException = () => post("/api/slices/exception", { rationale, acceptedBy: accepter, candidateId: stored?.candidateId, mapFingerprint });
 
   const rows: { label: string; value: (c: SliceCandidate) => string }[] = [
     { label: "Scope", value: (c) => `${c.evidence.stepCount} of ${c.evidence.totalSteps} steps` },

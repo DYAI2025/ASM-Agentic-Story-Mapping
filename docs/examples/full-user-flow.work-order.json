@@ -1,0 +1,175 @@
+{
+  "briefVersion": 3,
+  "kind": "asm.execution-brief",
+  "goal": {
+    "id": "goal-parcel-lockers",
+    "statement": "Residents collect a parcel without waiting for a courier.",
+    "slice": {
+      "id": "slice-primary-persona",
+      "title": "Resident path"
+    }
+  },
+  "approvedContext": {
+    "approval": {
+      "revision": 2,
+      "approvedBy": "Maya (Product Lead)",
+      "approvedAt": "2026-10-03T20:36:30.993Z"
+    },
+    "selection": {
+      "candidateId": "slice-primary-persona",
+      "selectedBy": "Maya (Product Lead)",
+      "selectedAt": "2026-10-03T20:36:31.460Z",
+      "candidateFingerprint": "4ce9e53f",
+      "derivationVersion": 2
+    },
+    "peopleConsidered": {
+      "confirmedBy": "Maya (Product Lead)",
+      "confirmedAt": "2026-10-03T20:36:31.247Z",
+      "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
+    },
+    "value": {
+      "status": "VALUE_RESOLVED",
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives",
+        "need-know-when-something-has-arrived"
+      ],
+      "note": "The slice references at least one need on the map. ASM has not measured any business value."
+    },
+    "whyThisSlice": [
+      "Resident (persona-resident) takes part in 3 of 4 main-path steps, more than any other persona; this slice is exactly those steps.",
+      "Primary persona relevance: Resident (persona-resident) takes part in 3 of the 3 included steps.",
+      "Persona overlap: 0 of the 3 included steps involve more than one persona.",
+      "Need relation: serves 2 of 3 needs (need-get-my-parcel-on-the-day-it-arrives, need-know-when-something-has-arrived).",
+      "Main-path completeness: reaches the end of the main path, “Resident takes the parcel”.",
+      "Scope: 3 of 4 main-path steps, with 0 worst-case branch(es) to handle.",
+      "Readiness: no open decision and no review gap touches this slice."
+    ],
+    "assumptions": [
+      "Assumes “Courier scans the parcel” [step-courier-scans-the-parcel] has already happened outside this slice.",
+      "Assumes the included needs contribute to the goal [goal-parcel-lockers]; the map relates steps to needs, not needs to the goal."
+    ],
+    "decidedDecisions": [],
+    "verified": [],
+    "note": "Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested."
+  },
+  "inScope": [
+    {
+      "id": "step-resident-gets-a-notification",
+      "sequence": 2,
+      "title": "Resident gets a notification",
+      "description": "With a code.",
+      "personaIds": [
+        "persona-resident"
+      ],
+      "needIds": [
+        "need-know-when-something-has-arrived"
+      ],
+      "branches": []
+    },
+    {
+      "id": "step-resident-opens-the-compartment",
+      "sequence": 3,
+      "title": "Resident opens the compartment",
+      "description": "Enters the code at the locker.",
+      "personaIds": [
+        "persona-resident"
+      ],
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives"
+      ],
+      "branches": []
+    },
+    {
+      "id": "step-resident-takes-the-parcel",
+      "sequence": 4,
+      "title": "Resident takes the parcel",
+      "description": "The compartment is free again.",
+      "personaIds": [
+        "persona-resident"
+      ],
+      "needIds": [
+        "need-get-my-parcel-on-the-day-it-arrives"
+      ],
+      "branches": []
+    }
+  ],
+  "outOfScope": [
+    "[step-courier-scans-the-parcel] Courier scans the parcel",
+    "[need-drop-a-parcel-in-under-a-minute] Need not served by this slice: Drop a parcel in under a minute."
+  ],
+  "personas": [
+    {
+      "id": "persona-resident",
+      "name": "Resident",
+      "description": "Lives in the building and comes home late.",
+      "roles": [
+        "customer",
+        "user"
+      ],
+      "persona": true
+    }
+  ],
+  "needs": [
+    {
+      "id": "need-get-my-parcel-on-the-day-it-arrives",
+      "personaId": "persona-resident",
+      "statement": "Get my parcel on the day it arrives, even late at night."
+    },
+    {
+      "id": "need-know-when-something-has-arrived",
+      "personaId": "persona-resident",
+      "statement": "Know when something has arrived."
+    }
+  ],
+  "acceptanceCriteriaDraft": [
+    {
+      "id": "ac-1",
+      "text": "[step-resident-gets-a-notification] Resident can complete “Resident gets a notification”: With a code.",
+      "refs": [
+        "step-resident-gets-a-notification",
+        "persona-resident"
+      ]
+    },
+    {
+      "id": "ac-2",
+      "text": "[step-resident-opens-the-compartment] Resident can complete “Resident opens the compartment”: Enters the code at the locker.",
+      "refs": [
+        "step-resident-opens-the-compartment",
+        "persona-resident"
+      ]
+    },
+    {
+      "id": "ac-3",
+      "text": "[step-resident-takes-the-parcel] Resident can complete “Resident takes the parcel”: The compartment is free again.",
+      "refs": [
+        "step-resident-takes-the-parcel",
+        "persona-resident"
+      ]
+    }
+  ],
+  "verificationExpectations": [
+    {
+      "criterionId": "ac-1",
+      "expectation": "Show step-resident-gets-a-notification working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-2",
+      "expectation": "Show step-resident-opens-the-compartment working for each named persona with a recorded run (test output or screen recording), not a description."
+    },
+    {
+      "criterionId": "ac-3",
+      "expectation": "Show step-resident-takes-the-parcel working for each named persona with a recorded run (test output or screen recording), not a description."
+    }
+  ],
+  "openHumanDecisions": [],
+  "sourceMapRevision": {
+    "productId": "parcel-lockers",
+    "productName": "Parcel lockers",
+    "schemaVersion": 1,
+    "revision": 2,
+    "status": "approved",
+    "approvedBy": "Maya (Product Lead)",
+    "approvedAt": "2026-10-03T20:36:30.993Z",
+    "mapFingerprint": "1c31c5cd"
+  }
+}

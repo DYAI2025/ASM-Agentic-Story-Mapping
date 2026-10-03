@@ -47,6 +47,18 @@ describe("file-backed store", () => {
     expect(await fs.readFile(process.env.ASM_PRODUCT_FILE, "utf8")).toBe(fixtureText());
   });
 
+  it("a failed replacement leaves no temporary file behind (external review round 7)", async () => {
+    process.env.ASM_PRODUCT_FILE = path.join(dir, "p.yaml");
+    await fs.writeFile(process.env.ASM_PRODUCT_FILE, fixtureText());
+    // The product path becomes a directory under us: the rename fails, and the temporary file must not stay.
+    const edited = updateCard(loadFixture(), "step-start-product", { title: "Begin" });
+    await fs.rm(process.env.ASM_PRODUCT_FILE);
+    await fs.mkdir(process.env.ASM_PRODUCT_FILE);
+    await expect(saveProduct(edited)).rejects.toThrow();
+    const leftovers = (await fs.readdir(dir)).filter((name) => name.endsWith(".tmp"));
+    expect(leftovers).toEqual([]);
+  });
+
   it("reports a missing file as no_product, which routes answer with 404; any other read error stays file_unreadable", async () => {
     process.env.ASM_PRODUCT_FILE = path.join(dir, "missing.yaml");
     const result = await loadProduct();

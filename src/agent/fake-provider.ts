@@ -1,4 +1,5 @@
 import { VALUE_CHAIN_ROLES, isPersona } from "../domain/actors";
+import { bundleFromTranscript, type ContextBundle } from "../domain/context";
 import type { AgentOutput } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
 import { reviewWithRules } from "./fake-review";
@@ -69,10 +70,12 @@ function lookup<T extends { id: string }>(items: T[], label: (item: T) => string
   return hit ? hit.id : null;
 }
 
-export function structureWithMarkers(transcript: string, product: ProductDocument): AgentOutput {
+export function structureWithMarkers(context: string | ContextBundle, product: ProductDocument): AgentOutput {
+  const bundle = typeof context === "string" ? bundleFromTranscript(context) : context;
   const out: AgentOutput = {
     summary: "",
     goal: null,
+    goalAlternatives: [],
     personas: [],
     needs: [],
     steps: [],
@@ -82,9 +85,11 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
   };
   let ignored = 0;
 
-  const explicit = (line: string) => ({ snippet: line, rationale: "Stated explicitly in the discussion.", confidence: 1 });
+  // Every item names the source its line came from; set per source as the lines are read.
+  let sourceId = bundle.sources[0]?.id ?? "src-1";
+  const explicit = (line: string) => ({ snippet: line, rationale: "Stated explicitly in the discussion.", confidence: 1, sourceId });
   const question = (line: string, text: string, rationale: string, confidence: number) =>
-    out.unresolvedQuestions.push({ question: text, relatesTo: [], source: { snippet: line, rationale, confidence } });
+    out.unresolvedQuestions.push({ question: text, relatesTo: [], source: { snippet: line, rationale, confidence, sourceId } });
 
   const persona = (name: string): string | null =>
     lookup(product.personas, (p) => p.name, name) ??
@@ -116,7 +121,9 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
     out.steps.find((s) => key(s.title) === key(title))?.ref ??
     null;
 
-  for (const rawLine of transcript.split(/\r?\n/)) {
+  const lines = bundle.sources.flatMap((source) => source.text.split(/\r?\n/).map((line) => [source.id, line] as const));
+  for (const [id, rawLine] of lines) {
+    sourceId = id;
     const line = rawLine.trim();
     if (line === "") continue;
 
@@ -133,7 +140,9 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
     const rest = match[3].trim();
 
     if (marker === "goal") {
-      out.goal = { statement: rest, source: explicit(line) };
+      // The first Goal line is the goal; every further one is an alternative the human chooses between.
+      if (out.goal) (out.goalAlternatives ??= []).push({ statement: rest, source: explicit(line) });
+      else out.goal = { statement: rest, source: explicit(line) };
     } else if (marker === "persona" || marker === "actor") {
       const { attributes, body } = attributesOf(rest);
       const [name, ...description] = body.split(DASH);
@@ -240,8 +249,8 @@ export function structureWithMarkers(transcript: string, product: ProductDocumen
 export class FakeProvider implements AgentProvider, ReviewProvider {
   readonly name = "fake (deterministic marker parser, no model)";
 
-  async structure({ transcript, product }: StructureInput): Promise<unknown> {
-    return structureWithMarkers(transcript, product);
+  async structure({ context, product }: StructureInput): Promise<unknown> {
+    return structureWithMarkers(context, product);
   }
 
   async review({ product }: ReviewInput): Promise<unknown> {

@@ -1,9 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fingerprint } from "../domain/fingerprint";
 import { exportProductYaml, parseProductText } from "../domain/serialize";
-import { validateProduct, type ValidationResult } from "../domain/validate";
+import { validateProduct, type ValidationIssue, type ValidationResult } from "../domain/validate";
 import { EMPTY_WORK_STATE, exportWorkStateJson, validateWorkState, type WorkStateResult } from "../domain/work-state";
+
+/**
+ * Mutations of the store run one at a time within this process: a save, a
+ * work-state write, a creation and a reset never interleave, so a reset that
+ * answered "fresh" is not undone by a write that was already on its way
+ * (external review, round 3). Across processes there is no lock.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const next = queue.then(work, work);
+  queue = next.catch(() => undefined);
+  return next;
+}
 
 /** The canonical product file. Overridable so tests never write to the fixture. */
 export function productFilePath(): string {
@@ -55,6 +69,10 @@ export async function productFileExists(): Promise<boolean> {
 export async function createProduct(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
+  return serialized(() => createProductNow(result));
+}
+
+async function createProductNow(result: ValidationResult & { ok: true }): Promise<ValidationResult> {
   const file = productFilePath();
   await fs.mkdir(/* turbopackIgnore: true */ path.dirname(file), { recursive: true });
   // A name of its own for every call: two creations at the same moment must not meet on the temporary file.
@@ -76,13 +94,28 @@ export async function createProduct(input: unknown): Promise<ValidationResult> {
 
 /** Validates, then replaces the file atomically. Invalid documents are never written. */
 export async function saveProduct(input: unknown): Promise<ValidationResult> {
+  return serialized(() => saveProductNow(input));
+}
+
+async function saveProductNow(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
-  const file = productFilePath();
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
-  await fs.rename(/* turbopackIgnore: true */ tmp, file);
-  return result;
+  {
+    const file = productFilePath();
+    // Save replaces a product; after a reset there is none to replace, and a save does not bring one back.
+    if (!(await productFileExists()))
+      return { ok: false, issues: [{ code: "no_product", path: file, message: "there is no product any more; nothing was saved" }] };
+    // A name of its own per call: two saves at the same moment must not meet on the temporary file (external review F5).
+    const tmp = `${file}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
+      await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    } finally {
+      // A failed replacement leaves nothing behind; after a successful rename there is nothing to remove.
+      await fs.rm(/* turbopackIgnore: true */ tmp, { force: true });
+    }
+    return result;
+  }
 }
 
 /**
@@ -118,13 +151,170 @@ export async function loadWorkState(): Promise<WorkStateResult> {
   return validateWorkState(data);
 }
 
+/** The checked-in self-map: the product the repository ships with. A normal reset never removes it. */
+export function seedProductFilePath(): string {
+  return path.join(process.cwd(), "product", "asm.product.yaml");
+}
+
+/** Whether the configured product is the repository seed: no explicit workspace path, or one that resolves to the seed. */
+export function productIsSeed(): boolean {
+  if (!process.env.ASM_PRODUCT_FILE) return true;
+  return path.resolve(/* turbopackIgnore: true */ productFilePath()) === path.resolve(/* turbopackIgnore: true */ seedProductFilePath());
+}
+
+export type ResetResult =
+  | { ok: true; removed: { product: string; workState: string | null } }
+  | { ok: false; issues: ValidationIssue[] };
+
+/**
+ * Start over: removes the user-workspace product and its work state.
+ *
+ * Work state first, product last. The start screen appears only once the
+ * product file is gone, so a reset that fails half-way leaves the old product
+ * in place and reports the failure; it never leaves a work state behind that
+ * could become effective again for a later product. Nothing here is atomic
+ * across two files; the order and the final check are what make it fail
+ * closed.
+ *
+ * The repository seed is not a user workspace: without an explicit
+ * `ASM_PRODUCT_FILE`, or with one that resolves to the seed, the reset is
+ * refused and nothing is touched.
+ */
+/** What the human confirmed on: the product's id and the fingerprint of the map as they saw it. */
+export interface ResetTarget {
+  productId: string;
+  mapFingerprint: string;
+}
+
+export function resetProduct(seen?: ResetTarget): Promise<ResetResult> {
+  return serialized(() => resetProductNow(seen));
+}
+
+async function resetProductNow(seen?: ResetTarget): Promise<ResetResult> {
+  const product = productFilePath();
+  const work = workStateFilePath();
+  if (productIsSeed())
+    return {
+      ok: false,
+      issues: [{ code: "seed_protected", path: product, message: "this is the repository's own map; set ASM_PRODUCT_FILE to a workspace path to start over" }],
+    };
+  if (!(await productFileExists()))
+    return { ok: false, issues: [{ code: "no_product", path: product, message: "there is no product to start over from" }] };
+  // The product that is there has to be the one the human confirmed on, as they saw it (external review round 7).
+  if (seen) {
+    const current = await loadProduct();
+    const matches = current.ok && current.product.product.id === seen.productId && fingerprint(current.product) === seen.mapFingerprint;
+    if (!matches)
+      return {
+        ok: false,
+        issues: [{ code: "product_changed", path: product, message: "the product here is not the one you confirmed on, or it has changed since; look again before starting over" }],
+      };
+  }
+  // The seed by what the path resolves to, not only by its spelling: a directory symlink on the way
+  // would otherwise lead the unlink to the checked-in file (external review F1, round 2).
+  if ((await resolvedPath(product)) === (await resolvedPath(seedProductFilePath())))
+    return {
+      ok: false,
+      issues: [{ code: "seed_protected", path: product, message: "this path leads to the repository's own map; set ASM_PRODUCT_FILE to a workspace path to start over" }],
+    };
+  // The work-state target is removed first, so it has to be a work state: named like one, not the
+  // product, not the seed, and holding a work state when it holds anything (external review F1).
+  const invalidWorkState = await workStatePathProblem(work, product);
+  if (invalidWorkState) return { ok: false, issues: [{ code: "work_state_path_invalid", path: work, message: invalidWorkState }] };
+
+  const failed = (file: string, error: unknown): ResetResult => ({
+    ok: false,
+    issues: [{ code: "reset_failed", path: file, message: error instanceof Error ? error.message : String(error) }],
+  });
+
+  let workRemoved: string | null = null;
+  try {
+    await fs.unlink(/* turbopackIgnore: true */ work);
+    workRemoved = work;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return failed(work, error);
+  }
+  try {
+    await fs.unlink(/* turbopackIgnore: true */ product);
+  } catch (error) {
+    return failed(product, error);
+  }
+  // Success is what is on disk now, not what the calls reported.
+  for (const file of [product, work]) {
+    const stillThere = await fs.access(/* turbopackIgnore: true */ file).then(() => true, () => false);
+    if (stillThere) return failed(file, new Error("the file is still there after the reset"));
+  }
+  return { ok: true, removed: { product, workState: workRemoved } };
+}
+
+/** Where a path leads on disk (symlinks followed) when it exists; its absolute spelling otherwise. */
+async function resolvedPath(file: string): Promise<string> {
+  try {
+    return await fs.realpath(/* turbopackIgnore: true */ file);
+  } catch {
+    return path.resolve(/* turbopackIgnore: true */ file);
+  }
+}
+
+/** Why a configured work-state path may not be removed by a reset; null when it is a work state of this product. */
+async function workStatePathProblem(work: string, product: string): Promise<string | null> {
+  if (!work.endsWith(".work-state.json")) return "ASM_WORK_STATE_FILE must name a .work-state.json file";
+  const [workReal, productReal, seedReal] = await Promise.all([resolvedPath(work), resolvedPath(product), resolvedPath(seedProductFilePath())]);
+  if (workReal === productReal) return "the work-state path is the product file";
+  if (workReal === seedReal || path.resolve(/* turbopackIgnore: true */ work) === path.resolve(/* turbopackIgnore: true */ seedProductFilePath())) return "the work-state path is the repository's own map";
+  // What is there has to be a work state. A file of this name holding anything else is not ours to remove.
+  const held = await loadWorkState();
+  if (!held.ok) return `the work-state file does not hold a work state (${held.issues[0]?.code ?? "invalid"})`;
+  // And it has to be this product's: a check or a selection made for another product is another workspace's
+  // state, whatever the path says (external review round 6). An empty work state belongs to nobody and may go.
+  const owners = [held.state.personaCheck?.productId, held.state.selection?.productId].filter((id): id is string => typeof id === "string");
+  if (owners.length > 0) {
+    const stored = await loadProduct();
+    const self = stored.ok ? stored.product.product.id : null;
+    const foreign = owners.find((id) => id !== self);
+    if (foreign !== undefined) return `the work-state file belongs to the product "${foreign}", not to this one`;
+  }
+  return null;
+}
+
 /** Validates, then replaces the work-state file atomically. Never touches the product file. */
 export async function saveWorkState(input: unknown): Promise<WorkStateResult> {
+  return serialized(() => saveWorkStateNow(input));
+}
+
+async function saveWorkStateNow(input: unknown): Promise<WorkStateResult> {
   const result = validateWorkState(input);
   if (!result.ok) return result;
-  const file = workStateFilePath();
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
-  await fs.rename(/* turbopackIgnore: true */ tmp, file);
-  return result;
+  {
+    const file = workStateFilePath();
+    // Work state belongs to a product; without one it is not written.
+    if (!(await productFileExists()))
+      return { ok: false, issues: [{ code: "no_product", path: file, message: "there is no product any more; the work state was not written" }] };
+    const tmp = `${file}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
+      await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    } finally {
+      await fs.rm(/* turbopackIgnore: true */ tmp, { force: true });
+    }
+    return result;
+  }
+}
+
+/** What a writing route may do inside one transaction: read and write the two files, nothing interleaving. */
+export interface StoreTransaction {
+  loadProduct: typeof loadProduct;
+  loadWorkState: typeof loadWorkState;
+  saveProduct: (input: unknown) => Promise<ValidationResult>;
+  saveWorkState: (input: unknown) => Promise<WorkStateResult>;
+}
+
+/**
+ * A writing route's whole read → check → write runs here, inside the queue,
+ * so the check is against the file as it is at commit time: two accepts
+ * built on the same revision cannot both land, the second one re-reads and
+ * finds the map changed (external review round 4).
+ */
+export function transaction<T>(work: (store: StoreTransaction) => Promise<T>): Promise<T> {
+  return serialized(() => work({ loadProduct, loadWorkState, saveProduct: saveProductNow, saveWorkState: saveWorkStateNow }));
 }

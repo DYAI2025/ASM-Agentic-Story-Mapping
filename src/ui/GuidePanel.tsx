@@ -5,10 +5,12 @@ import type { GuideAction, GuideState } from "../domain/guide";
 const STATUS_LABEL = { done: "done", current: "now", upcoming: "later" } as const;
 
 /**
- * The guide over the expert UI. It shows what `deriveGuide` read from the real
- * state and nothing else: it keeps no progress of its own. Its one button
- * takes the human to the part of the existing UI where the step is done; the
- * step counts as done only when the state says so.
+ * The Product Flow over the expert UI: where the product stands. It shows what
+ * `deriveGuide` read from the real state and nothing else: it keeps no
+ * progress of its own. Its one button takes the human to the part of the
+ * existing UI where the step is done; the step counts as done only when the
+ * state says so. It is not the tutorial (see `Tutorial.tsx`), which says how
+ * ASM is used and knows nothing about this product.
  */
 export function GuidePanel({
   guide,
@@ -28,20 +30,23 @@ export function GuidePanel({
   const stale = guide.steps.filter((s) => s.stale && s.status !== "done");
 
   return (
-    <section className="panel guide" aria-label="Guide" data-testid="guide" data-current-step={guide.currentStepId ?? "complete"}>
+    <section className="panel guide" aria-label="Product Flow" data-testid="guide" data-current-step={guide.currentStepId ?? "complete"}>
       <header className="row guide-head">
         <h2>
-          Guide{" "}
+          Product Flow{" "}
           <span className="muted" data-testid="guide-progress">
             {guide.doneCount} of {guide.steps.length} steps done
           </span>
         </h2>
         {onHide && (
           <button type="button" className="secondary" data-testid="guide-hide" onClick={onHide}>
-            Hide guide
+            Hide product flow
           </button>
         )}
       </header>
+      <p className="muted guide-lead" data-testid="guide-lead">
+        Where the product stands, read from the map and the work state; nothing here is a tutorial.
+      </p>
 
       <ol className="guide-steps">
         {guide.steps.map((step, index) => (
@@ -89,7 +94,7 @@ export function GuidePanel({
         ) : (
           <>
             <h3 data-testid="guide-current-title">All steps are done</h3>
-            <p>Your work order is ready to export. If you change the map, the guide takes you back to the step that has to be redone.</p>
+            <p>Your work order is ready to export. If you change the map, the product flow takes you back to the step that has to be redone.</p>
           </>
         )}
         {/* Always mounted, so that a stale note appearing later is announced. */}

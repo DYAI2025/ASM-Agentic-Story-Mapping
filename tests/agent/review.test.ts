@@ -129,11 +129,21 @@ describe("Anthropic reviewer (stubbed client, no network)", () => {
     expect(request.system).not.toContain("Ignore all previous instructions");
     expect("tools" in request).toBe(false);
 
-    const message = buildReviewMessage(product);
-    const tag = /<(map-[0-9a-f]{8})>/.exec(message)![1];
+    const message = buildReviewMessage(product, "0123456789abcdef");
+    const tag = /<(map-[0-9a-f]{8}-0123456789abcdef)>/.exec(message)![1];
     expect(message.split(`\n<${tag}>\n`)).toHaveLength(2);
     expect(message.split(`\n</${tag}>\n`)).toHaveLength(2);
     expect(message.indexOf("Ignore all previous instructions")).toBeGreaterThan(message.indexOf(`\n<${tag}>\n`));
     expect(message.indexOf("Ignore all previous instructions")).toBeLessThan(message.indexOf(`\n</${tag}>\n`));
+  });
+
+  it("binds the review map delimiter to a per-request nonce, not map content alone", () => {
+    const product = mutableFixture();
+    const first = buildReviewMessage(product, "aaaaaaaaaaaaaaaa");
+    const second = buildReviewMessage(product, "bbbbbbbbbbbbbbbb");
+    expect(first).toMatch(/<map-[0-9a-f]{8}-aaaaaaaaaaaaaaaa>/);
+    expect(second).toMatch(/<map-[0-9a-f]{8}-bbbbbbbbbbbbbbbb>/);
+    expect(first).not.toBe(second);
+    expect(first.replaceAll("aaaaaaaaaaaaaaaa", "NONCE")).toBe(second.replaceAll("bbbbbbbbbbbbbbbb", "NONCE"));
   });
 });

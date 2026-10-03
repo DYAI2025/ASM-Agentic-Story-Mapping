@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isPersona } from "../domain/actors";
+import { fingerprint } from "../domain/fingerprint";
 import { deriveGuide, type GuideAction } from "../domain/guide";
 import type { Touch } from "../domain/map-patch";
 import {
@@ -23,6 +24,7 @@ import { ActorSemantics } from "./ActorSemantics";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SliceDrawer } from "./SliceDrawer";
+import { Tutorial } from "./Tutorial";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
 
 type ApiResult = { product?: ProductDocument; issues?: ValidationIssue[] };
@@ -98,8 +100,8 @@ function EditableCard({
                 <footer>
                   {entry.rationale}{" "}
                   <span className="muted">
-                    · {entry.change} in revision {entry.revision} · {entry.provider} · confidence{" "}
-                    {entry.confidence.toFixed(2)} (advisory only)
+                    {entry.sourceLabel && <>· from “{entry.sourceLabel}” </>}· {entry.change} in revision {entry.revision} · {entry.provider} ·
+                    confidence {entry.confidence.toFixed(2)} (advisory only)
                   </span>
                 </footer>
               </blockquote>
@@ -180,6 +182,8 @@ export function StoryMapEditor({
   const [reviewing, setReviewing] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [slicesOpen, setSlicesOpen] = useState(false);
+  // Start over: a destructive action behind its own confirmation. "asking" shows it; "busy" is the request in flight.
+  const [startOver, setStartOver] = useState<"closed" | "asking" | "busy">("closed");
   const shown = preview?.product ?? product;
   const findings = useMemo(() => reviewNarrative(product), [product]);
   // A selection counts only while it still matches this exact map; otherwise it is stale: shown as stale, never as selected.
@@ -250,10 +254,10 @@ export function StoryMapEditor({
     }
   }
 
-  async function send(url: string, method: string, body: string): Promise<boolean> {
+  async function send(url: string, method: string, body: string, headers?: Record<string, string>): Promise<boolean> {
     let result: ApiResult;
     try {
-      const response = await fetch(url, { method, body });
+      const response = await fetch(url, { method, body, headers });
       result = (await response.json()) as ApiResult;
     } catch (error) {
       setIssues([
@@ -279,11 +283,38 @@ export function StoryMapEditor({
       setIssues([{ code: "operation_rejected", path: "(editor)", message: error.message }]);
       return false;
     }
-    return send("/api/product", "PUT", JSON.stringify(next));
+    // The save names the map as this page shows it; the server refuses it if the map moved meanwhile.
+    return send("/api/product", "PUT", JSON.stringify(next), { "if-match": `"${fingerprint(product)}"` });
   }
 
   const saveCard = (id: string, patch: Record<string, string>) =>
     apply((current) => updateCard(current, id, patch));
+
+  /**
+   * The confirmed reset. On success the page reloads from the server, which
+   * finds no product and shows the start screen; on failure the map stays, with
+   * the reason shown. Nothing here pretends a fresh state the server does not have.
+   */
+  async function confirmStartOver() {
+    setStartOver("busy");
+    let result: { ok?: boolean; issues?: ValidationIssue[] };
+    try {
+      // The confirmation names the product as this page shows it; a different one on disk is not removed.
+      const response = await fetch("/api/product/reset", {
+        method: "POST",
+        body: JSON.stringify({ confirm: "start over", productId: product.product.id, mapFingerprint: fingerprint(product) }),
+      });
+      result = (await response.json()) as typeof result;
+    } catch (error) {
+      result = { issues: [{ code: "request_failed", path: "/api/product/reset", message: error instanceof Error ? error.message : String(error) }] };
+    }
+    if (result.ok) {
+      window.location.assign("/");
+      return;
+    }
+    setIssues(result.issues ?? [{ code: "unknown_error", path: "/api/product/reset", message: "request failed" }]);
+    setStartOver("closed");
+  }
 
   return (
     <CardContext.Provider value={cardContext}>
@@ -307,7 +338,8 @@ export function StoryMapEditor({
               className="row"
               onSubmit={(event) => {
                 event.preventDefault();
-                void send("/api/product/approve", "POST", JSON.stringify({ approvedBy: approver }));
+                // The approval is of the map as shown; the server refuses it if the map moved meanwhile.
+                void send("/api/product/approve", "POST", JSON.stringify({ approvedBy: approver, mapFingerprint: fingerprint(product) }));
               }}
             >
               <input
@@ -324,6 +356,8 @@ export function StoryMapEditor({
           )}
         </div>
       </header>
+
+      <Tutorial />
 
       {guideOn && <GuidePanel guide={guide} proposalOpen={reviewing} onAction={follow} onHide={() => showGuide(false)} />}
 
@@ -346,7 +380,7 @@ export function StoryMapEditor({
         <div className="row">
           {!guideOn && (
             <button type="button" id="guide-show" className="secondary" data-testid="guide-show" onClick={() => showGuide(true)}>
-              Show guide
+              Show product flow
             </button>
           )}
           <button
@@ -411,8 +445,35 @@ export function StoryMapEditor({
               if (file) await send("/api/product/import", "POST", await file.text());
             }}
           />
+          <button
+            type="button"
+            className="secondary danger"
+            data-testid="start-over"
+            disabled={reviewing || startOver !== "closed"}
+            onClick={() => setStartOver("asking")}
+          >
+            Start over…
+          </button>
         </div>
       </section>
+
+      {startOver !== "closed" && (
+        <section className="panel danger" role="dialog" aria-labelledby="start-over-title" data-testid="start-over-dialog">
+          <h2 id="start-over-title">Start over?</h2>
+          <p>
+            This removes the product “{product.product.name}” and everything decided on it here: its approval, the people check, the slice
+            selection and any work order. You get the empty start screen back. There is no undo; export the YAML first if you want to keep it.
+          </p>
+          <div className="row actions">
+            <button type="button" className="danger" data-testid="start-over-confirm" disabled={startOver === "busy"} onClick={() => void confirmStartOver()}>
+              {startOver === "busy" ? "Removing…" : "Yes, start over"}
+            </button>
+            <button type="button" className="secondary" data-testid="start-over-cancel" disabled={startOver === "busy"} onClick={() => setStartOver("closed")}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
 
       {(selectionStale || personaCheckStale) && (
         <p className="stale-summary" role="status" data-testid="stale-summary">

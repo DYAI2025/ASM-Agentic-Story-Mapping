@@ -3,6 +3,7 @@ import { ProviderError, type ReviewProvider } from "../../../agent/provider";
 import { buildReview } from "../../../agent/reviewer";
 import { reviewNarrative } from "../../../domain/review";
 import { loadProduct, loadFailureStatus } from "../../../server/store";
+import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,9 @@ export const dynamic = "force-dynamic";
  * findings only exist in the response. An agent finding reaches the map only
  * if a human accepts it through /api/proposal/accept.
  */
-export async function POST() {
+export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   let provider: ReviewProvider;
   try {
     provider = providerFromEnv();
