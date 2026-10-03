@@ -259,6 +259,33 @@ textarea {
   cursor: pointer;
 }
 
+/* Tutorial: how ASM is used, one step at a time. Browser state only. */
+.panel.tutorial {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.panel.tutorial h2 {
+  margin: 4px 0 6px;
+}
+
+.tutorial-progress {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tutorial-replay {
+  justify-content: flex-end;
+  margin: -6px 0 6px;
+}
+
+.guide-lead {
+  margin: -4px 0 8px;
+  font-size: 13px;
+}
+
 /* Proposal review: product meaning in sections, each item used, edited or rejected on its own. */
 .proposal-section {
   margin: 14px 0;

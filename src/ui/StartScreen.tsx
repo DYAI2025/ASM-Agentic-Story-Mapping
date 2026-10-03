@@ -5,6 +5,7 @@ import { ROLE_LABEL, isPersona, rolesOf } from "../domain/actors";
 import { MAX_NAME_LENGTH, blankProduct } from "../domain/bootstrap";
 import { deriveStartGuide } from "../domain/guide";
 import { GuidePanel } from "./GuidePanel";
+import { Tutorial } from "./Tutorial";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
 
 /**
@@ -37,6 +38,8 @@ export function StartScreen({ markerHint }: { markerHint: boolean }) {
           <p className="muted">There is no product here yet. Nothing is saved until you accept a proposal.</p>
         </div>
       </header>
+
+      <Tutorial />
 
       <GuidePanel
         guide={guide}

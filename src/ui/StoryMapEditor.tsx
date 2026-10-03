@@ -23,6 +23,7 @@ import { ActorSemantics } from "./ActorSemantics";
 import { GuidePanel } from "./GuidePanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { SliceDrawer } from "./SliceDrawer";
+import { Tutorial } from "./Tutorial";
 import { WorkshopPanel, type ProposalPreview } from "./WorkshopPanel";
 
 type ApiResult = { product?: ProductDocument; issues?: ValidationIssue[] };
@@ -349,6 +350,8 @@ export function StoryMapEditor({
         </div>
       </header>
 
+      <Tutorial />
+
       {guideOn && <GuidePanel guide={guide} proposalOpen={reviewing} onAction={follow} onHide={() => showGuide(false)} />}
 
       <section className="toolbar">
@@ -370,7 +373,7 @@ export function StoryMapEditor({
         <div className="row">
           {!guideOn && (
             <button type="button" id="guide-show" className="secondary" data-testid="guide-show" onClick={() => showGuide(true)}>
-              Show guide
+              Show product flow
             </button>
           )}
           <button

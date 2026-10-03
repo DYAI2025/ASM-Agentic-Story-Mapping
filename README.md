@@ -202,12 +202,25 @@ All four sit behind the same two interfaces and the same rules:
 - CI has no keys: the adapters are tested against a stubbed `fetch`. The live
   smoke (`npm run smoke:live`, see Checks) is run by hand with a real key.
 
-## The guide
+## The tutorial and the Product Flow
 
-A panel above the toolbar walks a first-time user through the same flow the
-expert UI offers. It is a projection (`deriveGuide` in `src/domain/guide.ts`):
-it reads the product document and the work state and keeps no progress of its
-own.
+Two different things, kept apart on purpose.
+
+The **tutorial** (`src/ui/Tutorial.tsx`) says how ASM is used, in four
+steps, one at a time: *Bring what you already have* · *Review, don't rewrite*
+· *Check the story* · *Turn understanding into work*. It shows on a browser's
+first visit (start screen and map), can be skipped, finished with Back/Next,
+closed with Escape, and replayed with *Show tutorial*. Its only state is the
+browser key `asm.tutorial` (`done`). It imports nothing from the domain and
+calls no route (a static test says so), so it cannot move the Product Flow,
+the product or the work state.
+
+The **Product Flow** (the panel above the toolbar, `GuidePanel` in the code)
+says where this product stands. It is a projection (`deriveGuide` in
+`src/domain/guide.ts`): it reads the product document and the work state and
+keeps no progress of its own. The identifiers under the hood still say
+`guide` (test ids `guide-*`, the key `asm.guide`, the module name); the
+visible name is Product Flow.
 
 | Step | Done when |
 |---|---|
@@ -239,8 +252,9 @@ own.
   badges and a one-line summary, so it is visible with the guide hidden. Nothing is deleted or selected again.
 - Three markers appear when their state is reached: a readable map (step 3),
   an approved story with the approver's name (step 4), a work order (step 7).
-- *Hide guide* / *Show guide* is a per-browser preference in `localStorage`
-  (`asm.guide`). It is not product or work state.
+- *Hide product flow* / *Show product flow* is a per-browser preference in
+  `localStorage` (`asm.guide`). It is not product or work state, and it is a
+  different key from the tutorial's.
 
 ## People: roles and persona
 
@@ -563,6 +577,7 @@ table says which.
 | Two goals applied with the last one winning; the dry run on the whole patch instead of per option; actors grouped as personas; the goal suggesting itself; the primary goal untagged in a choice | ASM-26, `tests/domain/proposal-view.test.ts` | all red |
 | Verifier on `1d44fc9`: `conflicting_goal` removed; first goal radio always checked; no chips; questions grouped as other; quote outside the disclosure | ASM-26, `1d44fc9` | all red; the first goal pre-chosen in the panel's state is observable only by the browser spec (which CI ran) |
 | Verifier's own: a rejected item opening its edit fields under Edit all; an alternative goal's quote and source passed through unvalidated | ASM-26, `1d44fc9` | **both survived** — closed by a render test with a rejected item under Edit all and by tests for a misquoted, unattributed and orphaned alternative |
+| Tutorial not remembered after Finish | ASM-27, `tests/e2e/tutorial.spec.ts` | red (the reload assertion) |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
