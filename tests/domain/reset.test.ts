@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { approveRevision } from "../../src/domain/operations";
 import { EMPTY_WORK_STATE } from "../../src/domain/work-state";
-import { productFilePath, resetProduct, workStateFilePath } from "../../src/server/store";
+import { productFilePath, resetProduct, saveProduct, saveWorkState, workStateFilePath } from "../../src/server/store";
 import { FIXTURE_PATH, fixtureText, loadFixture, peopleCheck } from "./helpers";
 
 const approved = () => approveRevision(loadFixture(), { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" });
@@ -146,6 +146,30 @@ describe("reset: start over on a user workspace", () => {
       expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
       expect(await fs.readFile(productFilePath(), "utf8")).toBe(fixtureText());
     });
+  });
+
+  it("a save or a work-state write that lands after a reset does not bring the old product back (external review round 3)", async () => {
+    const before = loadFixture();
+    const result = await resetProduct();
+    expect(result.ok).toBe(true);
+    // A route that loaded the product before the reset now tries to commit: refused, nothing written.
+    const saved = await saveProduct(before);
+    expect(saved.ok).toBe(false);
+    expect(!saved.ok && saved.issues[0].code).toBe("no_product");
+    expect(await exists(productFilePath())).toBe(false);
+    const work = await saveWorkState({ ...EMPTY_WORK_STATE, personaCheck: peopleCheck(approved()) });
+    expect(work.ok).toBe(false);
+    expect(!work.ok && work.issues[0].code).toBe("no_product");
+    expect(await exists(workStateFilePath())).toBe(false);
+  });
+
+  it("store mutations run one at a time: a reset and a save that overlap settle in order, and the loser sees the truth", async () => {
+    const before = loadFixture();
+    // Both start in the same tick; whichever the queue runs second sees what the first did.
+    const [reset, saved] = await Promise.all([resetProduct(), saveProduct({ ...before, product: { ...before.product, summary: "late save" } })]);
+    expect(reset.ok).toBe(true);
+    expect(saved.ok).toBe(false);
+    expect(await exists(productFilePath())).toBe(false);
   });
 
   it("nothing to reset: a missing product is no_product, and an unrelated work state is left alone", async () => {

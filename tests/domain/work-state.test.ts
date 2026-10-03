@@ -18,7 +18,7 @@ import {
   type SliceSelection,
 } from "../../src/domain/work-state";
 import { loadProduct, loadWorkState, productFilePath, saveProduct, saveWorkState, workStateFilePath } from "../../src/server/store";
-import { loadFixture, mutableFixture, peopleCheck } from "./helpers";
+import { fixtureText, loadFixture, mutableFixture, peopleCheck } from "./helpers";
 
 const APPROVAL = { approvedBy: "Ada", approvedAt: "2026-10-01T10:00:00.000Z" };
 const approved = (p: ProductDocument = loadFixture()) => approveRevision(p, APPROVAL);
@@ -53,6 +53,8 @@ describe("slice selection is work state, not product canon", () => {
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), "asm-work-"));
     process.env.ASM_PRODUCT_FILE = path.join(dir, "asm.product.yaml");
+    // A save replaces a product; a product has to be there first (the creation path is createProduct).
+    await fs.writeFile(process.env.ASM_PRODUCT_FILE, fixtureText());
   });
 
   afterEach(async () => {

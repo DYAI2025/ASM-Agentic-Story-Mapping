@@ -102,6 +102,20 @@ throwing away the map.
   before anything is touched. The seed check on the product path follows
   symlinks too: a path that reaches `product/asm.product.yaml` through a
   linked directory is the seed.
+- What the reset's checks defend against, and what not: a mistaken
+  configuration (the seed as the product or as the work state, a path that
+  leads to the seed through a link, an override that is not a work state) and
+  a request a browser was made to send. They do not defend against a hostile
+  process on the same machine: one that can swap a parent directory into a
+  symlink between the check and the unlink can delete the seed directly, and
+  the route adds nothing to what it already has. The checks are by pathname
+  and resolve the path twice; a descriptor-bound delete would need a trusted
+  workspace root, which this prototype does not define.
+- Store mutations (save, work state, create, reset) run one at a time within
+  the server process, and a save or a work-state write finding no product at
+  commit time is refused (`no_product`): a reset that answered "fresh" is not
+  undone by a write that was already on its way. There is no lock across
+  processes.
 - Every route that changes something (and the two that spend a model call)
   refuses a request the browser marks as coming from another site
   (`Sec-Fetch-Site` other than `same-origin`/`none`, or an `Origin` that is
@@ -610,6 +624,7 @@ table says which.
 | Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
 | Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
 | External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
+| External review round 3 of `f4b5804`: a save in flight during a reset recreating the old product; the alias-export GET guard examining only the export clause | ASM-28, `f4b5804` | **both real** — closed by the in-process mutex plus the existence check at commit time (three mutants red: save recreates, orphan work state, no mutex) and by examining the whole file for an aliased GET. The round's Blocker — a hostile local process swapping a parent directory into a symlink between realpath and unlink — is not patched: it is outside the threat model written above (that process can delete the seed itself) and is recorded as an accepted limitation for the PO |
 | External review round 2 of `b0fe88c`: the seed reached through a directory symlink; a work-state override holding something else; a cross-site `text/plain` POST resetting or approving on localhost; OpenRouter's provider-level failover left on; the Anthropic key not passed to the redactor; `export { handler as GET }` | ASM-28, `b0fe88c` | **all real** — closed by the realpath seed check, the work-state content check, the same-origin refusal on all twelve writing/model routes, `allow_fallbacks: false`, the key passed through, and the wider pattern; six mutants red (seed check, content check, unlink order, fetch metadata, Origin, fallbacks). Two pre-existing findings stay documented limitations: concurrent accepts are last-writer-wins; a client can hand the accept route a patch whose source fields it changed |
 
 The full lists with the failing test names are in the evidence comments on the tickets.

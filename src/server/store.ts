@@ -5,6 +5,19 @@ import { exportProductYaml, parseProductText } from "../domain/serialize";
 import { validateProduct, type ValidationIssue, type ValidationResult } from "../domain/validate";
 import { EMPTY_WORK_STATE, exportWorkStateJson, validateWorkState, type WorkStateResult } from "../domain/work-state";
 
+/**
+ * Mutations of the store run one at a time within this process: a save, a
+ * work-state write, a creation and a reset never interleave, so a reset that
+ * answered "fresh" is not undone by a write that was already on its way
+ * (external review, round 3). Across processes there is no lock.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const next = queue.then(work, work);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
 /** The canonical product file. Overridable so tests never write to the fixture. */
 export function productFilePath(): string {
   return process.env.ASM_PRODUCT_FILE ?? path.join(process.cwd(), "product", "asm.product.yaml");
@@ -55,6 +68,10 @@ export async function productFileExists(): Promise<boolean> {
 export async function createProduct(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
+  return serialized(() => createProductNow(result));
+}
+
+async function createProductNow(result: ValidationResult & { ok: true }): Promise<ValidationResult> {
   const file = productFilePath();
   await fs.mkdir(/* turbopackIgnore: true */ path.dirname(file), { recursive: true });
   // A name of its own for every call: two creations at the same moment must not meet on the temporary file.
@@ -78,12 +95,17 @@ export async function createProduct(input: unknown): Promise<ValidationResult> {
 export async function saveProduct(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
-  const file = productFilePath();
-  // A name of its own per call: two saves at the same moment must not meet on the temporary file (external review F5).
-  const tmp = `${file}.${randomUUID()}.tmp`;
-  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
-  await fs.rename(/* turbopackIgnore: true */ tmp, file);
-  return result;
+  return serialized(async () => {
+    const file = productFilePath();
+    // Save replaces a product; after a reset there is none to replace, and a save does not bring one back.
+    if (!(await productFileExists()))
+      return { ok: false, issues: [{ code: "no_product", path: file, message: "there is no product any more; nothing was saved" }] };
+    // A name of its own per call: two saves at the same moment must not meet on the temporary file (external review F5).
+    const tmp = `${file}.${randomUUID()}.tmp`;
+    await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
+    await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    return result;
+  });
 }
 
 /**
@@ -148,7 +170,11 @@ export type ResetResult =
  * `ASM_PRODUCT_FILE`, or with one that resolves to the seed, the reset is
  * refused and nothing is touched.
  */
-export async function resetProduct(): Promise<ResetResult> {
+export function resetProduct(): Promise<ResetResult> {
+  return serialized(resetProductNow);
+}
+
+async function resetProductNow(): Promise<ResetResult> {
   const product = productFilePath();
   const work = workStateFilePath();
   if (productIsSeed())
@@ -220,9 +246,14 @@ async function workStatePathProblem(work: string, product: string): Promise<stri
 export async function saveWorkState(input: unknown): Promise<WorkStateResult> {
   const result = validateWorkState(input);
   if (!result.ok) return result;
-  const file = workStateFilePath();
-  const tmp = `${file}.${randomUUID()}.tmp`;
-  await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
-  await fs.rename(/* turbopackIgnore: true */ tmp, file);
-  return result;
+  return serialized(async () => {
+    const file = workStateFilePath();
+    // Work state belongs to a product; without one it is not written.
+    if (!(await productFileExists()))
+      return { ok: false, issues: [{ code: "no_product", path: file, message: "there is no product any more; the work state was not written" }] };
+    const tmp = `${file}.${randomUUID()}.tmp`;
+    await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
+    await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    return result;
+  });
 }
