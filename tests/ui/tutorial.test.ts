@@ -17,7 +17,8 @@ import { loadFixture } from "../domain/helpers";
  */
 function part(html: string, testId: string): string | null {
   const match = new RegExp(`<(\\w+)[^>]*data-testid="${testId}"[^>]*>([\\s\\S]*?)</\\1>`).exec(html);
-  return match ? match[2].replace(/<[^>]+>/g, "") : null;
+  // Static markup escapes the apostrophe; the human reads an apostrophe.
+  return match ? match[2].replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'") : null;
 }
 
 const card = (step: number) =>
