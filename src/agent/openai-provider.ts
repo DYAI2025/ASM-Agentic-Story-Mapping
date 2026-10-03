@@ -1,6 +1,6 @@
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson, redactSecrets } from "./http";
+import { DEFAULT_TIMEOUT_MS, apiErrorMessage, contained, parseModelJson, postJson } from "./http";
 import { strictOutputSchema } from "./json-schema";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
@@ -45,11 +45,11 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
   }
 
   structure(input: StructureInput): Promise<unknown> {
-    return this.ask(SYSTEM_PROMPT, buildUserMessage(input.context, input.product), PROPOSAL_FORMAT);
+    return contained([this.apiKey], () => this.ask(SYSTEM_PROMPT, buildUserMessage(input.context, input.product), PROPOSAL_FORMAT));
   }
 
   review(input: ReviewInput): Promise<unknown> {
-    return this.ask(REVIEW_SYSTEM_PROMPT, buildReviewMessage(input.product), REVIEW_FORMAT);
+    return contained([this.apiKey], () => this.ask(REVIEW_SYSTEM_PROMPT, buildReviewMessage(input.product), REVIEW_FORMAT));
   }
 
   private async ask(instructions: string, userMessage: string, format: typeof PROPOSAL_FORMAT): Promise<unknown> {
@@ -64,10 +64,10 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
         max_output_tokens: MAX_OUTPUT_TOKENS,
         store: false,
       },
-      { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenAI", secrets: [this.apiKey] },
+      { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenAI" },
     );
 
-    const message = apiErrorMessage(body, [this.apiKey]);
+    const message = apiErrorMessage(body);
     if (status === 401) throw new ProviderError("OpenAI rejected the credentials; check OPENAI_API_KEY");
     if (status === 429) {
       // OpenAI answers an exhausted balance with 429 too; that is not something a retry fixes.
@@ -87,7 +87,7 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
     }
     // Only a completed response is an answer; anything else with text in it is not (external review round 4).
     if (response.status !== "completed")
-      throw new ProviderError(`the model's response did not complete (status ${redactSecrets(JSON.stringify(response.status ?? "missing"), [this.apiKey])})`);
+      throw new ProviderError(`the model's response did not complete (status ${JSON.stringify(response.status ?? "missing")})`);
     const content = (response.output ?? []).flatMap((item) => (item.type === "message" ? (item.content ?? []) : []));
     const refusal = content.find((block) => block.type === "refusal");
     if (refusal) throw new ProviderError("the model declined to process this text");

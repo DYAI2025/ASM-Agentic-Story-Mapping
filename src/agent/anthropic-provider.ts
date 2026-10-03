@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, parseModelJson, redactSecrets } from "./http";
+import { DEFAULT_TIMEOUT_MS, contained, parseModelJson } from "./http";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
 
@@ -72,11 +72,11 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
   }
 
   structure(input: StructureInput): Promise<unknown> {
-    return this.ask(buildRequest(input, this.model));
+    return contained(this.secrets, () => this.ask(buildRequest(input, this.model)));
   }
 
   review(input: ReviewInput): Promise<unknown> {
-    return this.ask(buildReviewRequest(input, this.model));
+    return contained(this.secrets, () => this.ask(buildReviewRequest(input, this.model)));
   }
 
   private async ask(request: ReturnType<typeof buildRequest> | ReturnType<typeof buildReviewRequest>): Promise<unknown> {
@@ -108,8 +108,8 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
       if (error instanceof Anthropic.APIConnectionTimeoutError)
         throw new ProviderError(`Anthropic timed out after ${this.timeoutMs} ms; try again or shorten the text`);
       if (error instanceof Anthropic.APIError)
-        throw new ProviderError(redactSecrets(`Anthropic API error ${error.status ?? ""}: ${error.message}`.trim(), this.secrets));
-      throw new ProviderError(redactSecrets(error instanceof Error ? error.message : String(error), this.secrets));
+        throw new ProviderError(`Anthropic API error ${error.status ?? ""}: ${error.message}`.trim());
+      throw new ProviderError(error instanceof Error ? error.message : String(error));
     } finally {
       clearTimeout(timer);
     }
@@ -120,7 +120,7 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
       throw new ProviderError("the model's answer was cut off; try a shorter text");
     // Only a normal end of turn is an answer (external review round 5).
     if (response.stop_reason !== "end_turn")
-      throw new ProviderError(redactSecrets(`the model's response did not complete (stop_reason ${JSON.stringify(response.stop_reason ?? "missing")})`, this.secrets));
+      throw new ProviderError(`the model's response did not complete (stop_reason ${JSON.stringify(response.stop_reason ?? "missing")})`);
 
     const text = response.content.find((block) => block.type === "text");
     if (!text || text.type !== "text") throw new ProviderError("the model returned no text output");

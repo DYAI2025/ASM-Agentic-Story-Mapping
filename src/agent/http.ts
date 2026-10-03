@@ -10,8 +10,32 @@ export const DEFAULT_TIMEOUT_MS = 120_000;
  */
 export function redactSecrets(text: string, secrets: readonly string[] = []): string {
   let out = text;
-  for (const secret of secrets) if (secret.length >= 4) out = out.split(secret).join("[redacted]");
+  for (const secret of secrets) {
+    if (secret.length < 4) continue;
+    // Every spelling the secret can have inside text that was serialized once or twice before it got here
+    // (an SDK's exception text, a status field through JSON.stringify): the raw value, its JSON-escaped form,
+    // that form escaped again, and its URL-encoded form (external review round 10).
+    const once = JSON.stringify(secret).slice(1, -1);
+    const twice = JSON.stringify(once).slice(1, -1);
+    for (const spelling of new Set([secret, once, twice, encodeURIComponent(secret)])) out = out.split(spelling).join("[redacted]");
+  }
   return out.replace(/\b(sk|or)-[A-Za-z0-9_-]{8,}/g, "[redacted]");
+}
+
+/**
+ * The one boundary every provider call crosses on its way out: whatever was
+ * thrown inside — this module's own errors, an SDK's exception with upstream
+ * text in it, a transport failure — leaves as a `ProviderError` whose message
+ * went through the redactor. No adapter message is trusted to have done
+ * that itself (external review round 10).
+ */
+export async function contained<T>(secrets: readonly string[], work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ProviderError(redactSecrets(error instanceof ProviderError ? message : `the provider call failed: ${message}`, secrets));
+  }
 }
 
 export type JsonResponse = { status: number; body: unknown };
@@ -26,9 +50,8 @@ export async function postJson(
   url: string,
   headers: Record<string, string>,
   body: unknown,
-  options: { timeoutMs: number; fetch?: typeof globalThis.fetch; apiName: string; secrets?: readonly string[] },
+  options: { timeoutMs: number; fetch?: typeof globalThis.fetch; apiName: string },
 ): Promise<JsonResponse> {
-  const redact = (text: string) => redactSecrets(text, options.secrets ?? []);
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
@@ -44,7 +67,7 @@ export async function postJson(
   } catch (error) {
     clearTimeout(timer);
     if (timedOut(error)) throw new ProviderError(`${options.apiName} timed out after ${options.timeoutMs} ms; try again or shorten the text`);
-    throw new ProviderError(`${options.apiName} could not be reached: ${redact(error instanceof Error ? error.message : String(error))}`);
+    throw new ProviderError(`${options.apiName} could not be reached: ${error instanceof Error ? error.message : String(error)}`);
   }
   // The deadline covers the body as well: headers that arrive at once and a body that never does are a timeout too.
   let parsed: unknown = null;
@@ -59,13 +82,13 @@ export async function postJson(
   return { status: response.status, body: parsed };
 }
 
-/** The message an API put in its error object, redacted; or a plain status when there is none. */
-export function apiErrorMessage(body: unknown, secrets: readonly string[] = []): string | null {
+/** The message an API put in its error object, or null when there is none. Redaction happens once, at `contained`. */
+export function apiErrorMessage(body: unknown): string | null {
   if (typeof body !== "object" || body === null) return null;
   const error = (body as { error?: unknown }).error;
-  if (typeof error === "string") return redactSecrets(error, secrets);
+  if (typeof error === "string") return error;
   if (typeof error === "object" && error !== null && typeof (error as { message?: unknown }).message === "string")
-    return redactSecrets((error as { message: string }).message, secrets);
+    return (error as { message: string }).message;
   return null;
 }
 
