@@ -132,6 +132,26 @@ describe("reset: start over on a user workspace", () => {
       expect(await exists(productFilePath())).toBe(true);
     });
 
+    it("another workspace's work state, even a valid one, is not this product's and is left alone (external review round 6)", async () => {
+      // A valid work state whose people check names a different product.
+      const other = path.join(dir, "other.work-state.json");
+      const otherProduct = { ...approved(), product: { ...approved().product, id: "other-product" } };
+      await fs.writeFile(other, JSON.stringify({ ...EMPTY_WORK_STATE, personaCheck: peopleCheck(otherProduct) }));
+      process.env.ASM_WORK_STATE_FILE = other;
+      const result = await resetProduct();
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      expect(!result.ok && result.issues[0].message).toContain("other-product");
+      expect(await exists(other)).toBe(true);
+      expect(await exists(productFilePath())).toBe(true);
+
+      // The same override holding this product's own check is this product's, and goes.
+      await fs.writeFile(other, JSON.stringify({ ...EMPTY_WORK_STATE, personaCheck: peopleCheck(approved()) }));
+      const own = await resetProduct();
+      expect(own).toEqual({ ok: true, removed: { product: productFilePath(), workState: other } });
+      expect(await exists(other)).toBe(false);
+    });
+
     it("a path that is not named like a work state, or a symlink to the product", async () => {
       process.env.ASM_WORK_STATE_FILE = path.join(dir, "notes.json");
       await fs.writeFile(process.env.ASM_WORK_STATE_FILE, "{}");
@@ -220,6 +240,8 @@ describe("reset: start over on a user workspace", () => {
 
   it("work state first: when the product cannot be removed the result is a failure, never a fresh state", async () => {
     // A directory in place of the product file: it exists, so this is not no_product, and unlink fails on it.
+    // The work state carries no owner here: with the product unreadable, an owned work state could not be bound and would be refused earlier.
+    await fs.writeFile(workStateFilePath(), JSON.stringify(EMPTY_WORK_STATE));
     await fs.rm(productFilePath());
     await fs.mkdir(productFilePath());
 

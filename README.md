@@ -98,8 +98,11 @@ throwing away the map.
 - The work-state target is removed first, so it has to be a work state: an
   `ASM_WORK_STATE_FILE` that is not named `*.work-state.json`, that is the
   product file or the seed (by name or by what a symlink resolves to), or that
-  holds anything but a valid work state, is refused (`work_state_path_invalid`)
-  before anything is touched. The seed check on the product path follows
+  holds anything but a valid work state, or holds a people check or a
+  selection made for another product (its `productId`), is refused
+  (`work_state_path_invalid`) before anything is touched. An empty work state
+  belongs to nobody and may go; an owned one whose product cannot be read is
+  refused too. The seed check on the product path follows
   symlinks too: a path that reaches `product/asm.product.yaml` through a
   linked directory is the seed.
 - What the reset's checks defend against, and what not: a mistaken
@@ -178,7 +181,10 @@ label of the source its quote came from (`provenance[].sourceId`,
   The server validates the bundle again before any provider sees it (empty,
   binary, type, size, shape) and refuses with 422; nothing is written.
 - The provider receives every source in its own delimited block, headed by its
-  id, and has to say for each item which source it quotes (`sourceId`). With one
+  id; the tag around a block is a hash of the label and the text plus a nonce
+  chosen after the sources arrived, so no source can contain its own closing
+  tag, by accident or on purpose. The provider has to say for each item which
+  source it quotes (`sourceId`). With one
   source the attribution is implied; with several it is required
   (`source_required`). The quote is checked against that one source: a snippet
   that only exists in another source, or across the boundary between two, is
@@ -627,6 +633,7 @@ table says which.
 | Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
 | Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
 | External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
+| External review round 6 of `01ea9c1`: a work-state override holding another workspace's valid work state deleted by a reset; the content-derived delimiter forgeable by a crafted self-consistent hash | ASM-28, `01ea9c1` | **both real** — closed by binding an owned work state to the product's id before any unlink (mutant red) and by a per-request random nonce in every source tag (mutant red) |
 | External review round 5 of `24dcb33` (0 Blocker / 0 Critical): a file label spelling its own block's closing tag (the delimiter hashed only the text); Anthropic and OpenRouter passing an unknown or missing terminal state with valid JSON; the README overclaiming that a racing selection is refused | ASM-28, `24dcb33` | **all real** — closed by hashing label and text into the delimiter, by whitelisting `end_turn` / `stop`, and by stating that a newer explicit selection supersedes |
 | External review round 4 of `76ba4c2`: two accepts on one revision both landing (checked before either saved); a compatible OpenAI endpoint answering 200 with a status other than `completed` and valid JSON; the file label in the prompt preamble rather than inside the data block | ASM-28, `76ba4c2` | **all real** — closed by running every writing route's read → check → write inside the store queue (two mutants red: transaction not serialized; the accept loading outside it), by requiring `status: "completed"`, and by moving the label into the delimited block. The reviewer judged the reset threat model plain and honest; the provenance-at-accept boundary stays documented |
 | External review round 3 of `f4b5804`: a save in flight during a reset recreating the old product; the alias-export GET guard examining only the export clause | ASM-28, `f4b5804` | **both real** — closed by the in-process mutex plus the existence check at commit time (three mutants red: save recreates, orphan work state, no mutex) and by examining the whole file for an aliased GET. The round's Blocker — a hostile local process swapping a parent directory into a symlink between realpath and unlink — is not patched: it is outside the threat model written above (that process can delete the seed itself) and is recorded as an accepted limitation for the PO |

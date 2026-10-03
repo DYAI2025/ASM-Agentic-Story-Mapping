@@ -243,6 +243,15 @@ async function workStatePathProblem(work: string, product: string): Promise<stri
   // What is there has to be a work state. A file of this name holding anything else is not ours to remove.
   const held = await loadWorkState();
   if (!held.ok) return `the work-state file does not hold a work state (${held.issues[0]?.code ?? "invalid"})`;
+  // And it has to be this product's: a check or a selection made for another product is another workspace's
+  // state, whatever the path says (external review round 6). An empty work state belongs to nobody and may go.
+  const owners = [held.state.personaCheck?.productId, held.state.selection?.productId].filter((id): id is string => typeof id === "string");
+  if (owners.length > 0) {
+    const stored = await loadProduct();
+    const self = stored.ok ? stored.product.product.id : null;
+    const foreign = owners.find((id) => id !== self);
+    if (foreign !== undefined) return `the work-state file belongs to the product "${foreign}", not to this one`;
+  }
   return null;
 }
 
