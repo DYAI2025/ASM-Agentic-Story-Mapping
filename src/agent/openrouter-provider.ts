@@ -88,6 +88,9 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
     if (choice.finish_reason === "content_filter") throw new ProviderError("the model declined to process this text (content filter)");
     if (typeof choice.message?.refusal === "string" && choice.message.refusal !== "")
       throw new ProviderError("the model declined to process this text");
+    // Only a normal stop is an answer; an unknown or missing reason with text in it is not (external review round 5).
+    if (choice.finish_reason !== "stop")
+      throw new ProviderError(`the model's response did not complete (finish_reason ${JSON.stringify(choice.finish_reason ?? "missing")})`);
     const content = choice.message?.content;
     if (typeof content !== "string" || content === "") throw new ProviderError("the model returned no text output");
     return parseModelJson(content);

@@ -224,6 +224,9 @@ describe("OpenRouter provider (chat completions)", () => {
     ["a content filter", { body: { choices: [{ finish_reason: "content_filter", message: { content: "" } }] } }, /declined/],
     ["a refusal", { body: { choices: [{ finish_reason: "stop", message: { content: "", refusal: "No." } }] } }, /declined/],
     ["no choices", { body: { choices: [] } }, /no text/],
+    // External review round 5: an unknown or missing finish reason with valid JSON is not an answer.
+    ["an unknown finish reason", { body: { choices: [{ finish_reason: "tool_calls", message: { content: JSON.stringify(honest()) } }] } }, /did not complete \(finish_reason "tool_calls"\)/],
+    ["no finish reason", { body: { choices: [{ message: { content: JSON.stringify(honest()) } }] } }, /did not complete/],
     ["non-JSON text", { body: { choices: [{ finish_reason: "stop", message: { content: "Sure! Here is the proposal:" } }] } }, /not valid JSON/],
     ["a network failure", { throws: new TypeError("fetch failed") }, /could not be reached/],
     ["a timeout", { hang: true }, /timed out/],

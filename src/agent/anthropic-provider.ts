@@ -97,6 +97,9 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
       throw new ProviderError("the model declined to process this text");
     if (response.stop_reason === "max_tokens")
       throw new ProviderError("the model's answer was cut off; try a shorter text");
+    // Only a normal end of turn is an answer (external review round 5).
+    if (response.stop_reason !== "end_turn")
+      throw new ProviderError(`the model's response did not complete (stop_reason ${JSON.stringify(response.stop_reason ?? "missing")})`);
 
     const text = response.content.find((block) => block.type === "text");
     if (!text || text.type !== "text") throw new ProviderError("the model returned no text output");
