@@ -197,6 +197,59 @@ describe("OpenAI provider (Responses API)", () => {
     }
   });
 
+  /**
+   * External review round 9, and the third round in a row on the same class
+   * (a configured secret reaching something the server emits): instead of
+   * closing the channel the reviewer named, the oracle names every channel.
+   * Every string position of a valid output, four spellings of the secret
+   * (plain, with a quote, with a backslash, with a non-ASCII character), three
+   * adapters; the result may contain the secret neither raw nor JSON-escaped.
+   */
+  it("no string position of the output, and no spelling of the secret, reaches the domain or the response", async () => {
+    const secrets = ['plain-secret-0001', 'with-"quote"-0002', "with-\\backslash-0003", "with-ümlaut-0004"];
+    const base = honest();
+    const positions: Array<[string, (out: ReturnType<typeof honest>, secret: string) => unknown]> = [
+      ["summary", (o, x) => ({ ...o, summary: x })],
+      ["goal.statement", (o, x) => ({ ...o, goal: { statement: x, source: { snippet: TRANSCRIPT.slice(0, 20), rationale: "r", confidence: 0.5 } } })],
+      ["goal.source.rationale", (o, x) => ({ ...o, goal: { statement: "G", source: { snippet: TRANSCRIPT.slice(0, 20), rationale: x, confidence: 0.5 } } })],
+      ["goal.source.snippet", (o, x) => ({ ...o, goal: { statement: "G", source: { snippet: x, rationale: "r", confidence: 0.5 } } })],
+      ["persona.name", (o, x) => ({ ...o, personas: [{ ref: "new:p", name: x, description: "d", roles: [], persona: true, source: { snippet: TRANSCRIPT.slice(0, 20), rationale: "r", confidence: 0.5 } }] })],
+      ["persona.roles[0]", (o, x) => ({ ...o, personas: [{ ref: "new:p", name: "P", description: "d", roles: [x], persona: true, source: { snippet: TRANSCRIPT.slice(0, 20), rationale: "r", confidence: 0.5 } }] })],
+      ["persona.ref", (o, x) => ({ ...o, personas: [{ ref: x, name: "P", description: "d", roles: [], persona: true, source: { snippet: TRANSCRIPT.slice(0, 20), rationale: "r", confidence: 0.5 } }] })],
+      ["unresolvedQuestions[0].question", (o, x) => ({ ...o, unresolvedQuestions: [{ question: x, source: { snippet: TRANSCRIPT.slice(0, 20), rationale: "r", confidence: 0.5 } }] })],
+      ["an object key", (o, x) => ({ ...o, [x]: "value" })],
+    ];
+    for (const secret of secrets) {
+      for (const [where, place] of positions) {
+        const output = place(base, secret);
+        for (const provider of [
+          new OpenAIProvider({ apiKey: secret, fetch: fetchStub([{ body: openaiOk(output) }]).fetch }),
+          new OpenRouterProvider({ apiKey: secret, model: "v/m", fetch: fetchStub([{ body: openrouterOk(output) }]).fetch }),
+        ]) {
+          const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+          const label = `${provider.name} / ${where} / ${secret}`;
+          expect(result.ok, label).toBe(false);
+          expect(codes(result), label).toEqual(["provider_error"]);
+          const text = JSON.stringify(result);
+          expect(text, label).not.toContain(secret);
+          // The plain tail survives any escaping depth.
+          expect(text, label).not.toContain(secret.slice(-9));
+        }
+      }
+    }
+  });
+
+  it("a schema-valid null for goalAlternatives is no alternatives, not an invalid proposal (external review round 9)", async () => {
+    const output = { ...honest(), goalAlternatives: null };
+    for (const provider of [
+      new OpenAIProvider({ apiKey: KEY, fetch: fetchStub([{ body: openaiOk(output) }]).fetch }),
+      new OpenRouterProvider({ apiKey: KEY, model: "v/m", fetch: fetchStub([{ body: openrouterOk(output) }]).fetch }),
+    ]) {
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      expect(result.ok, provider.name).toBe(true);
+    }
+  });
+
   it("the deadline covers the body, not only the headers (external review round 7)", async () => {
     // Headers arrive at once; the body never does.
     const stalled: typeof globalThis.fetch = async (_url, init) =>

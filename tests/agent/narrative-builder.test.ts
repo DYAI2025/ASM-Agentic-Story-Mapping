@@ -1,7 +1,7 @@
 import { promises as fs, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnthropicProvider, DEFAULT_MODEL, buildRequest, type MessagesClient } from "../../src/agent/anthropic-provider";
 import { FakeProvider, structureWithMarkers } from "../../src/agent/fake-provider";
 import { MAX_TRANSCRIPT_CHARS, buildProposal, providerFromEnv } from "../../src/agent/narrative-builder";
@@ -188,6 +188,52 @@ describe("Anthropic provider (stubbed client, no network)", () => {
     expect(codes(result)).toEqual(["provider_error"]);
     expect(result.ok === false && result.issues[0].message).toMatch(/timed out after 50 ms/);
     expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("the SDK's own debug log never carries the configured key, even when ANTHROPIC_LOG=debug (external review round 9)", async () => {
+    // The real SDK client, built by the adapter, over a fetch that answers with the key inside the body.
+    const odd = 'sk-ant-"logged"-\\by-the-sdk-8888';
+    const leaky = { ...honest(), summary: `Summary ${odd}` };
+    const answer = async () =>
+      new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", model: DEFAULT_MODEL, stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify(leaky) }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    const logged: string[] = [];
+    const spies = (["debug", "info", "warn", "error", "log"] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+      }),
+    );
+    const before = process.env.ANTHROPIC_LOG;
+    process.env.ANTHROPIC_LOG = "debug";
+    try {
+      const provider = new AnthropicProvider({ apiKey: odd, secrets: [odd], fetch: answer as unknown as typeof fetch });
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      expect(codes(result)).toEqual(["provider_error"]);
+      expect(JSON.stringify(result)).not.toContain(odd);
+      const everything = logged.join("\n");
+      // The SDK logs the body as a string of JSON, so the secret would appear escaped once or twice; the plain
+      // tail of the secret survives every escaping and is what is looked for.
+      expect(everything).not.toContain(odd);
+      expect(everything).not.toContain("by-the-sdk-8888");
+    } finally {
+      if (before === undefined) delete process.env.ANTHROPIC_LOG;
+      else process.env.ANTHROPIC_LOG = before;
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it("a model's output that carries the configured key is discarded, in any spelling (external review rounds 8 and 9)", async () => {
+    for (const odd of ["token-echoed-by-the-model-7777", 'with-"quote"-7778', "with-\\backslash-7779"]) {
+      const out = honest();
+      const leaky = { ...out, summary: `Summary ${odd}` };
+      const provider = new AnthropicProvider({ client: client(textResponse(JSON.stringify(leaky))), secrets: [odd] });
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      expect(codes(result), odd).toEqual(["provider_error"]);
+      expect(JSON.stringify(result), odd).not.toContain(odd);
+      expect(JSON.stringify(result), odd).not.toContain(odd.slice(-4));
+    }
   });
 
   it("a model's output that carries the configured key is discarded (external review round 8)", async () => {

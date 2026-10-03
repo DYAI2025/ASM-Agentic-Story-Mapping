@@ -62,7 +62,7 @@ export const AgentOutputSchema = z.strictObject({
    * supports more than one. Shown next to `goal` as a choice the human makes;
    * never chosen by anyone else. Empty when there is one reading.
    */
-  goalAlternatives: z.array(z.strictObject({ statement: z.string(), source: AgentSource })).optional(),
+  goalAlternatives: z.array(z.strictObject({ statement: z.string(), source: AgentSource })).nullish(),
   personas: z.array(
     z.strictObject({
       ref: z.string(),

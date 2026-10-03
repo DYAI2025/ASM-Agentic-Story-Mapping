@@ -88,9 +88,26 @@ export function parseModelJson(text: string, secrets: readonly string[] = []): u
  * discarded as a whole; nothing of it is quoted.
  */
 export function refuseLeakedSecrets(output: unknown, secrets: readonly string[]): void {
-  const text = JSON.stringify(output) ?? "";
-  for (const secret of secrets) {
-    if (secret.length >= 4 && text.includes(secret))
-      throw new ProviderError("the model's output contained a configured secret and was discarded");
-  }
+  const live = secrets.filter((secret) => secret.length >= 4);
+  if (live.length === 0) return;
+  // Decoded values, not a re-serialization: JSON escaping would hide a secret that contains a quote or a
+  // backslash (external review round 9). Keys are strings too.
+  const seen = new Set<object>();
+  const walk = (node: unknown): void => {
+    if (typeof node === "string") {
+      for (const secret of live) if (node.includes(secret)) throw new ProviderError("the model's output contained a configured secret and was discarded");
+      return;
+    }
+    if (typeof node !== "object" || node === null || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      walk(key);
+      walk(value);
+    }
+  };
+  walk(output);
 }

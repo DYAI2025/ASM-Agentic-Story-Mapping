@@ -59,11 +59,14 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
   /** The key value, only so that a message echoing it can be redacted; the SDK reads it from the environment itself. */
   private readonly secrets: readonly string[];
 
-  constructor(options: { model?: string; client?: MessagesClient; timeoutMs?: number; apiKey?: string; secrets?: readonly string[] } = {}) {
+  private readonly fetch: typeof globalThis.fetch | undefined;
+
+  constructor(options: { model?: string; client?: MessagesClient; timeoutMs?: number; apiKey?: string; secrets?: readonly string[]; fetch?: typeof globalThis.fetch } = {}) {
     this.model = options.model ?? DEFAULT_MODEL;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.apiKey = options.apiKey;
     this.client = options.client;
+    this.fetch = options.fetch;
     this.secrets = options.secrets ?? [];
     this.name = `anthropic (${this.model})`;
   }
@@ -78,7 +81,15 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
 
   private async ask(request: ReturnType<typeof buildRequest> | ReturnType<typeof buildReviewRequest>): Promise<unknown> {
     // A deadline, and the SDK's bounded retries on transient failures. Credentials resolve from the environment.
-    this.client ??= new Anthropic({ ...(this.apiKey ? { apiKey: this.apiKey } : {}), timeout: this.timeoutMs, maxRetries: 2 }).beta.messages;
+    // The SDK's own logging stays off whatever ANTHROPIC_LOG says: at debug it would print request and
+    // response bodies, the key and any echo of it included, before this adapter sees them (external review round 9).
+    this.client ??= new Anthropic({
+      ...(this.apiKey ? { apiKey: this.apiKey } : {}),
+      ...(this.fetch ? { fetch: this.fetch } : {}),
+      timeout: this.timeoutMs,
+      maxRetries: 2,
+      logLevel: "off",
+    }).beta.messages;
 
     // The deadline is this adapter's own and covers the whole call, body and parsing included: the SDK's timer
     // ends when headers arrive (external review round 8).
