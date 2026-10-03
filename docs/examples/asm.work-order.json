@@ -13,18 +13,18 @@
     "approval": {
       "revision": 3,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-03T19:27:36.985Z"
+      "approvedAt": "2026-10-03T19:55:10.713Z"
     },
     "selection": {
       "candidateId": "slice-outcome-thread",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-03T19:27:37.957Z",
+      "selectedAt": "2026-10-03T19:55:11.311Z",
       "candidateFingerprint": "ef5f52e6",
       "derivationVersion": 2
     },
     "peopleConsidered": {
       "confirmedBy": "Maya (E2E)",
-      "confirmedAt": "2026-10-03T19:27:37.639Z",
+      "confirmedAt": "2026-10-03T19:55:11.045Z",
       "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
     },
     "value": {
@@ -349,7 +349,7 @@
     "revision": 3,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-03T19:27:36.985Z",
-    "mapFingerprint": "fe2458e7"
+    "approvedAt": "2026-10-03T19:55:10.713Z",
+    "mapFingerprint": "94b88651"
   }
 }
