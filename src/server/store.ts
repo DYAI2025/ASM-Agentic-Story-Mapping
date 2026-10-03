@@ -93,9 +93,13 @@ async function createProductNow(result: ValidationResult & { ok: true }): Promis
 
 /** Validates, then replaces the file atomically. Invalid documents are never written. */
 export async function saveProduct(input: unknown): Promise<ValidationResult> {
+  return serialized(() => saveProductNow(input));
+}
+
+async function saveProductNow(input: unknown): Promise<ValidationResult> {
   const result = validateProduct(input);
   if (!result.ok) return result;
-  return serialized(async () => {
+  {
     const file = productFilePath();
     // Save replaces a product; after a reset there is none to replace, and a save does not bring one back.
     if (!(await productFileExists()))
@@ -105,7 +109,7 @@ export async function saveProduct(input: unknown): Promise<ValidationResult> {
     await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
     await fs.rename(/* turbopackIgnore: true */ tmp, file);
     return result;
-  });
+  }
 }
 
 /**
@@ -244,9 +248,13 @@ async function workStatePathProblem(work: string, product: string): Promise<stri
 
 /** Validates, then replaces the work-state file atomically. Never touches the product file. */
 export async function saveWorkState(input: unknown): Promise<WorkStateResult> {
+  return serialized(() => saveWorkStateNow(input));
+}
+
+async function saveWorkStateNow(input: unknown): Promise<WorkStateResult> {
   const result = validateWorkState(input);
   if (!result.ok) return result;
-  return serialized(async () => {
+  {
     const file = workStateFilePath();
     // Work state belongs to a product; without one it is not written.
     if (!(await productFileExists()))
@@ -255,5 +263,23 @@ export async function saveWorkState(input: unknown): Promise<WorkStateResult> {
     await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
     await fs.rename(/* turbopackIgnore: true */ tmp, file);
     return result;
-  });
+  }
+}
+
+/** What a writing route may do inside one transaction: read and write the two files, nothing interleaving. */
+export interface StoreTransaction {
+  loadProduct: typeof loadProduct;
+  loadWorkState: typeof loadWorkState;
+  saveProduct: (input: unknown) => Promise<ValidationResult>;
+  saveWorkState: (input: unknown) => Promise<WorkStateResult>;
+}
+
+/**
+ * A writing route's whole read → check → write runs here, inside the queue,
+ * so the check is against the file as it is at commit time: two accepts
+ * built on the same revision cannot both land, the second one re-reads and
+ * finds the map changed (external review round 4).
+ */
+export function transaction<T>(work: (store: StoreTransaction) => Promise<T>): Promise<T> {
+  return serialized(() => work({ loadProduct, loadWorkState, saveProduct: saveProductNow, saveWorkState: saveWorkStateNow }));
 }

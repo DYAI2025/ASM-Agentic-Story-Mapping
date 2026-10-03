@@ -4,7 +4,8 @@ export const DEFAULT_TIMEOUT_MS = 120_000;
 
 /**
  * A key never appears in a message, whatever an API echoes back: the exact
- * configured values first (any shape), then the common key patterns as a
+ * configured values first (any shape, four characters or longer — a shorter
+ * value would also be any ordinary word), then the common key patterns as a
  * second net (external review F4).
  */
 export function redactSecrets(text: string, secrets: readonly string[] = []): string {

@@ -1,5 +1,5 @@
 import { parseProductText } from "../../../../domain/serialize";
-import { productFileExists, productFilePath, saveProduct } from "../../../../server/store";
+import { productFileExists, productFilePath, saveProduct, transaction, loadFailureStatus } from "../../../../server/store";
 import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,10 @@ export async function POST(request: Request) {
     );
   const incoming = parseProductText(await request.text());
   if (!incoming.ok) return Response.json({ issues: incoming.issues }, { status: 422 });
-  const saved = await saveProduct(incoming.product);
-  if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
-  return Response.json({ product: saved.product });
+  // One transaction: the check is against the file as it is when this writes (external review round 4).
+  return transaction(async (store) => {
+    const saved = await store.saveProduct(incoming.product);
+    if (!saved.ok) return Response.json({ issues: saved.issues }, { status: loadFailureStatus(saved.issues) === 404 ? 404 : 422 });
+    return Response.json({ product: saved.product });
+  });
 }

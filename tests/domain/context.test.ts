@@ -123,15 +123,17 @@ describe("provenance across sources", () => {
   it("a model's prompt carries every source in its own block, labelled, in order", () => {
     // Found by the independent verifier on 7594e6e: a prompt that dropped sources 2..N stayed green.
     const message = buildUserMessage(bundle, product);
-    const first = message.indexOf('Source src-1 (pasted text, label "Pasted text")');
-    const second = message.indexOf('Source src-2 (a file, label "notes.md")');
+    const first = message.indexOf("Source src-1 (pasted text), between");
+    const second = message.indexOf("Source src-2 (a file), between");
     expect(first).toBeGreaterThan(-1);
     expect(second).toBeGreaterThan(first);
     for (const source of bundle.sources) {
       const tag = `${transcriptDelimiter(source.text)}-${source.id}`;
       expect(message.split(`\n<${tag}>\n`)).toHaveLength(2);
       expect(message.split(`\n</${tag}>\n`)).toHaveLength(2);
-      expect(message).toContain(`\n<${tag}>\n${source.text}\n</${tag}>\n`);
+      // The label sits inside the delimited block, as data, with the text (external review round 4).
+      expect(message).toContain(`\n<${tag}>\nlabel: ${JSON.stringify(source.label)}\n${source.text}\n</${tag}>\n`);
+      expect(message.slice(0, message.indexOf(`<${tag}>`))).not.toContain(source.label === "Pasted text" ? "notes.md" : source.label);
     }
     // Two sources never share a tag, even with the same text.
     const twins: ContextBundle = { sources: [bundle.sources[0], { ...bundle.sources[0], id: "src-2", label: "copy.txt", kind: "file" }] };

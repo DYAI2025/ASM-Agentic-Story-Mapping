@@ -1,5 +1,5 @@
 import { applyMapPatch } from "../../../../domain/map-patch";
-import { loadProduct, saveProduct, loadFailureStatus } from "../../../../server/store";
+import { loadProduct, saveProduct, loadFailureStatus, transaction } from "../../../../server/store";
 import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
@@ -19,16 +19,19 @@ export async function POST(request: Request) {
       { status: 400 },
     );
 
-  const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
+  // One transaction: the check is against the file as it is when this writes (external review round 4).
+  return transaction(async (store) => {
+    const stored = await store.loadProduct();
+    if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
 
-  const applied = applyMapPatch(stored.product, body.patch);
-  if (!applied.ok) {
-    const stale = applied.issues.some((issue) => issue.code === "stale_patch");
-    return Response.json({ issues: applied.issues }, { status: stale ? 409 : 422 });
-  }
+    const applied = applyMapPatch(stored.product, body.patch);
+    if (!applied.ok) {
+      const stale = applied.issues.some((issue) => issue.code === "stale_patch");
+      return Response.json({ issues: applied.issues }, { status: stale ? 409 : 422 });
+    }
 
-  const saved = await saveProduct(applied.product);
-  if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
-  return Response.json({ product: saved.product });
+    const saved = await store.saveProduct(applied.product);
+    if (!saved.ok) return Response.json({ issues: saved.issues }, { status: loadFailureStatus(saved.issues) === 404 ? 404 : 422 });
+    return Response.json({ product: saved.product });
+  });
 }

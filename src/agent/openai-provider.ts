@@ -85,6 +85,9 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
       if (reason === "content_filter") throw new ProviderError("the model declined to process this text (content filter)");
       throw new ProviderError("the model's answer was cut off; try a shorter text");
     }
+    // Only a completed response is an answer; anything else with text in it is not (external review round 4).
+    if (response.status !== "completed")
+      throw new ProviderError(`the model's response did not complete (status ${JSON.stringify(response.status ?? "missing")})`);
     const content = (response.output ?? []).flatMap((item) => (item.type === "message" ? (item.content ?? []) : []));
     const refusal = content.find((block) => block.type === "refusal");
     if (refusal) throw new ProviderError("the model declined to process this text");

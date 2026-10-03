@@ -133,6 +133,9 @@ describe("OpenAI provider (Responses API)", () => {
     ["a truncated answer", { body: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [] } }, /cut off/],
     ["a content filter", { body: { status: "incomplete", incomplete_details: { reason: "content_filter" }, output: [] } }, /declined/],
     ["no text", { body: { status: "completed", output: [] } }, /no text/],
+    // External review round 4: a compatible endpoint answering 200 with another status but valid JSON must not pass.
+    ["a status that is not completed", { body: { status: "failed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(honest()) }] }] } }, /did not complete \(status "failed"\)/],
+    ["no status at all", { body: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(honest()) }] }] } }, /did not complete/],
     ["non-JSON text", { body: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "Sure! Here is the proposal:" }] }] } }, /not valid JSON/],
     ["an error inside a 200", { body: { error: { message: "Something went wrong" } } }, /OpenAI API error: Something went wrong/],
   ])("fails closed and visibly on %s, writing nothing", async (_name, answer, message) => {

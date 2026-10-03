@@ -1,5 +1,5 @@
 import { exportProductJson, exportProductYaml, fingerprint, parseProductText } from "../../../domain/serialize";
-import { loadProduct, productFileExists, productFilePath, saveProduct, loadFailureStatus } from "../../../server/store";
+import { loadProduct, productFileExists, productFilePath, saveProduct, loadFailureStatus, transaction } from "../../../server/store";
 import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
@@ -40,46 +40,49 @@ export async function PUT(request: Request) {
   const incoming = parseProductText(await request.text());
   if (!incoming.ok) return Response.json({ issues: incoming.issues }, { status: 422 });
 
-  if (incoming.product.revision.status === "approved") {
-    const stored = await loadProduct();
-    const sameApproval =
-      stored.ok &&
-      stored.product.revision.status === "approved" &&
-      stored.product.revision.number === incoming.product.revision.number &&
-      JSON.stringify(stored.product.revision.approval) ===
-        JSON.stringify(incoming.product.revision.approval);
-    if (!sameApproval) {
-      return Response.json(
-        {
-          issues: [
-            {
-              code: "implicit_approval",
-              path: "revision.status",
-              message: "saving cannot approve a revision; use the explicit approve action",
-            },
-          ],
-        },
-        { status: 409 },
-      );
+// One transaction: the approval check is against the file as it is when this writes (external review round 4).
+  return transaction(async (store) => {
+    if (incoming.product.revision.status === "approved") {
+      const stored = await store.loadProduct();
+      const sameApproval =
+        stored.ok &&
+        stored.product.revision.status === "approved" &&
+        stored.product.revision.number === incoming.product.revision.number &&
+        JSON.stringify(stored.product.revision.approval) ===
+          JSON.stringify(incoming.product.revision.approval);
+      if (!sameApproval) {
+        return Response.json(
+          {
+            issues: [
+              {
+                code: "implicit_approval",
+                path: "revision.status",
+                message: "saving cannot approve a revision; use the explicit approve action",
+              },
+            ],
+          },
+          { status: 409 },
+        );
+      }
+      // The approval stands for what was approved. Only where a card sits may change under it.
+      if (stored.ok && fingerprint(stored.product) !== fingerprint(incoming.product)) {
+        return Response.json(
+          {
+            issues: [
+              {
+                code: "approved_content_changed",
+                path: "revision.approval",
+                message: "the meaning of an approved revision cannot be changed under its approval; a change opens a new proposed revision",
+              },
+            ],
+          },
+          { status: 409 },
+        );
+      }
     }
-    // The approval stands for what was approved. Only where a card sits may change under it.
-    if (stored.ok && fingerprint(stored.product) !== fingerprint(incoming.product)) {
-      return Response.json(
-        {
-          issues: [
-            {
-              code: "approved_content_changed",
-              path: "revision.approval",
-              message: "the meaning of an approved revision cannot be changed under its approval; a change opens a new proposed revision",
-            },
-          ],
-        },
-        { status: 409 },
-      );
-    }
-  }
 
-  const saved = await saveProduct(incoming.product);
-  if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
-  return Response.json({ product: saved.product });
+    const saved = await store.saveProduct(incoming.product);
+    if (!saved.ok) return Response.json({ issues: saved.issues }, { status: loadFailureStatus(saved.issues) === 404 ? 404 : 422 });
+    return Response.json({ product: saved.product });
+  });
 }

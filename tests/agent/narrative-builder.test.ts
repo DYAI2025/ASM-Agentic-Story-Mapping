@@ -144,7 +144,8 @@ describe("transcript instructions cannot override the output contract", () => {
     const close = `\n</${tag}>\n`;
     expect(message.split(open)).toHaveLength(2);
     expect(message.split(close)).toHaveLength(2);
-    expect(message.slice(message.indexOf(open) + open.length, message.indexOf(close))).toBe(hostile);
+    // The block holds the label line and then the whole pasted text, nothing else.
+    expect(message.slice(message.indexOf(open) + open.length, message.indexOf(close))).toBe(`label: "Pasted text"\n${hostile}`);
     expect(message.slice(message.indexOf(close) + close.length)).toBe("\nPropose changes to the map based on these sources.");
   });
 });
