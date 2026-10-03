@@ -253,10 +253,17 @@ describe("input limits and provider selection", () => {
   it("defaults to the fake provider and never falls back silently", () => {
     expect(providerFromEnv({})).toBeInstanceOf(FakeProvider);
     expect(providerFromEnv({ ASM_AGENT_PROVIDER: "fake" })).toBeInstanceOf(FakeProvider);
-    expect(providerFromEnv({ ASM_AGENT_PROVIDER: "anthropic" }).name).toBe(`anthropic (${DEFAULT_MODEL})`);
-    expect(providerFromEnv({ ASM_AGENT_PROVIDER: "anthropic", ASM_AGENT_MODEL: "claude-sonnet-5-5" }).name).toBe(
-      "anthropic (claude-sonnet-5-5)",
+    expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "anthropic" })).toThrow(/ANTHROPIC_API_KEY/);
+    expect(providerFromEnv({ ASM_AGENT_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-anthropic-key" }).name).toBe(
+      `anthropic (${DEFAULT_MODEL})`,
     );
+    expect(
+      providerFromEnv({
+        ASM_AGENT_PROVIDER: "anthropic",
+        ANTHROPIC_API_KEY: "test-anthropic-key",
+        ASM_AGENT_MODEL: "claude-sonnet-5-5",
+      }).name,
+    ).toBe("anthropic (claude-sonnet-5-5)");
     expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "gpt" })).toThrow(ProviderError);
   });
 });
