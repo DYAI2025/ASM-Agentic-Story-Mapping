@@ -32,7 +32,7 @@ export async function PUT(request: Request) {
   if (!(await productFileExists()))
     return Response.json(
       { issues: [{ code: "no_product", path: productFilePath(), message: "there is no product to save to; start one from the start screen" }] },
-      { status: 409 },
+      { status: 404 },
     );
   const incoming = parseProductText(await request.text());
   if (!incoming.ok) return Response.json({ issues: incoming.issues }, { status: 422 });

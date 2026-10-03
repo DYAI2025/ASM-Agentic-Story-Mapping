@@ -32,12 +32,12 @@ export async function loadProduct(): Promise<ValidationResult> {
   return parseProductText(text);
 }
 
-/** Whether there is a product file at all. No file is how a first product starts; it is not an error. */
 /** The HTTP status for a failed load: a missing product is a refusal (404), anything else is the server's fault (500). */
 export function loadFailureStatus(issues: { code: string }[]): number {
   return issues.some((issue) => issue.code === "no_product") ? 404 : 500;
 }
 
+/** Whether there is a product file at all. No file is how a first product starts; it is not an error. */
 export async function productFileExists(): Promise<boolean> {
   try {
     await fs.access(/* turbopackIgnore: true */ productFilePath());

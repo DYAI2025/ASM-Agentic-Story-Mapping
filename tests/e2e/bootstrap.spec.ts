@@ -94,10 +94,10 @@ test("text that cannot become a map creates nothing", async ({ page }) => {
   approved.revision = { number: 1, status: "approved", approval: { approvedBy: "Nobody", approvedAt: "2026-10-01T10:00:00.000Z" } };
   for (const body of [valid, YAML.stringify(approved)]) {
     const put = await page.request.put("/api/product", { data: body });
-    expect(put.status()).toBe(409);
+    expect(put.status()).toBe(404);
     expect((await put.json()).issues[0].code).toBe("no_product");
     const imported = await page.request.post("/api/product/import", { data: body });
-    expect(imported.status()).toBe(409);
+    expect(imported.status()).toBe(404);
     expect((await imported.json()).issues[0].code).toBe("no_product");
   }
   expect(await exists()).toBe(false);
@@ -202,6 +202,8 @@ test("with no product, every read and write that needs one answers 404 no_produc
     ["POST /api/slices/select", () => page.request.post("/api/slices/select", { data: { candidateId: "x", selectedBy: "Zoe" } })],
     ["POST /api/proposal", () => page.request.post("/api/proposal", { data: { transcript: "Goal: x." } })],
     ["POST /api/review", () => page.request.post("/api/review", { data: {} })],
+    ["PUT /api/product", () => page.request.put("/api/product", { data: "product:\n  id: x\n" })],
+    ["POST /api/product/import", () => page.request.post("/api/product/import", { data: "product:\n  id: x\n" })],
   ];
   for (const [name, call] of calls) {
     const response = await call();
