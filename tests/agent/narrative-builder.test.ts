@@ -167,7 +167,10 @@ describe("Anthropic provider (stubbed client, no network)", () => {
     expect(result.ok).toBe(true);
     expect(result.ok && result.patch.provider).toBe(`anthropic (${DEFAULT_MODEL})`);
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ model: DEFAULT_MODEL, system: SYSTEM_PROMPT, fallbacks: "default" });
+    expect(seen[0]).toMatchObject({ model: DEFAULT_MODEL, system: SYSTEM_PROMPT });
+    // No server-side model fallback: a decline is a visible error, never another model answering silently.
+    expect(seen[0]).not.toHaveProperty("fallbacks");
+    expect(seen[0]).not.toHaveProperty("betas");
   });
 
   it("output that breaks the contract is rejected by the domain, whatever the model said", async () => {

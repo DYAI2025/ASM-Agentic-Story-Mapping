@@ -155,11 +155,38 @@ code does not know which provider produced a proposal.
 
 | `ASM_AGENT_PROVIDER` | What it is |
 |---|---|
-| `fake` (default) | No model. A deterministic parser for explicit markers (`Persona:`, `Need (…):`, `Step:`, `Assign:`, `Move:`, `Goal:`, `Question:`), documented in `src/agent/fake-provider.ts`. All tests use it. |
-| `anthropic` | Claude through the Anthropic API. Needs `ANTHROPIC_API_KEY` in the environment; optional `ASM_AGENT_MODEL`. |
+| `fake` (default) | No model. A deterministic parser for explicit markers (`Persona:`, `Actor:`, `Need (…):`, `Step:`, `Assign:`, `Move:`, `Goal:`, `Question:`), documented in `src/agent/fake-provider.ts`. All tests use it. |
+| `anthropic` | Claude through the Anthropic SDK (`src/agent/anthropic-provider.ts`). Needs `ANTHROPIC_API_KEY`; optional `ASM_AGENT_MODEL` (default `claude-opus-5-5`). |
+| `openai` | OpenAI through the Responses API with a strict JSON schema (`src/agent/openai-provider.ts`, plain `fetch`). Needs `OPENAI_API_KEY`; optional `ASM_AGENT_MODEL` (default `gpt-6-astra`), `OPENAI_BASE_URL`. |
+| `openrouter` | OpenRouter chat completions with a strict JSON schema and `require_parameters` (`src/agent/openrouter-provider.ts`, plain `fetch`). Needs `OPENROUTER_API_KEY` and `ASM_AGENT_MODEL` (no default is guessed). |
 
 Copy `.env.example` to `.env.local` to configure. No credentials belong in the
-repository.
+repository. `ASM_AGENT_TIMEOUT_MS` (default 120 000) bounds every call.
+
+All four sit behind the same two interfaces and the same rules:
+
+- A provider receives the context bundle and the map, and returns `unknown`.
+  The domain (`resolveProposal`, `resolveReview`) decides what of it is a
+  proposal; nothing under `src/agent/` imports the store, the file system or
+  a route (a static test says so), so no provider can write anything.
+- The sources are data. The instructions never contain them; each source sits
+  in its own delimited block. A model that obeys "approve this", "select this
+  slice" or "write to the map" can only produce output the schemas cannot
+  express, which is refused (`tests/agent/live-providers.test.ts`).
+- Failures are visible and closed: missing key, rejected credentials (401),
+  rate limit (429), timeout or unreachable API, refusal or content filter,
+  truncated answer, non-JSON, schema-invalid output. There is no fallback to
+  another provider or model: the Anthropic adapter deliberately does not send
+  the server-side `fallbacks` option, so a safety decline is an error, not a
+  different model answering.
+- Keys are sent in one header and never logged; an API message that echoes a
+  key is redacted before it reaches the response.
+- The request-side schema (`src/agent/json-schema.ts`) is the zod contract as
+  strict JSON Schema: every property required, nothing additional, optional
+  fields nullable. It is a courtesy to the model; the app relies only on its
+  own validation of what comes back.
+- CI has no keys: the adapters are tested against a stubbed `fetch`. The live
+  smoke (`npm run smoke:live`, see Checks) is run by hand with a real key.
 
 ## The guide
 
@@ -453,6 +480,24 @@ npm run docs:refresh       # same browser tests, writing into docs/
 fails if the run changed a tracked file, and uploads `.e2e-artifacts/` named
 by that commit.
 
+### The live provider smoke
+
+```bash
+ASM_AGENT_PROVIDER=openai OPENAI_API_KEY=… npm run smoke:live
+```
+
+`playwright.live.config.ts` starts the built app twice: once with the
+provider and key from the shell, once with the same provider and a key that
+cannot work. `tests/live/provider-smoke.spec.ts` pastes ordinary meeting notes
+(no markers), waits for the real model, checks that the proposal has a goal,
+people, needs, a path and open questions, accepts it as a human would and reads
+revision 1 back from disk, with every snippet found in the notes and attributed
+to the pasted source; the second server has to show the credential failure in
+the browser and write nothing. Screenshots, `record.json` (provider, seconds to
+proposal, counts, what was accepted) and the accepted map go to
+`.e2e-artifacts/live/`; the record is checked to contain no key. CI never runs
+this; the evidence is recorded on the ticket.
+
 ### The whole first-time path in one test
 
 `tests/e2e/first-time-user.spec.ts` starts with no product file and walks the
@@ -498,6 +543,7 @@ table says which.
 | Snippet checked against all sources joined instead of the named one; missing `sourceId` defaulting to the first source with several present; unknown source tolerated; source identity dropped from provenance | ASM-24, `tests/domain/context.test.ts` | all red |
 | Verifier on `7594e6e`: binary check dropped; total-size check dropped; type check never firing; per-source tag suffix dropped | ASM-24, `7594e6e` | all red (the tag one only through a one-source assertion) |
 | Verifier's own: the model prompt carrying only the first source; the fake provider stamping a question with the first source's id | ASM-24, `7594e6e` | **both survived the unit suite** (the second fails closed in `resolveProposal`, so the browser spec would catch it; the first was observed by nothing) — closed by a prompt test over two sources and a question-stamp test |
+| Unknown provider name falling back to the fake; missing `OPENAI_API_KEY` falling back to the fake; HTTP error from OpenAI swallowed into an empty answer; refusal returned as an empty proposal; schema builder not strict; key redaction removed; a provider importing the store; truncation ignored | ASM-25, `tests/agent/live-providers.test.ts` | all red (the redaction mutant survived until the test used a 400 with a verbatim message — the 401 path has fixed text) |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 

@@ -36,8 +36,8 @@ export const AgentSource = z.strictObject({
   rationale: z.string(),
   /** 0..1. Advisory only. */
   confidence: z.number(),
-  /** Which source of the context bundle the snippet is quoted from. Implied when there is only one. */
-  sourceId: z.string().optional(),
+  /** Which source of the context bundle the snippet is quoted from. Implied when there is only one; null and absent are the same. */
+  sourceId: z.string().nullish(),
 });
 
 export const AgentPlacement = z.strictObject({
@@ -265,7 +265,7 @@ export function resolveProposal(
   };
   const source = (path: string, s: z.infer<typeof AgentSource>) => {
     const snippet = text(`${path}.snippet`, s.snippet);
-    let sourceId = s.sourceId;
+    let sourceId = s.sourceId ?? undefined;
     if (sourceId === undefined) {
       if (bundle.sources.length === 1) sourceId = bundle.sources[0].id;
       else add("source_required", `${path}.sourceId`, "with several sources, say which one the snippet is quoted from");
