@@ -537,6 +537,20 @@ screen, the map, the review panel and the slice drawer: every control has a
 name a screen reader can say, every button has text, headings exist. Its
 screenshots are the review gallery [docs/first-time-user.md](docs/first-time-user.md).
 
+### The full user flow in one test
+
+`tests/e2e/full-user-flow.spec.ts` (ASM-28) runs the whole slice on an isolated
+workspace: fresh start with the tutorial, pasted prose plus a markdown file,
+the grouped proposal with a goal choice, a chip edit, a rejection, accept,
+first map, Product Flow, review and a worst case, approval, the people check
+(server gate proven), candidates (reads choose nothing), selection, the work
+order as JSON and Markdown read back and bound to the map and candidate
+fingerprints, Start over, the fresh start screen with every read answering
+`no_product`, and a second product started at once with no old state. It runs
+an accessibility smoke on four screens. Its screenshots are the review
+gallery [docs/full-user-flow.md](docs/full-user-flow.md); the provider-error
+state there comes from the live harness.
+
 ### What the tests have been shown to catch
 
 A green test proves little until it has been seen red. For every rule the
