@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { structureWithMarkers } from "../../src/agent/fake-provider";
+import { buildUserMessage, transcriptDelimiter } from "../../src/agent/prompt";
 import {
   MAX_CONTEXT_CHARS,
   MAX_CONTEXT_SOURCES,
@@ -105,10 +106,38 @@ describe("provenance across sources", () => {
     unresolvedQuestions: [],
   });
 
-  it("the fake provider stamps every item with the id of the source its line came from", () => {
+  it("the fake provider stamps every item with the id of the source its line came from, questions included", () => {
     const out = structureWithMarkers(bundle, product);
     expect(out.goal?.source.sourceId).toBe("src-1");
     expect(out.personas[0].source.sourceId).toBe("src-2");
+    // Found by the independent verifier on 7594e6e: a question from the second source stamped as the first went unobserved.
+    const withQuestion: ContextBundle = {
+      sources: [...bundle.sources, { id: "src-3", label: "later.txt", kind: "file", text: "Is there a budget for a second bank?" }],
+    };
+    const asked = structureWithMarkers(withQuestion, product);
+    expect(asked.unresolvedQuestions).toHaveLength(1);
+    expect(asked.unresolvedQuestions[0].source.sourceId).toBe("src-3");
+    expect(resolveProposal(product, asked, withQuestion, "test").ok).toBe(true);
+  });
+
+  it("a model's prompt carries every source in its own block, labelled, in order", () => {
+    // Found by the independent verifier on 7594e6e: a prompt that dropped sources 2..N stayed green.
+    const message = buildUserMessage(bundle, product);
+    const first = message.indexOf('Source src-1 (pasted text, label "Pasted text")');
+    const second = message.indexOf('Source src-2 (a file, label "notes.md")');
+    expect(first).toBeGreaterThan(-1);
+    expect(second).toBeGreaterThan(first);
+    for (const source of bundle.sources) {
+      const tag = `${transcriptDelimiter(source.text)}-${source.id}`;
+      expect(message.split(`\n<${tag}>\n`)).toHaveLength(2);
+      expect(message.split(`\n</${tag}>\n`)).toHaveLength(2);
+      expect(message).toContain(`\n<${tag}>\n${source.text}\n</${tag}>\n`);
+    }
+    // Two sources never share a tag, even with the same text.
+    const twins: ContextBundle = { sources: [bundle.sources[0], { ...bundle.sources[0], id: "src-2", label: "copy.txt", kind: "file" }] };
+    const twinMessage = buildUserMessage(twins, product);
+    expect(twinMessage).toContain(`-src-1>\n`);
+    expect(twinMessage).toContain(`-src-2>\n`);
   });
 
   it("a snippet from the named source is accepted, and the provenance records which source", () => {
