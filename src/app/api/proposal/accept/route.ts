@@ -1,5 +1,6 @@
 import { applyMapPatch } from "../../../../domain/map-patch";
 import { loadProduct, saveProduct, loadFailureStatus } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,8 @@ export const dynamic = "force-dynamic";
  * again against the file as it is now; the result is a new proposed revision.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as { patch?: unknown } | null;
   if (!body || body.patch === undefined)
     return Response.json(

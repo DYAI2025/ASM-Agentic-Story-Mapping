@@ -2,6 +2,7 @@ import { buildProposal, providerFromEnv } from "../../../agent/narrative-builder
 import { ProviderError, type AgentProvider } from "../../../agent/provider";
 import { contextFromBody } from "../../../domain/context";
 import { loadProduct, loadFailureStatus } from "../../../server/store";
+import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * writes it: a proposal only exists in the response.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = await request.json().catch(() => null);
   const context = contextFromBody(body);
   if (!context)

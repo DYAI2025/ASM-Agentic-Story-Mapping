@@ -1,5 +1,6 @@
 import { bootstrapProduct } from "../../../../domain/bootstrap";
 import { createProduct, productFilePath } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * exclusive create. If a file exists, nothing is written.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as { name?: unknown; patch?: unknown } | null;
   if (typeof body?.name !== "string" || body.patch === undefined)
     return Response.json(

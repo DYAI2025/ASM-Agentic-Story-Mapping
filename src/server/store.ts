@@ -127,7 +127,7 @@ export function seedProductFilePath(): string {
 /** Whether the configured product is the repository seed: no explicit workspace path, or one that resolves to the seed. */
 export function productIsSeed(): boolean {
   if (!process.env.ASM_PRODUCT_FILE) return true;
-  return path.resolve(productFilePath()) === path.resolve(seedProductFilePath());
+  return path.resolve(/* turbopackIgnore: true */ productFilePath()) === path.resolve(/* turbopackIgnore: true */ seedProductFilePath());
 }
 
 export type ResetResult =
@@ -158,8 +158,15 @@ export async function resetProduct(): Promise<ResetResult> {
     };
   if (!(await productFileExists()))
     return { ok: false, issues: [{ code: "no_product", path: product, message: "there is no product to start over from" }] };
+  // The seed by what the path resolves to, not only by its spelling: a directory symlink on the way
+  // would otherwise lead the unlink to the checked-in file (external review F1, round 2).
+  if ((await resolvedPath(product)) === (await resolvedPath(seedProductFilePath())))
+    return {
+      ok: false,
+      issues: [{ code: "seed_protected", path: product, message: "this path leads to the repository's own map; set ASM_PRODUCT_FILE to a workspace path to start over" }],
+    };
   // The work-state target is removed first, so it has to be a work state: named like one, not the
-  // product, not the seed — by name and, where the files exist, by what they resolve to (external review F1).
+  // product, not the seed, and holding a work state when it holds anything (external review F1).
   const invalidWorkState = await workStatePathProblem(work, product);
   if (invalidWorkState) return { ok: false, issues: [{ code: "work_state_path_invalid", path: work, message: invalidWorkState }] };
 
@@ -188,19 +195,24 @@ export async function resetProduct(): Promise<ResetResult> {
   return { ok: true, removed: { product, workState: workRemoved } };
 }
 
+/** Where a path leads on disk (symlinks followed) when it exists; its absolute spelling otherwise. */
+async function resolvedPath(file: string): Promise<string> {
+  try {
+    return await fs.realpath(/* turbopackIgnore: true */ file);
+  } catch {
+    return path.resolve(/* turbopackIgnore: true */ file);
+  }
+}
+
 /** Why a configured work-state path may not be removed by a reset; null when it is a work state of this product. */
 async function workStatePathProblem(work: string, product: string): Promise<string | null> {
   if (!work.endsWith(".work-state.json")) return "ASM_WORK_STATE_FILE must name a .work-state.json file";
-  const resolved = async (file: string) => {
-    try {
-      return await fs.realpath(/* turbopackIgnore: true */ file);
-    } catch {
-      return path.resolve(file);
-    }
-  };
-  const [workReal, productReal, seedReal] = await Promise.all([resolved(work), resolved(product), resolved(seedProductFilePath())]);
+  const [workReal, productReal, seedReal] = await Promise.all([resolvedPath(work), resolvedPath(product), resolvedPath(seedProductFilePath())]);
   if (workReal === productReal) return "the work-state path is the product file";
-  if (workReal === seedReal || path.resolve(work) === path.resolve(seedProductFilePath())) return "the work-state path is the repository's own map";
+  if (workReal === seedReal || path.resolve(/* turbopackIgnore: true */ work) === path.resolve(/* turbopackIgnore: true */ seedProductFilePath())) return "the work-state path is the repository's own map";
+  // What is there has to be a work state. A file of this name holding anything else is not ours to remove.
+  const held = await loadWorkState();
+  if (!held.ok) return `the work-state file does not hold a work state (${held.issues[0]?.code ?? "invalid"})`;
   return null;
 }
 

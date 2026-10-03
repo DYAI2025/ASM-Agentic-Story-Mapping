@@ -1,4 +1,5 @@
 import { resetProduct } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export const RESET_CONFIRMATION = "start over";
  * fails half-way is 500 and leaves the old product in place.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as { confirm?: unknown } | null;
   if (body?.confirm !== RESET_CONFIRMATION)
     return Response.json(

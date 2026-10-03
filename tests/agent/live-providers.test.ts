@@ -205,7 +205,8 @@ describe("OpenRouter provider (chat completions)", () => {
     expect(body.messages[1].content).toContain("Source src-1 (pasted text");
     expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "asm_proposal", strict: true } });
     expect(body.response_format.json_schema.schema.additionalProperties).toBe(false);
-    expect(body.provider).toEqual({ require_parameters: true });
+    // No provider-level failover either: OpenRouter routes to another upstream by default (external review F3).
+    expect(body.provider).toEqual({ require_parameters: true, allow_fallbacks: false });
     expect(JSON.stringify(body)).not.toContain(KEY);
   });
 

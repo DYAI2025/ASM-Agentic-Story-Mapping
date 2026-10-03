@@ -1,5 +1,6 @@
 import { parseProductText } from "../../../../domain/serialize";
 import { productFileExists, productFilePath, saveProduct } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
  * to put a file at the configured path by hand).
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   if (!(await productFileExists()))
     return Response.json(
       { issues: [{ code: "no_product", path: productFilePath(), message: "there is no product to replace; start one from the start screen" }] },

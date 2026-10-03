@@ -96,9 +96,20 @@ throwing away the map.
   (409, `seed_protected`) and nothing is touched. Start over works on the
   workspace path you set.
 - The work-state target is removed first, so it has to be a work state: an
-  `ASM_WORK_STATE_FILE` that is not named `*.work-state.json`, or that is the
-  product file or the seed (by name or by what a symlink resolves to), is
-  refused (`work_state_path_invalid`) before anything is touched.
+  `ASM_WORK_STATE_FILE` that is not named `*.work-state.json`, that is the
+  product file or the seed (by name or by what a symlink resolves to), or that
+  holds anything but a valid work state, is refused (`work_state_path_invalid`)
+  before anything is touched. The seed check on the product path follows
+  symlinks too: a path that reaches `product/asm.product.yaml` through a
+  linked directory is the seed.
+- Every route that changes something (and the two that spend a model call)
+  refuses a request the browser marks as coming from another site
+  (`Sec-Fetch-Site` other than `same-origin`/`none`, or an `Origin` that is
+  not this host): 403 `cross_site_request`, before the body is read
+  (`src/server/same-origin.ts`). Without it a page on any other site could
+  make a visitor's browser post a reset, an approval or a selection to the
+  app on localhost. It is not authentication: a client that is not a browser
+  sends no such marks.
 
 ## From discussion to map
 
@@ -599,6 +610,7 @@ table says which.
 | Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
 | Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
 | External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
+| External review round 2 of `b0fe88c`: the seed reached through a directory symlink; a work-state override holding something else; a cross-site `text/plain` POST resetting or approving on localhost; OpenRouter's provider-level failover left on; the Anthropic key not passed to the redactor; `export { handler as GET }` | ASM-28, `b0fe88c` | **all real** — closed by the realpath seed check, the work-state content check, the same-origin refusal on all twelve writing/model routes, `allow_fallbacks: false`, the key passed through, and the wider pattern; six mutants red (seed check, content check, unlink order, fetch metadata, Origin, fallbacks). Two pre-existing findings stay documented limitations: concurrent accepts are last-writer-wins; a client can hand the accept route a patch whose source fields it changed |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
@@ -609,7 +621,11 @@ run against stubbed transports except for the recorded live smoke. The store is
 last-writer-wins: every replacement uses a temporary file of its own, but there
 is no lock and no compare-and-swap, so two browsers saving at once race (the
 fingerprint-bound gates catch a stale accept, approval or selection, not a
-lost edit). `POST /api/product/import` replaces the product with the file it
+lost edit). The accept routes take the edited patch from the browser and
+re-validate its shape and fingerprint, not its source fields: a client that
+rewrote `sourceId`/`sourceLabel` on an op would record an attribution the
+server never checked — the browser is the human's own, but it is a trust
+boundary worth naming. `POST /api/product/import` replaces the product with the file it
 is given, approval record included, without the proposal path: it is the way
 to bring your own file, and it is a human's own file, but a client on the
 network could use it the same way. Nothing authenticates a request: every

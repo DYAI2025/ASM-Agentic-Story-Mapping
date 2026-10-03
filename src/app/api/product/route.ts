@@ -1,5 +1,6 @@
 import { exportProductJson, exportProductYaml, fingerprint, parseProductText } from "../../../domain/serialize";
 import { loadProduct, productFileExists, productFilePath, saveProduct, loadFailureStatus } from "../../../server/store";
+import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
  * of the product document, so a document carrying one fails validation.
  */
 export async function PUT(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   // Saving edits a product; it does not start one. A first product is created by accepting a proposal.
   if (!(await productFileExists()))
     return Response.json(

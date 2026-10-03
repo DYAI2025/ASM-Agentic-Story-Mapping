@@ -55,10 +55,14 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
   private readonly timeoutMs: number;
   private client: MessagesClient | undefined;
 
-  constructor(options: { model?: string; client?: MessagesClient; timeoutMs?: number } = {}) {
+  /** The key value, only so that a message echoing it can be redacted; the SDK reads it from the environment itself. */
+  private readonly secrets: readonly string[];
+
+  constructor(options: { model?: string; client?: MessagesClient; timeoutMs?: number; secrets?: readonly string[] } = {}) {
     this.model = options.model ?? DEFAULT_MODEL;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.client = options.client;
+    this.secrets = options.secrets ?? [];
     this.name = `anthropic (${this.model})`;
   }
 
@@ -85,8 +89,8 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
       if (error instanceof Anthropic.APIConnectionTimeoutError)
         throw new ProviderError(`Anthropic timed out after ${this.timeoutMs} ms; try again or shorten the text`);
       if (error instanceof Anthropic.APIError)
-        throw new ProviderError(redactSecrets(`Anthropic API error ${error.status ?? ""}: ${error.message}`.trim()));
-      throw new ProviderError(redactSecrets(error instanceof Error ? error.message : String(error)));
+        throw new ProviderError(redactSecrets(`Anthropic API error ${error.status ?? ""}: ${error.message}`.trim(), this.secrets));
+      throw new ProviderError(redactSecrets(error instanceof Error ? error.message : String(error), this.secrets));
     }
 
     if (response.stop_reason === "refusal")

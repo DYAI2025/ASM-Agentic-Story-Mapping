@@ -1,10 +1,13 @@
 import { DomainError, approveRevision } from "../../../../domain/operations";
 import { loadProduct, saveProduct, loadFailureStatus } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
 /** The explicit proposed -> approved transition. */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as { approvedBy?: unknown } | null;
   const approvedBy = typeof body?.approvedBy === "string" ? body.approvedBy : "";
 

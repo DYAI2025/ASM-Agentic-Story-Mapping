@@ -1,6 +1,7 @@
 import { DomainError } from "../../../../domain/operations";
 import { WORK_STATE_VERSION, selectSlice } from "../../../../domain/work-state";
 import { loadProduct, loadWorkState, saveWorkState, loadFailureStatus } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * selection is written to the work state, never to the product file.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as
     | { candidateId?: unknown; selectedBy?: unknown; mapFingerprint?: unknown }
     | null;

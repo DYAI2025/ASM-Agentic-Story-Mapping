@@ -1,6 +1,7 @@
 import { DomainError } from "../../../domain/operations";
 import { WORK_STATE_VERSION, confirmPersonaCheck } from "../../../domain/work-state";
 import { loadProduct, loadWorkState, saveWorkState, loadFailureStatus } from "../../../server/store";
+import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
  * terms.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as { confirmedBy?: unknown; mapFingerprint?: unknown } | null;
   const text = (value: unknown) => (typeof value === "string" ? value : "");
 

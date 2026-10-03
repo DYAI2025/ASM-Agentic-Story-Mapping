@@ -2,6 +2,7 @@ import { providerFromEnv, startProposal } from "../../../agent/narrative-builder
 import { ProviderError, type AgentProvider } from "../../../agent/provider";
 import { contextFromBody } from "../../../domain/context";
 import { productFileExists, productFilePath } from "../../../server/store";
+import { crossSiteRefusal } from "../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * file exists. Writes nothing: the proposal only exists in the response.
  */
 export async function POST(request: Request) {
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
   const body = (await request.json().catch(() => null)) as { name?: unknown } | null;
   const context = contextFromBody(body);
   if (typeof body?.name !== "string" || !context)

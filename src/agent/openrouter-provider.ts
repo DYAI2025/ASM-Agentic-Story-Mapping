@@ -61,7 +61,8 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
           { role: "user", content: userMessage },
         ],
         response_format: format,
-        provider: { require_parameters: true },
+        // No failover to another upstream either: OpenRouter routes around an outage by default (external review F3).
+        provider: { require_parameters: true, allow_fallbacks: false },
         max_tokens: MAX_TOKENS,
       },
       { timeoutMs: this.timeoutMs, fetch: this.fetch, apiName: "OpenRouter", secrets: [this.apiKey] },

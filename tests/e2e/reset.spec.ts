@@ -146,12 +146,24 @@ test("start over, confirmed: product and work state gone, start screen back, not
   await page.screenshot({ path: shot("04-new-product-after-reset"), fullPage: true });
 });
 
-test("a reset request without the confirmation words is refused and removes nothing", async ({ page }) => {
+test("a reset request without the confirmation words, or from another site, is refused and removes nothing", async ({ page }) => {
   await populate(page);
   for (const data of [{}, { confirm: true }, { confirm: "yes" }]) {
     const response = await page.request.post("/api/product/reset", { data });
     expect(response.status()).toBe(400);
   }
+  // What a page on another site can make this browser send (external review F2): refused on every writing route.
+  for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }] as Record<string, string>[]) {
+    const reset = await page.request.post("/api/product/reset", { headers, data: { confirm: "start over" } });
+    expect(reset.status()).toBe(403);
+    expect((await reset.json()).issues[0].code).toBe("cross_site_request");
+    expect((await page.request.post("/api/product/approve", { headers, data: { approvedBy: "Evil" } })).status()).toBe(403);
+    expect((await page.request.post("/api/slices/select", { headers, data: {} })).status()).toBe(403);
+    expect((await page.request.put("/api/product", { headers, data: "x" })).status()).toBe(403);
+  }
+  // The app's own page is same-origin and keeps working.
+  const own = await page.request.post("/api/product/reset", { headers: { origin: new URL(page.url()).origin }, data: {} });
+  expect(own.status()).toBe(400);
   expect(await exists(E2E_PRODUCT_FILE)).toBe(true);
   expect(await exists(E2E_WORK_STATE_FILE)).toBe(true);
   await page.reload();

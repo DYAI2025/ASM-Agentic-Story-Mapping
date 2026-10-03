@@ -22,13 +22,15 @@ function routes(dir: string): string[] {
 describe("routes that answer GET only read", () => {
   const files = routes(API);
   // Both spellings of a handler export, so a GET written as a const is not a way around the check (external review F6).
-  const GET_EXPORT = /export (?:async function|const|function) GET\b/;
+  const GET_EXPORT = /export (?:async function|const|function) GET\b|export \{[^}]*\bGET\b[^}]*\}/;
   const readers = files.filter((file) => GET_EXPORT.test(readFileSync(file, "utf8")));
 
   it("the guard recognises a handler written as a const as well", () => {
     expect(GET_EXPORT.test("export const GET = async () => {}")).toBe(true);
     expect(GET_EXPORT.test("export async function GET(request: Request) {")).toBe(true);
     expect(GET_EXPORT.test("export function GET() {")).toBe(true);
+    expect(GET_EXPORT.test("export { handler as GET };")).toBe(true);
+    expect(GET_EXPORT.test("export { GET };")).toBe(true);
   });
 
   it("finds the readers", () => {

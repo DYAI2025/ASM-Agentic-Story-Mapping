@@ -67,6 +67,28 @@ describe("reset: start over on a user workspace", () => {
     expect(await exists(productFilePath())).toBe(false);
   });
 
+  it("a product path that reaches the seed through a directory symlink is the seed (external review F1, round 2)", async () => {
+    const repo = path.join(dir, "repo");
+    const seed = path.join(repo, "product", "asm.product.yaml");
+    await fs.mkdir(path.dirname(seed), { recursive: true });
+    await fs.copyFile(FIXTURE_PATH, seed);
+    const alias = path.join(dir, "product-link");
+    await fs.symlink(path.join(repo, "product"), alias);
+    const cwd = process.cwd();
+    process.chdir(repo);
+    process.env.ASM_PRODUCT_FILE = path.join(alias, "asm.product.yaml");
+    delete process.env.ASM_WORK_STATE_FILE;
+    try {
+      expect(path.resolve(productFilePath())).not.toBe(seed);
+      const result = await resetProduct();
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.issues[0].code).toBe("seed_protected");
+    } finally {
+      process.chdir(cwd);
+    }
+    expect(await fs.readFile(seed, "utf8")).toBe(fixtureText());
+  });
+
   describe("a work-state override that is not a work state is refused before anything is touched", () => {
     // External review F1 on 2ff9ccf: the override was unlinked first, whatever it pointed at.
     it("the repository seed as the work-state path", async () => {
@@ -93,6 +115,21 @@ describe("reset: start over on a user workspace", () => {
       expect(result.ok).toBe(false);
       expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
       expect(await fs.readFile(productFilePath(), "utf8")).toBe(fixtureText());
+    });
+
+    it("a file that does not hold a work state, even with the right name", async () => {
+      const other = path.join(dir, "valuable.work-state.json");
+      await fs.writeFile(other, "not a work state at all");
+      process.env.ASM_WORK_STATE_FILE = other;
+      let result = await resetProduct();
+      expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      expect(await fs.readFile(other, "utf8")).toBe("not a work state at all");
+
+      await fs.writeFile(other, JSON.stringify({ workStateVersion: 1, selection: { candidateId: "x" } }));
+      result = await resetProduct();
+      expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
+      expect(await exists(other)).toBe(true);
+      expect(await exists(productFilePath())).toBe(true);
     });
 
     it("a path that is not named like a work state, or a symlink to the product", async () => {
@@ -167,16 +204,19 @@ describe("reset: start over on a user workspace", () => {
     expect(!result.ok && result.issues[0].code).toBe("reset_failed");
     expect(!result.ok && result.issues[0].path).toBe(productFilePath());
     expect(await exists(productFilePath())).toBe(true);
+    // The order is observable: the work state went first, the product stayed, and the page still shows the product.
+    expect(await exists(workStateFilePath())).toBe(false);
   });
 
   it("product last: when the work state cannot be removed, the product is still there and the reset is a failure", async () => {
-    // A directory in place of the work-state file: unlink fails, and the product must not have been touched.
+    // A directory in place of the work-state file: it is not a work state, so the reset is refused before any unlink,
+    // and the product must not have been touched. (Before round 2 of the review this surfaced as reset_failed from the unlink.)
     await fs.rm(workStateFilePath());
     await fs.mkdir(workStateFilePath());
 
     const result = await resetProduct();
     expect(result.ok).toBe(false);
-    expect(!result.ok && result.issues[0].code).toBe("reset_failed");
+    expect(!result.ok && result.issues[0].code).toBe("work_state_path_invalid");
     expect(!result.ok && result.issues[0].path).toBe(workStateFilePath());
     expect(await exists(productFilePath())).toBe(true);
     expect(await fs.readFile(productFilePath(), "utf8")).toBe(fixtureText());
