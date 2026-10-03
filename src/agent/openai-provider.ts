@@ -1,6 +1,6 @@
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson } from "./http";
+import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson, redactSecrets } from "./http";
 import { strictOutputSchema } from "./json-schema";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
@@ -87,7 +87,7 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
     }
     // Only a completed response is an answer; anything else with text in it is not (external review round 4).
     if (response.status !== "completed")
-      throw new ProviderError(`the model's response did not complete (status ${JSON.stringify(response.status ?? "missing")})`);
+      throw new ProviderError(`the model's response did not complete (status ${redactSecrets(JSON.stringify(response.status ?? "missing"), [this.apiKey])})`);
     const content = (response.output ?? []).flatMap((item) => (item.type === "message" ? (item.content ?? []) : []));
     const refusal = content.find((block) => block.type === "refusal");
     if (refusal) throw new ProviderError("the model declined to process this text");

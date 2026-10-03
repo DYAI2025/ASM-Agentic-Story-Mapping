@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isPersona } from "../domain/actors";
+import { fingerprint } from "../domain/fingerprint";
 import { deriveGuide, type GuideAction } from "../domain/guide";
 import type { Touch } from "../domain/map-patch";
 import {
@@ -297,7 +298,11 @@ export function StoryMapEditor({
     setStartOver("busy");
     let result: { ok?: boolean; issues?: ValidationIssue[] };
     try {
-      const response = await fetch("/api/product/reset", { method: "POST", body: JSON.stringify({ confirm: "start over" }) });
+      // The confirmation names the product as this page shows it; a different one on disk is not removed.
+      const response = await fetch("/api/product/reset", {
+        method: "POST",
+        body: JSON.stringify({ confirm: "start over", productId: product.product.id, mapFingerprint: fingerprint(product) }),
+      });
       result = (await response.json()) as typeof result;
     } catch (error) {
       result = { issues: [{ code: "request_failed", path: "/api/product/reset", message: error instanceof Error ? error.message : String(error) }] };
@@ -332,7 +337,8 @@ export function StoryMapEditor({
               className="row"
               onSubmit={(event) => {
                 event.preventDefault();
-                void send("/api/product/approve", "POST", JSON.stringify({ approvedBy: approver }));
+                // The approval is of the map as shown; the server refuses it if the map moved meanwhile.
+                void send("/api/product/approve", "POST", JSON.stringify({ approvedBy: approver, mapFingerprint: fingerprint(product) }));
               }}
             >
               <input

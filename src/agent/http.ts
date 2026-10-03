@@ -32,6 +32,7 @@ export async function postJson(
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  const timedOut = (error: unknown) => controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
   let response: Response;
   try {
     response = await fetchImpl(url, {
@@ -41,17 +42,19 @@ export async function postJson(
       signal: controller.signal,
     });
   } catch (error) {
-    if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError"))
-      throw new ProviderError(`${options.apiName} timed out after ${options.timeoutMs} ms; try again or shorten the text`);
-    throw new ProviderError(`${options.apiName} could not be reached: ${redact(error instanceof Error ? error.message : String(error))}`);
-  } finally {
     clearTimeout(timer);
+    if (timedOut(error)) throw new ProviderError(`${options.apiName} timed out after ${options.timeoutMs} ms; try again or shorten the text`);
+    throw new ProviderError(`${options.apiName} could not be reached: ${redact(error instanceof Error ? error.message : String(error))}`);
   }
+  // The deadline covers the body as well: headers that arrive at once and a body that never does are a timeout too.
   let parsed: unknown = null;
   try {
     parsed = await response.json();
-  } catch {
+  } catch (error) {
+    if (timedOut(error)) throw new ProviderError(`${options.apiName} timed out after ${options.timeoutMs} ms; try again or shorten the text`);
     parsed = null;
+  } finally {
+    clearTimeout(timer);
   }
   return { status: response.status, body: parsed };
 }

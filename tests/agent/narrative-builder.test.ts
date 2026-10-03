@@ -189,6 +189,7 @@ describe("Anthropic provider (stubbed client, no network)", () => {
     ["a truncated answer", { stop_reason: "max_tokens", content: [{ type: "text", text: "{" }] }, /cut off/],
     ["no text block", { stop_reason: "end_turn", content: [] }, /no text/],
     ["non-JSON text", textResponse("Sure! Here is the proposal:"), /not valid JSON/],
+    ["a stop reason that echoes a secret", { stop_reason: "odd sk-ant-echoed-0123456789abcdef", content: [] }, /did not complete \(stop_reason "odd \[redacted\]"\)/],
     // External review round 5: a stop reason that is not end_turn, with valid JSON, is not an answer.
     ["an unknown stop reason", { stop_reason: "pause_turn", content: [{ type: "text", text: JSON.stringify(honest()) }] }, /did not complete \(stop_reason "pause_turn"\)/],
   ])("reports %s as a provider error", async (_name, response, message) => {

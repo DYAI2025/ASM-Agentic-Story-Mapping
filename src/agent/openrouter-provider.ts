@@ -1,6 +1,6 @@
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson } from "./http";
+import { DEFAULT_TIMEOUT_MS, apiErrorMessage, parseModelJson, postJson, redactSecrets } from "./http";
 import { strictOutputSchema } from "./json-schema";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
@@ -90,7 +90,7 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
       throw new ProviderError("the model declined to process this text");
     // Only a normal stop is an answer; an unknown or missing reason with text in it is not (external review round 5).
     if (choice.finish_reason !== "stop")
-      throw new ProviderError(`the model's response did not complete (finish_reason ${JSON.stringify(choice.finish_reason ?? "missing")})`);
+      throw new ProviderError(`the model's response did not complete (finish_reason ${redactSecrets(JSON.stringify(choice.finish_reason ?? "missing"), [this.apiKey])})`);
     const content = choice.message?.content;
     if (typeof content !== "string" || content === "") throw new ProviderError("the model returned no text output");
     return parseModelJson(content);

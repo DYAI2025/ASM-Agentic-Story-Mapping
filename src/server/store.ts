@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fingerprint } from "../domain/fingerprint";
 import { exportProductYaml, parseProductText } from "../domain/serialize";
 import { validateProduct, type ValidationIssue, type ValidationResult } from "../domain/validate";
 import { EMPTY_WORK_STATE, exportWorkStateJson, validateWorkState, type WorkStateResult } from "../domain/work-state";
@@ -106,8 +107,13 @@ async function saveProductNow(input: unknown): Promise<ValidationResult> {
       return { ok: false, issues: [{ code: "no_product", path: file, message: "there is no product any more; nothing was saved" }] };
     // A name of its own per call: two saves at the same moment must not meet on the temporary file (external review F5).
     const tmp = `${file}.${randomUUID()}.tmp`;
-    await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
-    await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    try {
+      await fs.writeFile(/* turbopackIgnore: true */ tmp, exportProductYaml(result.product), "utf8");
+      await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    } finally {
+      // A failed replacement leaves nothing behind; after a successful rename there is nothing to remove.
+      await fs.rm(/* turbopackIgnore: true */ tmp, { force: true });
+    }
     return result;
   }
 }
@@ -174,11 +180,17 @@ export type ResetResult =
  * `ASM_PRODUCT_FILE`, or with one that resolves to the seed, the reset is
  * refused and nothing is touched.
  */
-export function resetProduct(): Promise<ResetResult> {
-  return serialized(resetProductNow);
+/** What the human confirmed on: the product's id and the fingerprint of the map as they saw it. */
+export interface ResetTarget {
+  productId: string;
+  mapFingerprint: string;
 }
 
-async function resetProductNow(): Promise<ResetResult> {
+export function resetProduct(seen?: ResetTarget): Promise<ResetResult> {
+  return serialized(() => resetProductNow(seen));
+}
+
+async function resetProductNow(seen?: ResetTarget): Promise<ResetResult> {
   const product = productFilePath();
   const work = workStateFilePath();
   if (productIsSeed())
@@ -188,6 +200,16 @@ async function resetProductNow(): Promise<ResetResult> {
     };
   if (!(await productFileExists()))
     return { ok: false, issues: [{ code: "no_product", path: product, message: "there is no product to start over from" }] };
+  // The product that is there has to be the one the human confirmed on, as they saw it (external review round 7).
+  if (seen) {
+    const current = await loadProduct();
+    const matches = current.ok && current.product.product.id === seen.productId && fingerprint(current.product) === seen.mapFingerprint;
+    if (!matches)
+      return {
+        ok: false,
+        issues: [{ code: "product_changed", path: product, message: "the product here is not the one you confirmed on, or it has changed since; look again before starting over" }],
+      };
+  }
   // The seed by what the path resolves to, not only by its spelling: a directory symlink on the way
   // would otherwise lead the unlink to the checked-in file (external review F1, round 2).
   if ((await resolvedPath(product)) === (await resolvedPath(seedProductFilePath())))
@@ -269,8 +291,12 @@ async function saveWorkStateNow(input: unknown): Promise<WorkStateResult> {
     if (!(await productFileExists()))
       return { ok: false, issues: [{ code: "no_product", path: file, message: "there is no product any more; the work state was not written" }] };
     const tmp = `${file}.${randomUUID()}.tmp`;
-    await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
-    await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    try {
+      await fs.writeFile(/* turbopackIgnore: true */ tmp, exportWorkStateJson(result.state), "utf8");
+      await fs.rename(/* turbopackIgnore: true */ tmp, file);
+    } finally {
+      await fs.rm(/* turbopackIgnore: true */ tmp, { force: true });
+    }
     return result;
   }
 }

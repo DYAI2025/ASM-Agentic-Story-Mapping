@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
-  const body = (await request.json().catch(() => null)) as { rationale?: unknown; acceptedBy?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { rationale?: unknown; acceptedBy?: unknown; candidateId?: unknown } | null;
   const text = (value: unknown) => (typeof value === "string" ? value : "");
 
   // One transaction: the check is against the file as it is when this writes (external review round 4).
@@ -24,6 +24,24 @@ export async function POST(request: Request) {
     if (!work.state.selection)
       return Response.json(
         { issues: [{ code: "selection_required", path: "selection", message: "no slice has been selected; select one before accepting a value exception" }] },
+        { status: 409 },
+      );
+    // The exception is for the slice the human looked at: the request names it, and it has to be the one
+    // selected now, inside this transaction (external review round 7).
+    if (text(body?.candidateId) === "" || text(body?.candidateId) !== work.state.selection.candidateId)
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "selection_changed",
+              path: "candidateId",
+              message:
+                text(body?.candidateId) === ""
+                  ? "say which slice the exception is for: send its candidate id"
+                  : `the selected slice is now “${work.state.selection.candidateId}”, not “${text(body?.candidateId)}”; look at it again before accepting an exception`,
+            },
+          ],
+        },
         { status: 409 },
       );
 

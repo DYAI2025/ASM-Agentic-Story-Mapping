@@ -231,8 +231,9 @@ All four sit behind the same two interfaces and the same rules:
   another provider or model: the Anthropic adapter deliberately does not send
   the server-side `fallbacks` option, so a safety decline is an error, not a
   different model answering.
-- Keys are sent in one header and never logged; an API message that echoes a
-  key is redacted before it reaches the response.
+- Keys are sent in one header and never logged; every message built from
+  what an API sent back (error text, status, finish or stop reason) goes
+  through the redactor before it reaches the response.
 - The request-side schema (`src/agent/json-schema.ts`) is the zod contract as
   strict JSON Schema: every property required, nothing additional, optional
   fields nullable. It is a courtesy to the model; the app relies only on its
@@ -633,6 +634,7 @@ table says which.
 | Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
 | Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
 | External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
+| External review round 7 of `c914240` (round-6 repairs verified by targeted execution): approval, value exception and start-over confirmation carrying no identity of what the human saw, so under the queue they could land on a different revision, selection or product; status / finish / stop reasons interpolated unredacted; the HTTP deadline ending at the headers; temporary files left after a failed rename | ASM-28, `c914240` | **all real** — closed by binding each action to its displayed target (map fingerprint, candidate id, product id + fingerprint; refused 409 inside the transaction; route-level tests in both orders), by redacting every API-derived value, by keeping the deadline through the body, and by cleaning the temporary file in `finally`; five mutants red |
 | External review round 6 of `01ea9c1`: a work-state override holding another workspace's valid work state deleted by a reset; the content-derived delimiter forgeable by a crafted self-consistent hash | ASM-28, `01ea9c1` | **both real** — closed by binding an owned work state to the product's id before any unlink (mutant red) and by a per-request random nonce in every source tag (mutant red) |
 | External review round 5 of `24dcb33` (0 Blocker / 0 Critical): a file label spelling its own block's closing tag (the delimiter hashed only the text); Anthropic and OpenRouter passing an unknown or missing terminal state with valid JSON; the README overclaiming that a racing selection is refused | ASM-28, `24dcb33` | **all real** — closed by hashing label and text into the delimiter, by whitelisting `end_turn` / `stop`, and by stating that a newer explicit selection supersedes |
 | External review round 4 of `76ba4c2`: two accepts on one revision both landing (checked before either saved); a compatible OpenAI endpoint answering 200 with a status other than `completed` and valid JSON; the file label in the prompt preamble rather than inside the data block | ASM-28, `76ba4c2` | **all real** — closed by running every writing route's read → check → write inside the store queue (two mutants red: transaction not serialized; the accept loading outside it), by requiring `status: "completed"`, and by moving the label into the delimited block. The reviewer judged the reset threat model plain and honest; the provenance-at-accept boundary stays documented |
@@ -645,12 +647,16 @@ The full lists with the failing test names are in the evidence comments on the t
 
 The deterministic provider has no understanding; the live providers have only
 run against stubbed transports except for the recorded live smoke. The store is
-serialized within one server process, so two browsers accepting or approving
-at once settle in order and the loser is refused as stale; two selections or
-two people checks on the same approved map settle in order too, but a newer
-explicit one supersedes the earlier (the work state has no version of its own);
-two plain edits of cards (`PUT /api/product`) race last-writer-wins; nothing
-serializes across processes. The accept routes take the edited patch from the browser and
+serialized within one server process, and every human action names what the
+human looked at — an accept carries the proposal's base fingerprint, an
+approval and a people check the map fingerprint, a selection the map
+fingerprint, a value exception the selected candidate, a start-over
+confirmation the product id and map fingerprint — so whichever lands second
+on a map that moved is refused as stale, in either order; two selections or
+two people checks on the same unchanged approved map settle in order and a
+newer explicit one supersedes the earlier (the work state has no version of
+its own); two plain edits of cards (`PUT /api/product`) race
+last-writer-wins; nothing serializes across processes. The accept routes take the edited patch from the browser and
 re-validate its shape and fingerprint, not its source fields: a client that
 rewrote `sourceId`/`sourceLabel` on an op would record an attribution the
 server never checked — the browser is the human's own, but it is a trust
@@ -658,10 +664,11 @@ boundary worth naming. `POST /api/product/import` replaces the product with the 
 is given, approval record included, without the proposal path: it is the way
 to bring your own file, and it is a human's own file, but a client on the
 network could use it the same way. Nothing authenticates a request: every
-mutation route trusts whoever can reach the port. This prototype is for one
-person on localhost; before it is exposed on a LAN or a VPS, the import route
-and the mutation routes need authentication and origin checks (that is the
-next slice, not this one). The accessibility check is a smoke test, not an
+mutation route trusts whoever can reach the port (a browser made to send a
+cross-site request is refused, see above; a direct client is not). This
+prototype is for one person on localhost; before it is exposed on a LAN or a
+VPS, the import route and the mutation routes need authentication (that is
+the next slice, not this one). The accessibility check is a smoke test, not an
 audit. The visual and usability verdict is a human's, on one exact commit, and
 is recorded on the ticket, not in this repository.
 

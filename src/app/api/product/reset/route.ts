@@ -15,15 +15,21 @@ export const RESET_CONFIRMATION = "start over";
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
-  const body = (await request.json().catch(() => null)) as { confirm?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { confirm?: unknown; productId?: unknown; mapFingerprint?: unknown } | null;
   if (body?.confirm !== RESET_CONFIRMATION)
     return Response.json(
       { issues: [{ code: "confirmation_required", path: "confirm", message: `send { "confirm": "${RESET_CONFIRMATION}" } to start over` }] },
       { status: 400 },
     );
+  // The confirmation names the product the human saw (external review round 7).
+  if (typeof body.productId !== "string" || typeof body.mapFingerprint !== "string" || body.productId === "" || body.mapFingerprint === "")
+    return Response.json(
+      { issues: [{ code: "confirmation_required", path: "productId", message: "say which product you start over from: send its id and map fingerprint" }] },
+      { status: 400 },
+    );
 
-  const result = await resetProduct();
+  const result = await resetProduct({ productId: body.productId, mapFingerprint: body.mapFingerprint });
   if (result.ok) return Response.json(result);
   const code = result.issues[0]?.code;
-  return Response.json({ issues: result.issues }, { status: code === "seed_protected" ? 409 : code === "no_product" ? 404 : 500 });
+  return Response.json({ issues: result.issues }, { status: code === "seed_protected" || code === "product_changed" ? 409 : code === "no_product" ? 404 : 500 });
 }

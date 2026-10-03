@@ -162,6 +162,39 @@ describe("OpenAI provider (Responses API)", () => {
     }
   });
 
+  it("a status or finish reason that echoes the key is redacted too (external review round 7)", async () => {
+    const odd = "token-echoed-in-a-status-field-9876";
+    const providers = [
+      new OpenAIProvider({ apiKey: odd, fetch: fetchStub([{ body: { status: `failed because of ${odd}`, output: [] } }]).fetch }),
+      new OpenRouterProvider({ apiKey: odd, model: "v/m", fetch: fetchStub([{ body: { choices: [{ finish_reason: `weird ${odd}`, message: { content: JSON.stringify(honest()) } }] } }]).fetch }),
+    ];
+    for (const provider of providers) {
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+      expect(result.ok).toBe(false);
+      const text = JSON.stringify(result);
+      expect(text, provider.name).not.toContain(odd);
+      expect(text, provider.name).toContain("[redacted]");
+    }
+  });
+
+  it("the deadline covers the body, not only the headers (external review round 7)", async () => {
+    // Headers arrive at once; the body never does.
+    const stalled: typeof globalThis.fetch = async (_url, init) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            init?.signal?.addEventListener("abort", () => controller.error(Object.assign(new Error("aborted"), { name: "AbortError" })));
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    const started = Date.now();
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, new OpenAIProvider({ apiKey: KEY, fetch: stalled, timeoutMs: 50 }));
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.issues[0].message).toMatch(/timed out after 50 ms/);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
   it("never lets the key through, even when the API echoes it back", async () => {
     // A 400, not a 401: the 401 message is fixed text, so only a verbatim API message exercises the redaction.
     const echoed = `Unsupported value for key ${KEY}; also or-${KEY.slice(3)} and a word.`;

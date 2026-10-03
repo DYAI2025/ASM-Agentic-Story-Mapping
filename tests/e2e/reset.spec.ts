@@ -113,7 +113,7 @@ test("start over, confirmed: product and work state gone, start screen back, not
     expect((await response.json()).issues[0].code, url).toBe("no_product");
   }
   // A second reset has nothing to remove.
-  const again = await page.request.post("/api/product/reset", { data: { confirm: "start over" } });
+  const again = await page.request.post("/api/product/reset", { data: { confirm: "start over", productId: "asm", mapFingerprint: "00000000" } });
   expect(again.status()).toBe(404);
 
   // Start a new product right away, in the same server: the old people check, selection and brief are not there.
