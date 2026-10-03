@@ -93,6 +93,6 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
       throw new ProviderError(`the model's response did not complete (finish_reason ${redactSecrets(JSON.stringify(choice.finish_reason ?? "missing"), [this.apiKey])})`);
     const content = choice.message?.content;
     if (typeof content !== "string" || content === "") throw new ProviderError("the model returned no text output");
-    return parseModelJson(content);
+    return parseModelJson(content, [this.apiKey]);
   }
 }

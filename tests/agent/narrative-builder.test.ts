@@ -175,6 +175,31 @@ describe("Anthropic provider (stubbed client, no network)", () => {
     expect(seen[0]).not.toHaveProperty("betas");
   });
 
+  it("a call that never completes ends at the deadline, whatever the SDK's own timer did (external review round 8)", async () => {
+    // A client whose parse hangs until the signal it was given aborts.
+    const hanging = {
+      parse: (_params: unknown, options?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+        }),
+    } as unknown as MessagesClient;
+    const started = Date.now();
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, new AnthropicProvider({ client: hanging, timeoutMs: 50 }));
+    expect(codes(result)).toEqual(["provider_error"]);
+    expect(result.ok === false && result.issues[0].message).toMatch(/timed out after 50 ms/);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("a model's output that carries the configured key is discarded (external review round 8)", async () => {
+    const odd = "token-echoed-by-the-model-7777";
+    const out = honest();
+    const leaky = { ...out, summary: `Summary ${odd}` };
+    const provider = new AnthropicProvider({ client: client(textResponse(JSON.stringify(leaky))), secrets: [odd] });
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+    expect(codes(result)).toEqual(["provider_error"]);
+    expect(JSON.stringify(result)).not.toContain(odd);
+  });
+
   it("output that breaks the contract is rejected by the domain, whatever the model said", async () => {
     const provider = new AnthropicProvider({
       client: client(textResponse(JSON.stringify({ ...honest(), approve: true }))),

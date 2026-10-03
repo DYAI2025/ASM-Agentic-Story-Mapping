@@ -233,7 +233,10 @@ All four sit behind the same two interfaces and the same rules:
   different model answering.
 - Keys are sent in one header and never logged; every message built from
   what an API sent back (error text, status, finish or stop reason) goes
-  through the redactor before it reaches the response.
+  through the redactor before it reaches the response, and model output
+  that contains the configured key is discarded whole before the domain
+  sees it — neither a validation message nor an accepted rationale can
+  carry it. Exact-value matching, secrets of four characters or more.
 - The request-side schema (`src/agent/json-schema.ts`) is the zod contract as
   strict JSON Schema: every property required, nothing additional, optional
   fields nullable. It is a courtesy to the model; the app relies only on its
@@ -634,6 +637,7 @@ table says which.
 | Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
 | Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
 | External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
+| External review round 8 of `3197694` (round-7 repairs verified by execution: approval and reset fully, exception and redaction partially, deadline fully for `postJson`): a value exception named only its candidate id, a reading name reused across revisions, so an old exception could land after another browser changed, approved and reselected; model output carrying the key reached the domain unredacted (validation messages, accepted rationales); the Anthropic adapter's deadline was the SDK's, which ends at the headers | ASM-28, `3197694` | **all real** — the exception names the map fingerprint too (refused 409 inside the transaction; tested across a changed, approved and reselected map with an unresolved slice); model output containing a configured secret is discarded whole in all three adapters; the Anthropic call runs under the adapter's own abortable deadline; three mutants red |
 | External review round 7 of `c914240` (round-6 repairs verified by targeted execution): approval, value exception and start-over confirmation carrying no identity of what the human saw, so under the queue they could land on a different revision, selection or product; status / finish / stop reasons interpolated unredacted; the HTTP deadline ending at the headers; temporary files left after a failed rename | ASM-28, `c914240` | **all real** — closed by binding each action to its displayed target (map fingerprint, candidate id, product id + fingerprint; refused 409 inside the transaction; route-level tests in both orders), by redacting every API-derived value, by keeping the deadline through the body, and by cleaning the temporary file in `finally`; five mutants red |
 | External review round 6 of `01ea9c1`: a work-state override holding another workspace's valid work state deleted by a reset; the content-derived delimiter forgeable by a crafted self-consistent hash | ASM-28, `01ea9c1` | **both real** — closed by binding an owned work state to the product's id before any unlink (mutant red) and by a per-request random nonce in every source tag (mutant red) |
 | External review round 5 of `24dcb33` (0 Blocker / 0 Critical): a file label spelling its own block's closing tag (the delimiter hashed only the text); Anthropic and OpenRouter passing an unknown or missing terminal state with valid JSON; the README overclaiming that a racing selection is refused | ASM-28, `24dcb33` | **all real** — closed by hashing label and text into the delimiter, by whitelisting `end_turn` / `stop`, and by stating that a newer explicit selection supersedes |
@@ -650,7 +654,8 @@ run against stubbed transports except for the recorded live smoke. The store is
 serialized within one server process, and every human action names what the
 human looked at — an accept carries the proposal's base fingerprint, an
 approval and a people check the map fingerprint, a selection the map
-fingerprint, a value exception the selected candidate, a start-over
+fingerprint, a value exception the selected candidate and the map
+fingerprint, a start-over
 confirmation the product id and map fingerprint — so whichever lands second
 on a map that moved is refused as stale, in either order; two selections or
 two people checks on the same unchanged approved map settle in order and a

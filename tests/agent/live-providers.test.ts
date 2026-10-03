@@ -177,6 +177,26 @@ describe("OpenAI provider (Responses API)", () => {
     }
   });
 
+  it("model output that carries the configured key is discarded before the domain sees it (external review round 8)", async () => {
+    const odd = "token-inside-the-output-5555";
+    const leaky = honest();
+    const inRationale = { ...leaky, summary: `Summary mentioning ${odd}` };
+    const inRole = { ...leaky, personas: leaky.personas.map((p, i) => (i === 0 ? { ...p, roles: [odd] } : p)) };
+    for (const output of [inRationale, inRole]) {
+      for (const provider of [
+        new OpenAIProvider({ apiKey: odd, fetch: fetchStub([{ body: openaiOk(output) }]).fetch }),
+        new OpenRouterProvider({ apiKey: odd, model: "v/m", fetch: fetchStub([{ body: openrouterOk(output) }]).fetch }),
+      ]) {
+        const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+        expect(result.ok, provider.name).toBe(false);
+        expect(codes(result), provider.name).toEqual(["provider_error"]);
+        const text = JSON.stringify(result);
+        expect(text, provider.name).not.toContain(odd);
+        expect(text, provider.name).toMatch(/contained a configured secret/);
+      }
+    }
+  });
+
   it("the deadline covers the body, not only the headers (external review round 7)", async () => {
     // Headers arrive at once; the body never does.
     const stalled: typeof globalThis.fetch = async (_url, init) =>

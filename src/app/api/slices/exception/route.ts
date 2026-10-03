@@ -1,3 +1,4 @@
+import { fingerprint } from "../../../../domain/fingerprint";
 import { DomainError } from "../../../../domain/operations";
 import { WORK_STATE_VERSION, acceptValueException } from "../../../../domain/work-state";
 import { loadProduct, loadWorkState, saveWorkState, loadFailureStatus, transaction } from "../../../../server/store";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
   if (refused) return refused;
-  const body = (await request.json().catch(() => null)) as { rationale?: unknown; acceptedBy?: unknown; candidateId?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { rationale?: unknown; acceptedBy?: unknown; candidateId?: unknown; mapFingerprint?: unknown } | null;
   const text = (value: unknown) => (typeof value === "string" ? value : "");
 
   // One transaction: the check is against the file as it is when this writes (external review round 4).
@@ -26,8 +27,25 @@ export async function POST(request: Request) {
         { issues: [{ code: "selection_required", path: "selection", message: "no slice has been selected; select one before accepting a value exception" }] },
         { status: 409 },
       );
-    // The exception is for the slice the human looked at: the request names it, and it has to be the one
-    // selected now, inside this transaction (external review round 7).
+    // The exception is for the slice the human looked at, on the map they looked at: the request names both,
+    // and they have to be the selection and the map as they are now, inside this transaction. A candidate id
+    // alone is not enough: ids are reading names, reused across revisions (external review rounds 7 and 8).
+    if (text(body?.mapFingerprint) === "" || text(body?.mapFingerprint) !== fingerprint(stored.product))
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "selection_changed",
+              path: "mapFingerprint",
+              message:
+                text(body?.mapFingerprint) === ""
+                  ? "say which map the exception is for: send its fingerprint"
+                  : "the map has changed since you looked at it; read the slice again before accepting an exception",
+            },
+          ],
+        },
+        { status: 409 },
+      );
     if (text(body?.candidateId) === "" || text(body?.candidateId) !== work.state.selection.candidateId)
       return Response.json(
         {

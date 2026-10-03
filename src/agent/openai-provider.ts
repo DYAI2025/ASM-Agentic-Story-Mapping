@@ -93,6 +93,6 @@ export class OpenAIProvider implements AgentProvider, ReviewProvider {
     if (refusal) throw new ProviderError("the model declined to process this text");
     const text = content.find((block) => block.type === "output_text" && typeof block.text === "string");
     if (!text?.text) throw new ProviderError("the model returned no text output");
-    return parseModelJson(text.text);
+    return parseModelJson(text.text, [this.apiKey]);
   }
 }

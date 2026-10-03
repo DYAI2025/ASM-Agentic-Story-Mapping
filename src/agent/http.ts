@@ -70,10 +70,27 @@ export function apiErrorMessage(body: unknown, secrets: readonly string[] = []):
 }
 
 /** JSON text from a model: parsed, or a visible error. The domain decides whether it is valid output. */
-export function parseModelJson(text: string): unknown {
+export function parseModelJson(text: string, secrets: readonly string[] = []): unknown {
+  let parsed: unknown;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
     throw new ProviderError("the model's output was not valid JSON");
+  }
+  refuseLeakedSecrets(parsed, secrets);
+  return parsed;
+}
+
+/**
+ * Model output that carries a configured secret never reaches the domain: a
+ * validation message or an accepted rationale would otherwise carry it into
+ * the response or the product file (external review round 8). The output is
+ * discarded as a whole; nothing of it is quoted.
+ */
+export function refuseLeakedSecrets(output: unknown, secrets: readonly string[]): void {
+  const text = JSON.stringify(output) ?? "";
+  for (const secret of secrets) {
+    if (secret.length >= 4 && text.includes(secret))
+      throw new ProviderError("the model's output contained a configured secret and was discarded");
   }
 }

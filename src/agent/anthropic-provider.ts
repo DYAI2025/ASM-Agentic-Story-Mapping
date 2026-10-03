@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
-import { DEFAULT_TIMEOUT_MS, redactSecrets } from "./http";
+import { DEFAULT_TIMEOUT_MS, parseModelJson, redactSecrets } from "./http";
 import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
 
@@ -80,10 +80,16 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
     // A deadline, and the SDK's bounded retries on transient failures. Credentials resolve from the environment.
     this.client ??= new Anthropic({ ...(this.apiKey ? { apiKey: this.apiKey } : {}), timeout: this.timeoutMs, maxRetries: 2 }).beta.messages;
 
+    // The deadline is this adapter's own and covers the whole call, body and parsing included: the SDK's timer
+    // ends when headers arrive (external review round 8).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     let response;
     try {
-      response = await this.client.parse(request);
+      response = await this.client.parse(request, { signal: controller.signal });
     } catch (error) {
+      if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError"))
+        throw new ProviderError(`Anthropic timed out after ${this.timeoutMs} ms; try again or shorten the text`);
       if (error instanceof Anthropic.AuthenticationError)
         throw new ProviderError("Anthropic rejected the credentials; check ANTHROPIC_API_KEY");
       if (error instanceof Anthropic.RateLimitError)
@@ -93,6 +99,8 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
       if (error instanceof Anthropic.APIError)
         throw new ProviderError(redactSecrets(`Anthropic API error ${error.status ?? ""}: ${error.message}`.trim(), this.secrets));
       throw new ProviderError(redactSecrets(error instanceof Error ? error.message : String(error), this.secrets));
+    } finally {
+      clearTimeout(timer);
     }
 
     if (response.stop_reason === "refusal")
@@ -105,11 +113,7 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
 
     const text = response.content.find((block) => block.type === "text");
     if (!text || text.type !== "text") throw new ProviderError("the model returned no text output");
-    try {
-      // Returned raw: the domain decides whether this is valid output.
-      return JSON.parse(text.text);
-    } catch {
-      throw new ProviderError("the model's output was not valid JSON");
-    }
+    // Returned raw: the domain decides whether this is valid output. Output carrying a configured secret is discarded.
+    return parseModelJson(text.text, this.secrets);
   }
 }
