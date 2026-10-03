@@ -105,9 +105,23 @@ pasted text (untrusted) -> Narrative Builder -> MapPatch
 ```
 
 In the **Workshop input** panel, paste a discussion, notes or a transcript and
-press *Structure discussion*. You get a list of proposed changes, each with the
-quoted source line, a rationale and a confidence, and the map shows what it
-would look like. Accept all or some of it, edit the wording first, or reject it.
+press *Structure discussion*. You get the proposal as product meaning, in
+sections (`src/domain/proposal-view.ts`, a projection over the patch): Goal,
+Personas, Other actors and roles, Needs, Suggested main path, Open questions,
+Other changes. Every item is used, edited or rejected on its own (*Use* is the
+box, *Rejected* is the box unchecked, *Edit* opens that item's fields; *Edit
+all* opens every one). The source — which pasted text or file, confidence,
+rationale, the quote — sits behind a disclosure on each item. While editing,
+chips offer the quote as written and, for the goal, the other readings; a chip
+only fills the field in the proposal draft.
+
+When the text supports more than one reading of what the product is for, the
+provider says so (`goalAlternatives`) and the goal becomes a choice: radio
+buttons with nothing chosen, "ASM does not choose for you". A patch that still
+carries two goals is refused by `applyMapPatch` (`conflicting_goal`), so no
+client and no provider can skip the choice; a first product cannot be accepted
+until one is picked. The map shows what the proposal would look like; nothing
+is written until *Accept*.
 
 ![Reviewing a proposal](docs/screenshots/asm-proposal-review.png)
 
@@ -546,6 +560,7 @@ table says which.
 | Unknown provider name falling back to the fake; missing `OPENAI_API_KEY` falling back to the fake; HTTP error from OpenAI swallowed into an empty answer; refusal returned as an empty proposal; schema builder not strict; key redaction removed; a provider importing the store; truncation ignored | ASM-25, `tests/agent/live-providers.test.ts` | all red (the redaction mutant survived until the test used a 400 with a verbatim message — the 401 path has fixed text) |
 | Verifier on `5ed740f`: unknown name → fake; OpenAI 429 → `{}`; OpenRouter error-in-200 ignored; `buildProposal` falling back to the fake on any provider error; Anthropic `fallbacks` restored; `postJson` without the abort signal | ASM-25, `5ed740f` | all red (31 failures for the silent fallback); `additionalProperties = false` removed from the schema builder was an equivalent mutant — zod 4.6.5 already emits it for every `strictObject`, measured on all 25 object nodes |
 | Verifier's own: the OpenRouter review sent with the proposal's instructions; `ASM_AGENT_TIMEOUT_MS` bounds dropped | ASM-25, `5ed740f` | **both survived** — closed by asserting the review system message and by refusing `0`, `999`, `600001`, `1.5`, `-5000` |
+| Two goals applied with the last one winning; the dry run on the whole patch instead of per option; actors grouped as personas; the goal suggesting itself; the primary goal untagged in a choice | ASM-26, `tests/domain/proposal-view.test.ts` | all red |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 

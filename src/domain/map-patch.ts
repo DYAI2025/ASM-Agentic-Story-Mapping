@@ -57,6 +57,12 @@ export const AgentPlacement = z.strictObject({
 export const AgentOutputSchema = z.strictObject({
   summary: z.string(),
   goal: z.strictObject({ statement: z.string(), source: AgentSource }).nullable(),
+  /**
+   * Other plausible readings of what the product is for, when the text
+   * supports more than one. Shown next to `goal` as a choice the human makes;
+   * never chosen by anyone else. Empty when there is one reading.
+   */
+  goalAlternatives: z.array(z.strictObject({ statement: z.string(), source: AgentSource })).optional(),
   personas: z.array(
     z.strictObject({
       ref: z.string(),
@@ -118,7 +124,13 @@ export const PlacementSchema = z.discriminatedUnion("kind", [
 const opBase = { opId: z.string().regex(/^op-\d+$/), source: PatchSourceSchema };
 
 export const PatchOperationSchema = z.discriminatedUnion("op", [
-  z.strictObject({ ...opBase, op: z.literal("set_goal"), statement: Text }),
+  z.strictObject({
+    ...opBase,
+    op: z.literal("set_goal"),
+    statement: Text,
+    /** Present when this goal is one of several the proposal offers: the human keeps exactly one. */
+    choice: z.literal("goal").optional(),
+  }),
   z.strictObject({
     ...opBase,
     op: z.literal("add_persona"),
@@ -331,6 +343,9 @@ export function resolveProposal(
 
   const operations: PatchOperation[] = [];
   const nextOpId = () => `op-${operations.length + 1}`;
+  // With alternatives, every goal is tagged as one of a choice; the alternatives come last so earlier ops keep their ids.
+  const alternatives = out.goalAlternatives ?? [];
+  const hasChoice = alternatives.length > 0;
 
   if (out.goal) {
     operations.push({
@@ -338,6 +353,7 @@ export function resolveProposal(
       op: "set_goal",
       statement: text("goal.statement", out.goal.statement),
       source: source("goal.source", out.goal.source),
+      ...(hasChoice ? { choice: "goal" as const } : {}),
     });
   }
 
@@ -441,6 +457,18 @@ export function resolveProposal(
     });
   });
 
+  alternatives.forEach((alternative, i) => {
+    const path = `goalAlternatives[${i}]`;
+    if (!out.goal) add("alternative_without_goal", path, "an alternative goal needs a goal to be an alternative to");
+    operations.push({
+      opId: nextOpId(),
+      op: "set_goal",
+      statement: text(`${path}.statement`, alternative.statement),
+      source: source(`${path}.source`, alternative.source),
+      choice: "goal",
+    });
+  });
+
   if (operations.length === 0)
     add("empty_proposal", "(root)", "the discussion did not yield any proposed change or question");
   if (issues.length > 0) return { ok: false, issues: sorted(issues) };
@@ -455,8 +483,13 @@ export function resolveProposal(
   };
 
   // Dry run: a proposal that could not be accepted as it stands is not shown as one.
-  const dryRun = applyMapPatch(product, patch);
-  if (!dryRun.ok) return { ok: false, issues: dryRun.issues };
+  // With a goal choice, each option is tried on its own; the patch with all of them is not acceptable by design.
+  const goals = operations.filter((o) => o.op === "set_goal");
+  const variants = goals.length > 1 ? goals.map((keep) => ({ ...patch, operations: operations.filter((o) => o.op !== "set_goal" || o.opId === keep.opId) })) : [patch];
+  for (const variant of variants) {
+    const dryRun = applyMapPatch(product, variant);
+    if (!dryRun.ok) return { ok: false, issues: dryRun.issues };
+  }
   return { ok: true, patch };
 }
 
@@ -506,6 +539,12 @@ export function applyMapPatch(product: ProductDocument, patchInput: unknown): Ap
   }
   if (patch.operations.length === 0)
     return { ok: false, issues: [{ code: "empty_patch", path: "operations", message: "nothing to accept" }] };
+  // Two goals are a choice the human has not made yet. Nothing here picks one.
+  if (patch.operations.filter((o) => o.op === "set_goal").length > 1)
+    return {
+      ok: false,
+      issues: [{ code: "conflicting_goal", path: "operations", message: "the proposal offers more than one goal; keep exactly one" }],
+    };
 
   const issues: Issues = [];
   const revision = product.revision.number + 1;

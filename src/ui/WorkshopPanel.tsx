@@ -9,16 +9,11 @@ import {
   type ContextBundle,
   type ContextSource,
 } from "../domain/context";
-import {
-  EDITABLE_OP_FIELDS,
-  applyMapPatch,
-  describePatch,
-  type MapPatch,
-  type PatchOperation,
-  type Touch,
-} from "../domain/map-patch";
+import { applyMapPatch, type MapPatch, type PatchOperation, type Touch } from "../domain/map-patch";
+import { goalChoice } from "../domain/proposal-view";
 import type { ProductDocument } from "../domain/schema";
 import type { ValidationIssue } from "../domain/validate";
+import { ProposalReview } from "./ProposalReview";
 
 /**
  * Reads the files the human picked as UTF-8 text. A file that is not a text
@@ -126,7 +121,7 @@ export function WorkshopPanel({
   const [status, setStatus] = useState("");
   const [patch, setPatch] = useState<MapPatch | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<Set<string>>(new Set());
 
   /** What would be sent: the pasted text first, when there is any, then the files. */
   const bundle = useMemo<ContextBundle>(() => {
@@ -140,7 +135,6 @@ export function WorkshopPanel({
     [patch, excluded],
   );
   const result = useMemo(() => (effective ? applyMapPatch(product, effective) : null), [product, effective]);
-  const entries = useMemo(() => (patch ? describePatch(product, patch) : []), [product, patch]);
 
   useEffect(() => {
     onPreview(result?.ok ? { product: result.product, touched: result.touched } : null);
@@ -152,7 +146,7 @@ export function WorkshopPanel({
   function close(message: string) {
     setPatch(null);
     setExcluded(new Set());
-    setEditing(false);
+    setEditing(new Set());
     setIssues([]);
     setStatus(message);
   }
@@ -195,8 +189,9 @@ export function WorkshopPanel({
       return;
     }
     setIssues([]);
-    setExcluded(new Set());
-    setEditing(false);
+    // A goal offered in several readings starts with none chosen: the human picks, nobody else.
+    setExcluded(new Set(goalChoice(answer.patch).map((goal) => goal.opId)));
+    setEditing(new Set());
     setPatch(answer.patch);
   }
 
@@ -229,6 +224,24 @@ export function WorkshopPanel({
     if (next.has(opId)) next.delete(opId);
     else next.add(opId);
     setExcluded(next);
+  }
+
+  /** Exactly one goal of the choice is kept; the others are left out of what is sent. */
+  function chooseGoal(opId: string) {
+    if (!patch) return;
+    const next = new Set(excluded);
+    for (const goal of goalChoice(patch)) {
+      if (goal.opId === opId) next.delete(goal.opId);
+      else next.add(goal.opId);
+    }
+    setExcluded(next);
+  }
+
+  function toggleEditing(opId: string) {
+    const next = new Set(editing);
+    if (next.has(opId)) next.delete(opId);
+    else next.add(opId);
+    setEditing(next);
   }
 
   const shownIssues = issues.length > 0 ? issues : result && !result.ok ? result.issues : [];
@@ -321,65 +334,16 @@ export function WorkshopPanel({
           </p>
           {patch.summary && <p className="muted">{patch.summary}</p>}
 
-          <ol className="diff">
-            {entries.map((entry) => {
-              const operation = patch.operations.find((o) => o.opId === entry.opId)!;
-              const included = !excluded.has(entry.opId);
-              const fields = EDITABLE_OP_FIELDS[operation.op];
-              return (
-                <li
-                  key={entry.opId}
-                  className={`diff-entry ${entry.op} ${included ? "" : "excluded"}`}
-                  data-testid={`diff-${entry.opId}`}
-                  data-op={entry.op}
-                >
-                  <label className="row">
-                    <input
-                      type="checkbox"
-                      checked={included}
-                      aria-label={`Include ${entry.opId}`}
-                      onChange={() => toggle(entry.opId)}
-                    />
-                    <strong>{entry.headline}</strong>
-                  </label>
-
-                  {editing && included && fields.length > 0 ? (
-                    fields.map((field) => (
-                      <label key={field} className="field">
-                        <span>{field}</span>
-                        <textarea
-                          name={`${entry.opId}-${field}`}
-                          rows={2}
-                          value={String((operation as Record<string, unknown>)[field] ?? "")}
-                          onChange={(event) => editOperation(entry.opId, field, event.target.value)}
-                        />
-                      </label>
-                    ))
-                  ) : (
-                    <>
-                      {entry.before !== undefined && <p className="before">− {entry.before}</p>}
-                      {entry.after && <p className="after">+ {entry.after}</p>}
-                    </>
-                  )}
-
-                  <blockquote className="source">
-                    “{entry.source.snippet}”
-                    <footer>
-                      {entry.source.rationale}{" "}
-                      <span className="muted">
-                        {entry.source.sourceLabel && (
-                          <>
-                            · from <span data-testid={`source-of-${entry.opId}`}>{entry.source.sourceLabel}</span>{" "}
-                          </>
-                        )}
-                        · confidence {entry.source.confidence.toFixed(2)} (advisory only) · <code>{entry.targetId}</code>
-                      </span>
-                    </footer>
-                  </blockquote>
-                </li>
-              );
-            })}
-          </ol>
+          <ProposalReview
+            product={product}
+            patch={patch}
+            excluded={excluded}
+            editing={editing}
+            onToggle={toggle}
+            onChooseGoal={chooseGoal}
+            onEdit={editOperation}
+            onEditToggle={toggleEditing}
+          />
 
           <div className="row actions">
             <button
@@ -394,9 +358,9 @@ export function WorkshopPanel({
               type="button"
               className="secondary"
               data-testid="proposal-edit"
-              onClick={() => setEditing(!editing)}
+              onClick={() => setEditing(editing.size > 0 ? new Set() : new Set(patch.operations.map((o) => o.opId)))}
             >
-              {editing ? "Done editing" : "Edit"}
+              {editing.size > 0 ? "Done editing" : "Edit all"}
             </button>
             <button
               type="button"

@@ -75,6 +75,7 @@ export function structureWithMarkers(context: string | ContextBundle, product: P
   const out: AgentOutput = {
     summary: "",
     goal: null,
+    goalAlternatives: [],
     personas: [],
     needs: [],
     steps: [],
@@ -139,7 +140,9 @@ export function structureWithMarkers(context: string | ContextBundle, product: P
     const rest = match[3].trim();
 
     if (marker === "goal") {
-      out.goal = { statement: rest, source: explicit(line) };
+      // The first Goal line is the goal; every further one is an alternative the human chooses between.
+      if (out.goal) (out.goalAlternatives ??= []).push({ statement: rest, source: explicit(line) });
+      else out.goal = { statement: rest, source: explicit(line) };
     } else if (marker === "persona" || marker === "actor") {
       const { attributes, body } = attributesOf(rest);
       const [name, ...description] = body.split(DASH);
