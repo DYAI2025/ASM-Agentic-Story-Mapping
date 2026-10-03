@@ -1,6 +1,6 @@
 # Work order: Resident path
 
-Slice `slice-primary-persona` of Parcel lockers, revision 2 (`a1173e57`).
+Slice `slice-primary-persona` of Parcel lockers, revision 2 (`500cdcc2`).
 
 Work order contract: `asm.execution-brief`, briefVersion 3.
 
@@ -10,9 +10,9 @@ Residents collect a parcel without waiting for a courier. (`goal-parcel-lockers`
 
 ## VERIFIED / APPROVED CONTEXT
 
-- Approved: revision 2 by Maya (Product Lead) at 2026-10-03T13:04:23.440Z.
-- Who else matters: considered by Maya (Product Lead) at 2026-10-03T13:04:23.727Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
-- Slice selected by Maya (Product Lead) at 2026-10-03T13:04:23.967Z (candidate `4ce9e53f`, derivation rules version 2).
+- Approved: revision 2 by Maya (Product Lead) at 2026-10-03T13:21:37.364Z.
+- Who else matters: considered by Maya (Product Lead) at 2026-10-03T13:21:37.563Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
+- Slice selected by Maya (Product Lead) at 2026-10-03T13:21:37.764Z (candidate `4ce9e53f`, derivation rules version 2).
 - Value: VALUE_RESOLVED (`need-get-my-parcel-on-the-day-it-arrives`, `need-know-when-something-has-arrived`). The slice references at least one need on the map. ASM has not measured any business value.
 - Verified: nothing. Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested.
 
@@ -74,5 +74,5 @@ A draft derived from the map. A human has to confirm it before it binds anyone.
 
 - Product: Parcel lockers (`parcel-lockers`), schema version 1
 - Revision: 2 (approved)
-- Approved by: Maya (Product Lead) at 2026-10-03T13:04:23.440Z
-- Map fingerprint: `a1173e57`
+- Approved by: Maya (Product Lead) at 2026-10-03T13:21:37.364Z
+- Map fingerprint: `500cdcc2`
