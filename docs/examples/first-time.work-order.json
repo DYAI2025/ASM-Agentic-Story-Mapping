@@ -13,18 +13,18 @@
     "approval": {
       "revision": 2,
       "approvedBy": "Noor (first-time Product Lead)",
-      "approvedAt": "2026-10-03T13:32:02.483Z"
+      "approvedAt": "2026-10-03T13:41:32.595Z"
     },
     "selection": {
       "candidateId": "slice-outcome-thread",
       "selectedBy": "Noor (first-time Product Lead)",
-      "selectedAt": "2026-10-03T13:32:03.018Z",
+      "selectedAt": "2026-10-03T13:41:33.128Z",
       "candidateFingerprint": "f532f5ce",
       "derivationVersion": 2
     },
     "peopleConsidered": {
       "confirmedBy": "Noor (first-time Product Lead)",
-      "confirmedAt": "2026-10-03T13:32:02.800Z",
+      "confirmedAt": "2026-10-03T13:41:32.931Z",
       "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
     },
     "value": {
@@ -226,7 +226,7 @@
     "revision": 2,
     "status": "approved",
     "approvedBy": "Noor (first-time Product Lead)",
-    "approvedAt": "2026-10-03T13:32:02.483Z",
-    "mapFingerprint": "4f8600c8"
+    "approvedAt": "2026-10-03T13:41:32.595Z",
+    "mapFingerprint": "28adac65"
   }
 }

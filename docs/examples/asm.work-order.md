@@ -1,6 +1,6 @@
 # Work order: Thread to “Export execution-ready work”
 
-Slice `slice-outcome-thread` of ASM – Agentic Story Mapping, revision 3 (`2411f173`).
+Slice `slice-outcome-thread` of ASM – Agentic Story Mapping, revision 3 (`bdbdd611`).
 
 Work order contract: `asm.execution-brief`, briefVersion 3.
 
@@ -10,9 +10,9 @@ Software teams without prior AI experience can move from product discussion to a
 
 ## VERIFIED / APPROVED CONTEXT
 
-- Approved: revision 3 by Maya (E2E) at 2026-10-03T13:31:57.491Z.
-- Who else matters: considered by Maya (E2E) at 2026-10-03T13:31:57.856Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
-- Slice selected by Maya (E2E) at 2026-10-03T13:31:58.121Z (candidate `ef5f52e6`, derivation rules version 2).
+- Approved: revision 3 by Maya (E2E) at 2026-10-03T13:41:27.110Z.
+- Who else matters: considered by Maya (E2E) at 2026-10-03T13:41:27.518Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
+- Slice selected by Maya (E2E) at 2026-10-03T13:41:27.834Z (candidate `ef5f52e6`, derivation rules version 2).
 - Value: VALUE_RESOLVED (`need-shared-narrative`, `need-approve-meaning`, `need-buildable-slice`, `need-stable-references`). The slice references at least one need on the map. ASM has not measured any business value.
 - Verified: nothing. Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested.
 
@@ -102,5 +102,5 @@ A draft derived from the map. A human has to confirm it before it binds anyone.
 
 - Product: ASM – Agentic Story Mapping (`asm`), schema version 1
 - Revision: 3 (approved)
-- Approved by: Maya (E2E) at 2026-10-03T13:31:57.491Z
-- Map fingerprint: `2411f173`
+- Approved by: Maya (E2E) at 2026-10-03T13:41:27.110Z
+- Map fingerprint: `bdbdd611`
