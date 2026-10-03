@@ -7,7 +7,7 @@ import { strictOutputSchema } from "../../src/agent/json-schema";
 import { buildProposal, providerFromEnv } from "../../src/agent/narrative-builder";
 import { OPENAI_DEFAULT_MODEL, OpenAIProvider } from "../../src/agent/openai-provider";
 import { OpenRouterProvider } from "../../src/agent/openrouter-provider";
-import { SYSTEM_PROMPT } from "../../src/agent/prompt";
+import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT } from "../../src/agent/prompt";
 import { ProviderError } from "../../src/agent/provider";
 import { buildReview } from "../../src/agent/reviewer";
 import { bundleFromTranscript, type ContextBundle } from "../../src/domain/context";
@@ -219,7 +219,11 @@ describe("OpenRouter provider (chat completions)", () => {
     const { fetch, calls } = fetchStub([{ body: openrouterOk({ summary: "Nothing stands out.", findings: [] }) }]);
     const result = await buildReview(loadFixture(), new OpenRouterProvider({ apiKey: KEY, model: "vendor/model-x", fetch }));
     expect(result.ok).toBe(true);
-    expect(JSON.parse(String(calls[0].init.body)).response_format.json_schema.name).toBe("asm_review");
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.response_format.json_schema.name).toBe("asm_review");
+    // Found by the independent verifier on 5ed740f: the review sent with the proposal's instructions stayed green.
+    expect(body.messages[0]).toEqual({ role: "system", content: REVIEW_SYSTEM_PROMPT });
+    expect(body.messages[1].content).toContain("Report your findings on this map.");
   });
 });
 
@@ -307,8 +311,18 @@ describe("provider selection from the environment", () => {
     }
   });
 
-  it("an absurd timeout setting is refused rather than silently ignored", () => {
-    expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "openai", OPENAI_API_KEY: KEY, ASM_AGENT_TIMEOUT_MS: "soon" })).toThrow(/ASM_AGENT_TIMEOUT_MS/);
+  it.each(["soon", "0", "999", "600001", "1.5", "-5000"])("a timeout setting of %s is refused rather than silently used", (value) => {
+    expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "openai", OPENAI_API_KEY: KEY, ASM_AGENT_TIMEOUT_MS: value })).toThrow(/ASM_AGENT_TIMEOUT_MS/);
+  });
+
+  it("a timeout within bounds is used as given", async () => {
+    const { fetch } = fetchStub([{ hang: true }]);
+    const provider = new OpenAIProvider({ apiKey: KEY, fetch, timeoutMs: 1000 });
+    const started = Date.now();
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+    expect(result.ok === false && result.issues[0].message).toMatch(/timed out after 1000 ms/);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+    expect(() => providerFromEnv({ ASM_AGENT_PROVIDER: "openai", OPENAI_API_KEY: KEY, ASM_AGENT_TIMEOUT_MS: "1000" })).not.toThrow();
   });
 });
 
