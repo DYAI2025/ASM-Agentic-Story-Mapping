@@ -138,3 +138,39 @@ From the live harness: the configured provider with a key that cannot work.
 The failure is said in the browser, nothing is written, no secret is shown.
 
 ![15 — provider error](screenshots/live-provider-error-bad-key.png)
+
+## Live intake: one repair (ASM-29)
+
+These three states come from `tests/e2e/schema-repair.spec.ts`. The app runs
+its real `openai` adapter against a scripted model on localhost
+(`tests/e2e/model-stub-server.ts`), so the request, the one repair and the
+validation are the product's own; only the model's answers are scripted. No
+key and no real model are involved. The live runs against the reference model
+are the battery recorded on ASM-29.
+
+### 16. An answer in the wrong shape, repaired once
+
+The first answer has the shape External QA recorded from the reference model
+(source fields beside each item, needs as `id`/`text`). The product asked once
+more with the contract and what was refused; the second answer passed the
+same checks as any other and is shown for review. Two model calls; nothing is
+saved until Accept.
+
+![16 — repaired proposal](screenshots/asm29-01-repaired-proposal.png)
+
+### 17. Refused after the one repair
+
+An answer that never has the contract's shape is refused after two calls,
+never a third. The product file and the work state are unchanged. (How the
+refusal reads to a first-time user is ASM-30.)
+
+![17 — refused after repair](screenshots/asm29-02-refused-after-repair.png)
+
+### 18. A near-miss quote, named in the repair
+
+The first answer is in the right shape, but one quote is not in the text (its
+first word dropped, the case of the next letter changed). The repair names it
+with its value; the corrected answer is reviewed, and what Accept makes canon
+quotes the text exactly.
+
+![18 — near-miss quote repaired](screenshots/asm29-03-inexact-quote-repaired.png)
