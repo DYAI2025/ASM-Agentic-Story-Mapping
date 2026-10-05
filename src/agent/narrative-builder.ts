@@ -2,14 +2,19 @@ import { GOAL_REQUIRED, blankProduct, lacksGoal } from "../domain/bootstrap";
 import { MAX_CONTEXT_CHARS, bundleFromTranscript, validateContextBundle, type ContextBundle } from "../domain/context";
 import { resolveProposal, type ProposalResult } from "../domain/map-patch";
 import type { ProductDocument } from "../domain/schema";
+import type { ValidationIssue } from "../domain/validate";
 import { AnthropicProvider } from "./anthropic-provider";
 import { FakeProvider } from "./fake-provider";
+import { redactSecrets } from "./http";
 import { OpenAIProvider } from "./openai-provider";
 import { OpenRouterProvider } from "./openrouter-provider";
-import { ProviderError, type AgentProvider, type ReviewProvider } from "./provider";
+import { ProviderError, type AgentProvider, type RepairRequest, type ReviewProvider } from "./provider";
 
 /** The same limit as the context bundle's; kept under its old name for callers that think in one transcript. */
 export const MAX_TRANSCRIPT_CHARS = MAX_CONTEXT_CHARS;
+
+/** How many model calls one submission made: 1, or 2 when the one repair request was sent. */
+export type ProposalTrace = { modelCalls: number };
 
 /**
  * Context -> validated proposal. Reads the map, writes nothing. The context
@@ -17,34 +22,84 @@ export const MAX_TRANSCRIPT_CHARS = MAX_CONTEXT_CHARS;
  * provider sees it. Whatever the provider returns goes through
  * `resolveProposal`; a provider failure or an invalid answer yields issues,
  * never a partial proposal.
+ *
+ * One repair, and only one (ASM-29): when an answer parsed but does not have
+ * the contract's shape, the provider is asked once more, with the contract and
+ * what did not match. That answer is untrusted like the first and goes through
+ * `resolveProposal` from scratch. Nothing else is repaired: a provider failure
+ * (credentials, rate limit, timeout, network, refusal, filter, cut-off, no
+ * JSON) and a provenance or reference failure stay as they are. There is no
+ * loop, so no submission makes a third call.
  */
 export async function buildProposal(
   product: ProductDocument,
   context: string | ContextBundle,
   provider: AgentProvider,
+  trace: ProposalTrace = { modelCalls: 0 },
 ): Promise<ProposalResult> {
   const validated = validateContextBundle(typeof context === "string" ? bundleFromTranscript(context) : context);
   if (!validated.ok) return validated;
   const bundle = validated.bundle;
 
-  let raw: unknown;
-  try {
-    raw = await provider.structure({ context: bundle, product });
-  } catch (error) {
-    if (!(error instanceof ProviderError)) throw error;
-    return { ok: false, issues: [{ code: "provider_error", path: provider.name, message: error.message }] };
+  const ask = async (repair?: RepairRequest): Promise<ProposalResult> => {
+    trace.modelCalls++;
+    let raw: unknown;
+    try {
+      raw = await provider.structure(repair ? { context: bundle, product, repair } : { context: bundle, product });
+    } catch (error) {
+      if (!(error instanceof ProviderError)) throw error;
+      return { ok: false, issues: [{ code: "provider_error", path: provider.name, message: error.message }] };
+    }
+    return resolveProposal(product, raw, bundle, provider.name);
+  };
+
+  const first = await ask();
+  if (first.ok || !isShapeFailure(first.issues)) return first;
+  return ask(repairRequest(first.issues));
+}
+
+/** The answer parsed, and the output contract (`AgentOutputSchema`) is what refused it: nothing else qualifies for repair. */
+function isShapeFailure(issues: readonly ValidationIssue[]): boolean {
+  return issues.length > 0 && issues.every((issue) => issue.code.startsWith("agent_output_"));
+}
+
+export const MAX_REPAIR_PROBLEMS = 20;
+const MAX_PROBLEM_PATH = 120;
+const MAX_PROBLEM_MESSAGE = 240;
+
+const oneLine = (text: string) => text.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
+const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/**
+ * The bounded problem summary a repair request carries: the same problem at
+ * every position of an array is one line with a count (`needs.*.persona`),
+ * each line is clipped and on one line, anything shaped like a key is
+ * redacted, and at most MAX_REPAIR_PROBLEMS lines go out, the rest counted.
+ */
+export function repairRequest(issues: readonly ValidationIssue[]): RepairRequest {
+  const counts = new Map<string, number>();
+  for (const issue of issues) {
+    const path = clip(oneLine(issue.path.replace(/\.\d+(?=\.|$)/g, ".*")), MAX_PROBLEM_PATH);
+    const line = `${path}: ${clip(oneLine(issue.message), MAX_PROBLEM_MESSAGE)}`;
+    counts.set(line, (counts.get(line) ?? 0) + 1);
   }
-  return resolveProposal(product, raw, bundle, provider.name);
+  const lines = [...counts].map(([line, n]) => redactSecrets(n > 1 ? `${line} (${n} times)` : line));
+  return { problems: lines.slice(0, MAX_REPAIR_PROBLEMS), omitted: Math.max(0, lines.length - MAX_REPAIR_PROBLEMS) };
 }
 
 /**
  * A first product: the same builder, against the blank draft for that name.
  * A proposal that would leave the product without a goal is not shown as one.
  */
-export async function startProposal(name: string, context: string | ContextBundle, provider: AgentProvider): Promise<ProposalResult> {
+export async function startProposal(
+  name: string,
+  context: string | ContextBundle,
+  provider: AgentProvider,
+  trace: ProposalTrace = { modelCalls: 0 },
+): Promise<ProposalResult> {
   const blank = blankProduct(name);
   if (!blank.ok) return blank;
-  const result = await buildProposal(blank.product, context, provider);
+  const result = await buildProposal(blank.product, context, provider, trace);
   if (!result.ok && lacksGoal(result.issues)) return { ok: false, issues: [GOAL_REQUIRED] };
   if (!result.ok && result.issues.some((issue) => issue.code === "empty_proposal"))
     return {

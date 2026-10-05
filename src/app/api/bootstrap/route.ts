@@ -38,10 +38,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const proposal = await startProposal(body.name, context, provider);
+  // How many model calls this submission made (1, or 2 with the one repair request): observability only, no secret in it.
+  const trace = { modelCalls: 0 };
+  const proposal = await startProposal(body.name, context, provider, trace);
   if (!proposal.ok) {
     const providerFailed = proposal.issues.some((issue) => issue.code === "provider_error");
-    return Response.json({ issues: proposal.issues, provider: provider.name }, { status: providerFailed ? 502 : 422 });
+    return Response.json({ issues: proposal.issues, provider: provider.name, modelCalls: trace.modelCalls }, { status: providerFailed ? 502 : 422 });
   }
-  return Response.json({ patch: proposal.patch, provider: provider.name });
+  return Response.json({ patch: proposal.patch, provider: provider.name, modelCalls: trace.modelCalls });
 }

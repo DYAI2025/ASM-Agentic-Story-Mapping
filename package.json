@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "docs:refresh": "ASM_E2E_ARTIFACTS=docs playwright test",
-    "smoke:live": "playwright test -c playwright.live.config.ts"
+    "smoke:live": "playwright test -c playwright.live.config.ts --project live --project bad-key",
+    "battery:live": "BATTERY_RUN_ID=$(date +%s) playwright test -c playwright.live.config.ts --project battery"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

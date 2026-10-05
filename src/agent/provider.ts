@@ -6,6 +6,19 @@ export interface StructureInput {
   context: ContextBundle;
   /** The current map, as context for references. */
   product: ProductDocument;
+  /** Present only on the one repair request after an answer that did not have the contract's shape (ASM-29). */
+  repair?: RepairRequest;
+}
+
+/**
+ * What did not match the output contract last time: bounded, grouped lines
+ * built from the validation issues of the previous answer, never the answer
+ * itself. The provider adds the contract and asks once more.
+ */
+export interface RepairRequest {
+  problems: readonly string[];
+  /** Problem lines left out to keep the request bounded. */
+  omitted: number;
 }
 
 /**

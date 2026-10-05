@@ -3,7 +3,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
 import { DEFAULT_TIMEOUT_MS, contained, parseModelJson } from "./http";
-import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
+import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, structureMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
@@ -21,7 +21,7 @@ export function buildRequest(input: StructureInput, model: string) {
     model,
     max_tokens: 16000,
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user" as const, content: buildUserMessage(input.context, input.product) }],
+    messages: [{ role: "user" as const, content: structureMessage(input) }],
     output_config: {
       effort: "medium" as const,
       // The response is constrained to the agent output schema. The domain

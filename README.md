@@ -252,6 +252,26 @@ All four sit behind the same two interfaces and the same rules:
   strict JSON Schema: every property required, nothing additional, optional
   fields nullable. It is a courtesy to the model; the app relies only on its
   own validation of what comes back.
+- One repair, and only one (ASM-29). External QA measured the reference model
+  (`qwen/qwen3-235b-a22b-2507` through OpenRouter) ignoring that schema: the
+  source fields flattened onto each item, needs as `id`/`text`. When an answer
+  parsed but the output contract (`AgentOutputSchema`) refuses its shape,
+  `buildProposal` asks the same provider once more, with the contract as JSON
+  Schema text and a bounded list of what did not match (grouped by position,
+  clipped, at most 20 lines, anything shaped like a key redacted; the previous
+  answer itself is not sent back). The second answer is untrusted like the
+  first and goes through `resolveProposal` from scratch. Nothing else is
+  repaired: a provider failure (credentials, rate limit, timeout, network,
+  refusal, content filter, cut-off, non-JSON, a key in the output) and a
+  provenance or reference failure (a snippet not in the source it names, an
+  unknown source, an undeclared ref, an id not on the map) are refused after
+  the first call. There is no loop, so a submission makes one model call or
+  two, never three; `/api/proposal` and `/api/bootstrap` report the number as
+  `modelCalls`. The oracle is `tests/agent/schema-repair.test.ts` (built from
+  the shape QA recorded, red on the code before the change) and, in the
+  browser, `tests/e2e/schema-repair.spec.ts` against a scripted model on
+  localhost (`tests/e2e/model-stub-server.ts`) through the real `openai`
+  adapter.
 - CI has no keys: the adapters are tested against a stubbed `fetch`. The live
   smoke (`npm run smoke:live`, see Checks) is run by hand with a real key.
 
@@ -578,6 +598,24 @@ the browser and write nothing. Screenshots, `record.json` (provider, seconds to
 proposal, counts, what was accepted) and the accepted map go to
 `.e2e-artifacts/live/`; the record is checked to contain no key. CI never runs
 this; the evidence is recorded on the ticket.
+
+### The live intake battery
+
+```bash
+ASM_AGENT_PROVIDER=openrouter ASM_AGENT_MODEL=qwen/qwen3-235b-a22b-2507 OPENROUTER_API_KEY=… npm run battery:live
+```
+
+The External-QA submissions of 2026-10-04 (`tests/live/fixtures/qa/`, checksums
+in `SHA256SUMS`): A2 product description, A3 meeting transcript, A4 at about
+5 000 words and near the 60 000-character limit, A5 three sources (pasted
+text, `.txt`, `.md`). `tests/live/intake-battery.spec.ts` submits each from the
+start screen of a fresh workspace, one minute apart (`BATTERY_PAUSE_MS`),
+records per submission the HTTP status, `modelCalls`, issue codes, seconds and
+whether a file appeared, accepts the first valid proposal as a human would and
+checks every recorded snippet against its source, then asserts at least four of
+five valid. `battery.json` in `.e2e-artifacts/live/battery/` names the commit
+and whether `src/` had uncommitted changes. Each run is a sample of a
+non-deterministic model; the results per commit are recorded on the ticket.
 
 ### The whole first-time path in one test
 

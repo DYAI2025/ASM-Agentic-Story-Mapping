@@ -2,7 +2,7 @@ import { AgentOutputSchema } from "../domain/map-patch";
 import { AgentReviewOutputSchema } from "../domain/review";
 import { DEFAULT_TIMEOUT_MS, apiErrorMessage, contained, hasApiError, parseModelJson, postJson } from "./http";
 import { strictOutputSchema } from "./json-schema";
-import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, buildUserMessage } from "./prompt";
+import { REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, buildReviewMessage, structureMessage } from "./prompt";
 import { ProviderError, type AgentProvider, type ReviewInput, type ReviewProvider, type StructureInput } from "./provider";
 
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -43,7 +43,7 @@ export class OpenRouterProvider implements AgentProvider, ReviewProvider {
   }
 
   structure(input: StructureInput): Promise<unknown> {
-    return contained([this.apiKey], () => this.ask(SYSTEM_PROMPT, buildUserMessage(input.context, input.product), PROPOSAL_FORMAT));
+    return contained([this.apiKey], () => this.ask(SYSTEM_PROMPT, structureMessage(input), PROPOSAL_FORMAT));
   }
 
   review(input: ReviewInput): Promise<unknown> {

@@ -40,6 +40,8 @@ export default defineConfig({
   projects: [
     { name: "live", use: { baseURL: `http://127.0.0.1:${LIVE_PORT}` }, grep: /@live/ },
     { name: "bad-key", use: { baseURL: `http://127.0.0.1:${BAD_KEY_PORT}` }, grep: /@bad-key/ },
+    // ASM-29: the External-QA intake battery against the same live server (`npm run battery:live`).
+    { name: "battery", use: { baseURL: `http://127.0.0.1:${LIVE_PORT}` }, grep: /@battery/ },
   ],
   webServer: [
     {
