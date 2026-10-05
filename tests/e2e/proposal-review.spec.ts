@@ -112,6 +112,10 @@ test("while Accept is in flight, Reject and every edit control are disabled; the
   await page.getByTestId("transcript-input").fill(TEXT.split("\n").filter((line) => !line.startsWith("Goal: Couriers")).join("\n"));
   await page.getByTestId("structure-button").click();
   await expect(page.getByTestId("proposal-review")).toBeVisible();
+  // Open every field first, so textareas and chips are on the page when the acceptance goes out (external review round 13).
+  await page.getByTestId("proposal-edit").click();
+  await expect(page.getByTestId("proposal-edit")).toHaveText("Done editing");
+  await expect(page.getByTestId("proposal-review").locator("textarea")).not.toHaveCount(0);
 
   // Hold the accept response until the test releases it.
   let release: () => void = () => {};
@@ -125,8 +129,8 @@ test("while Accept is in flight, Reject and every edit control are disabled; the
   await expect(page.getByTestId("proposal-reject")).toBeDisabled();
   await expect(page.getByTestId("proposal-edit")).toBeDisabled();
   await expect(page.getByTestId("proposal-review")).toHaveAttribute("data-pending", "true");
-  // Nothing in the review can be changed any more: no enabled input or button inside it.
-  await expect(page.getByTestId("proposal-review").locator("input:enabled, button:enabled")).toHaveCount(0);
+  // Nothing in the review can be changed any more: no enabled control of any kind inside it.
+  await expect(page.getByTestId("proposal-review").locator("input:enabled, button:enabled, textarea:enabled, select:enabled")).toHaveCount(0);
   await expect(page.getByTestId("proposal-status")).toContainText("Accepting");
   release();
   await expect(page.getByTestId("product-name")).toHaveText(NAME);
