@@ -15,7 +15,11 @@ import { asQaObserved } from "../fixtures/qa-observed-shape";
  * - a repair request (the product's repair section present) is answered with
  *   a valid proposal for the marker lines in the pasted text;
  * - a text containing `[stub:never-in-shape]` is answered in the wrong shape
- *   every time.
+ *   every time;
+ * - a text containing `[stub:inexact-quote]` is first answered in the right
+ *   shape with one quote that is not in the text (its first word dropped and
+ *   the case of the next letter changed, the kind of near miss the reference
+ *   model made on 2026-10-06), then correctly on the repair request.
  *
  * It records every request so a test can count them (`GET /calls`) and see
  * whether the key travelled anywhere but the header. `POST /reset` forgets them.
@@ -24,13 +28,21 @@ const PORT = Number(process.env.STUB_PORT ?? 3315);
 const KEY = process.env.STUB_KEY ?? "";
 const REPAIR_MARKER = "Your previous answer to this request could not be used";
 
-type Recorded = { repair: boolean; contract: boolean; keyInBody: boolean; authorized: boolean };
+type Recorded = { repair: boolean; contract: boolean; keyInBody: boolean; authorized: boolean; namesRefusedQuote: boolean };
 let calls: Recorded[] = [];
 
 /** The text of the first source block of a proposal request: what the human pasted. */
 function pastedText(message: string): string {
   const block = /\n<([^>\n]+)>\nlabel: [^\n]*\n([\s\S]*?)\n<\/\1>/.exec(message);
   return block ? block[2] : "";
+}
+
+/** The quote with its first word dropped and the case of the next letter changed: close to the text, not in it. */
+function nearMiss(snippet: string): string {
+  const rest = snippet.split(" ").slice(1).join(" ");
+  if (rest === "") return "";
+  const first = rest[0] === rest[0].toUpperCase() ? rest[0].toLowerCase() : rest[0].toUpperCase();
+  return first + rest.slice(1);
 }
 
 function answer(output: unknown) {
@@ -56,16 +68,22 @@ const server = http.createServer((request, response) => {
     const body = JSON.parse(raw) as { input?: Array<{ content?: string }> };
     const message = body.input?.[0]?.content ?? "";
     const repair = message.includes(REPAIR_MARKER);
+    const text = pastedText(message);
+    const draft = blankProduct("Stub");
+    if (!draft.ok) return send(500, { error: { message: "no draft" } });
+    const valid = structureWithMarkers(text, draft.product);
+    const inexact = nearMiss(valid.personas[0]?.source.snippet ?? "");
     calls.push({
       repair,
       contract: message.includes(OUTPUT_CONTRACT),
       keyInBody: KEY !== "" && raw.includes(KEY),
       authorized: request.headers.authorization === `Bearer ${KEY}`,
+      namesRefusedQuote: repair && inexact !== "" && message.includes(inexact),
     });
-    const text = pastedText(message);
-    const draft = blankProduct("Stub");
-    if (!draft.ok) return send(500, { error: { message: "no draft" } });
-    const valid = structureWithMarkers(text, draft.product);
+    if (text.includes("[stub:inexact-quote]") && !repair) {
+      const spoiled = { ...valid, personas: valid.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, snippet: inexact } } : p)) };
+      return send(200, answer(spoiled));
+    }
     if (text.includes("[stub:never-in-shape]") || !repair) return send(200, answer(asQaObserved(valid)));
     return send(200, answer(valid));
   });

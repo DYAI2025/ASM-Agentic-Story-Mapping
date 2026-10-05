@@ -56,7 +56,7 @@ type Outcome = Attempt & {
   valid: boolean;
   /** The same, counting the first attempt only. */
   validFirstAttempt: boolean;
-  /** Every attempt: one, or two when the provider answered 429 and the submission was made again after its retry-after. */
+  /** Every attempt: one, or more when the provider answered 429 and the submission was made again after its retry-after (at most three times). */
   attempts: Attempt[];
   productFileAfter: boolean;
   workStateFileAfter: boolean;
@@ -142,15 +142,17 @@ async function submit(page: Page, submission: Submission): Promise<{ attempt: At
 /**
  * The product tells the human "rate limit reached; try again shortly" when the provider answers 429. Measured on
  * 2026-10-06: OpenRouter's upstream for the reference model (GMICloud, shared pool) answered 429 with
- * `retry_after_seconds: 60`. A person would try again after that, so the battery does too, once, and records both.
+ * `retry_after_seconds: 60`. A person would try again after that, so the battery does too, up to three times
+ * (PO decision 2026-10-06), and records every attempt; `validFirstAttempt` keeps the strict count.
  */
 const RETRY_AFTER_MS = Number(process.env.BATTERY_RETRY_AFTER_MS ?? 75_000);
+const MAX_RESUBMISSIONS = 3;
 const rateLimited = (attempt: Attempt) => attempt.httpStatus === 502 && attempt.firstMessages.some((m) => /rate limit/i.test(m));
 const ACCEPTED_MARKER = path.join(ARTIFACTS, "accepted.json");
 
 for (const submission of BATTERY) {
   test(`@battery ${submission.id}: proposal for human review, or a refusal that writes nothing`, async ({ page }) => {
-    test.setTimeout(900_000);
+    test.setTimeout(1_500_000);
     if (submission !== BATTERY[0]) await page.waitForTimeout(PAUSE_MS);
     await fs.rm(LIVE_PRODUCT_FILE, { force: true });
     await fs.rm(WORK_STATE_FILE, { force: true });
@@ -160,7 +162,7 @@ for (const submission of BATTERY) {
     const first = await submit(page, submission);
     const attempts = [first.attempt];
     let last = first;
-    if (rateLimited(first.attempt)) {
+    while (rateLimited(last.attempt) && attempts.length <= MAX_RESUBMISSIONS) {
       await page.waitForTimeout(RETRY_AFTER_MS);
       last = await submit(page, submission);
       attempts.push(last.attempt);

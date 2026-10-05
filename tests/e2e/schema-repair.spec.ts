@@ -27,7 +27,7 @@ const TEXT = [
 ].join("\n");
 const NEVER_IN_SHAPE = `${TEXT}\n[stub:never-in-shape]`;
 
-type StubCall = { repair: boolean; contract: boolean; keyInBody: boolean; authorized: boolean };
+type StubCall = { repair: boolean; contract: boolean; keyInBody: boolean; authorized: boolean; namesRefusedQuote: boolean };
 const stubCalls = async (): Promise<StubCall[]> => (await fetch(`${STUB}/calls`)).json();
 const exists = (file: string) => fs.access(file).then(() => true, () => false);
 
@@ -94,6 +94,33 @@ test("first map: an answer that never has the shape is refused after two calls; 
   expect(await exists(E2E_REPAIR_PRODUCT_FILE)).toBe(false);
   expect(await exists(E2E_REPAIR_WORK_STATE_FILE)).toBe(false);
   await page.screenshot({ path: path.join(SCREENSHOTS, "asm29-02-refused-after-repair.png"), fullPage: true });
+});
+
+test("first map: a quote that is not in the text is named in the one repair; the corrected answer is reviewed, the refused quote is nowhere", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("product-name-input").fill("Parcel lockers");
+  const { status, body } = await structure(page, "/api/bootstrap", `${TEXT}\n[stub:inexact-quote]`);
+  expect(status).toBe(200);
+  expect(body.modelCalls).toBe(2);
+  const calls = await stubCalls();
+  expectOneRepair(calls);
+  expect(calls[1].namesRefusedQuote).toBe(true);
+  await expect(page.getByTestId("proposal-review")).toBeVisible();
+  await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
+  expect(await exists(E2E_REPAIR_PRODUCT_FILE)).toBe(false);
+  await page.screenshot({ path: path.join(SCREENSHOTS, "asm29-03-inexact-quote-repaired.png"), fullPage: true });
+
+  // What becomes canon on Accept quotes the text exactly; the refused near miss is nowhere.
+  await page.getByTestId("proposal-accept").click();
+  await expect(page.getByTestId("revision-status")).toHaveText("proposed");
+  const stored = YAML.parse(await fs.readFile(E2E_REPAIR_PRODUCT_FILE, "utf8"));
+  const refused = "resident — Lives in the building and receives parcels.";
+  expect(TEXT).not.toContain(refused);
+  for (const entry of stored.provenance) {
+    expect(TEXT).toContain(entry.snippet);
+    expect(entry.snippet).not.toBe(refused);
+  }
+  expect(stored.provenance.map((entry: { snippet: string }) => entry.snippet)).toContain("Persona: Resident — Lives in the building and receives parcels.");
 });
 
 test("existing map: a repaired answer is reviewed; the file changes only on Accept, to the next proposed revision", async ({ page }) => {

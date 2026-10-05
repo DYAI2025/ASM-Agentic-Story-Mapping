@@ -255,28 +255,31 @@ All four sit behind the same two interfaces and the same rules:
 - One repair, and only one (ASM-29). External QA measured the reference model
   (`qwen/qwen3-235b-a22b-2507` through OpenRouter) ignoring that schema: the
   source fields flattened onto each item, needs as `id`/`text`. When an answer
-  parsed but the output contract (`AgentOutputSchema`) refuses its shape,
-  `buildProposal` asks the same provider once more, with the contract as JSON
-  Schema text and a bounded list of what did not match (grouped by position,
-  clipped, at most 20 lines, anything shaped like a key redacted; the previous
-  answer itself is not sent back). The second answer is untrusted like the
-  first and goes through `resolveProposal` from scratch. Nothing else is
-  repaired: a provider failure (credentials, rate limit, timeout, network,
-  refusal, content filter, cut-off, non-JSON, a key in the output) and a
-  provenance or reference failure (a snippet not in the source it names, an
-  unknown source, an undeclared ref, an id not on the map) are refused after
-  the first call. There is no loop, so a submission makes one model call or
-  two, never three; `/api/proposal` and `/api/bootstrap` report the number as
-  `modelCalls`. The instructions of every proposal request state the contract
-  as well, with the exact-quote rule, the `new:` ref syntax and the closed role
-  list spelled out: after the repair alone, the reference model's remaining
-  misses on 2026-10-06 were inexact quotes, refs with underscores and roles
-  outside the list, all refused by the unchanged validation. The oracle is
-  `tests/agent/schema-repair.test.ts` (built from
-  the shape QA recorded, red on the code before the change) and, in the
-  browser, `tests/e2e/schema-repair.spec.ts` against a scripted model on
-  localhost (`tests/e2e/model-stub-server.ts`) through the real `openai`
-  adapter.
+  parsed but was refused — for its shape (`AgentOutputSchema`), or for named
+  items in it (a snippet not in the source it names, an unknown or missing
+  source, a `new:` ref that is malformed, duplicated or undeclared, an id not
+  on the map, a role outside the list, a text or count limit) — `buildProposal`
+  asks the same provider once more, with the contract as JSON Schema text and
+  a bounded list of what was refused (shape problems grouped by position, a
+  refused item with its position and its value quoted, every line clipped, at
+  most 20 lines, anything shaped like a key redacted; the whole previous answer
+  is not sent back). The second answer is untrusted like the first and goes
+  through `resolveProposal` from scratch: a refused quote is never accepted as
+  it was, and nothing is corrected by ASM. Not repaired: a provider failure
+  (credentials, rate limit, timeout, network, refusal, content filter,
+  cut-off, non-JSON, a key in the output), an answer that proposes nothing,
+  and a proposal the map cannot take; those are refused after the first call.
+  There is no loop, so a submission makes one model call or two, never three;
+  `/api/proposal` and `/api/bootstrap` report the number as `modelCalls`. The
+  instructions of every proposal request state the contract as well, with the
+  exact-quote rule, the `new:` ref syntax and the closed role list spelled
+  out. The repair scope beyond shape (named items) is the PO's decision of
+  2026-10-06 on ASM-29, after the shape-only repair plus those instructions
+  left single refused items in otherwise valid answers on long inputs. The
+  oracle is `tests/agent/schema-repair.test.ts` (built from the shape QA
+  recorded, red on the code before each change) and, in the browser,
+  `tests/e2e/schema-repair.spec.ts` against a scripted model on localhost
+  (`tests/e2e/model-stub-server.ts`) through the real `openai` adapter.
 - CI has no keys: the adapters are tested against a stubbed `fetch`. The live
   smoke (`npm run smoke:live`, see Checks) is run by hand with a real key.
 
@@ -620,9 +623,10 @@ whether a file appeared, accepts the first valid proposal as a human would and
 checks every recorded snippet against its source, then asserts at least four of
 five valid. When the provider answers 429 (measured: OpenRouter's upstream for
 the reference model rate-limits a shared pool and asks for 60 s), the
-submission is made once more after `BATTERY_RETRY_AFTER_MS`, as the product's
-"try again shortly" tells the human to; both attempts are recorded, and the
-record counts valid submissions both ways (`valid`, `validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit
+submission is made again after `BATTERY_RETRY_AFTER_MS`, up to three times, as
+the product's "try again shortly" tells the human to; every attempt is
+recorded, and the record counts valid submissions both ways (`valid`,
+`validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit
 and whether `src/` had uncommitted changes. Each run is a sample of a
 non-deterministic model; the results per commit are recorded on the ticket.
 

@@ -14,7 +14,7 @@ import { POST as bootstrapRoute } from "../../src/app/api/bootstrap/route";
 import { POST as proposalRoute } from "../../src/app/api/proposal/route";
 import { blankProduct } from "../../src/domain/bootstrap";
 import type { ContextBundle } from "../../src/domain/context";
-import { AgentOutputSchema, applyMapPatch, type AgentOutput } from "../../src/domain/map-patch";
+import { AgentOutputSchema, applyMapPatch, resolveProposal, type AgentOutput } from "../../src/domain/map-patch";
 import { loadProduct, productFilePath, workStateFilePath } from "../../src/server/store";
 import { fixtureText, loadFixture } from "../domain/helpers";
 import { asQaObserved } from "../fixtures/qa-observed-shape";
@@ -25,11 +25,13 @@ import { asQaObserved } from "../fixtures/qa-observed-shape";
  * External QA on 24a6386 measured the reference model (OpenRouter, Qwen)
  * answering in a shape the contract does not have: the source fields
  * flattened onto each item, needs as `id`/`text`. Each such answer was refused
- * after one call. Now an answer that parsed but does not have the contract's
- * shape gets exactly one more request, carrying the contract and what did not
- * match; that answer is checked from scratch like any other. Nothing else is
- * repaired: provider failures and provenance or reference failures stay
- * refused after one call. No submission makes a third call.
+ * after one call. Now an answer that parsed but was refused for its shape, or
+ * for named items in it (a quote not in its source, an unknown source, a ref,
+ * an id, a role, a text limit — PO decision 2026-10-06), gets exactly one more
+ * request, carrying the contract and what was refused; that answer is checked
+ * from scratch like any other, and nothing refused is ever accepted as it was.
+ * Provider failures, an empty answer and a proposal the map cannot take are not
+ * repaired. No submission makes a third call.
  */
 const TRANSCRIPT = readFileSync(path.join(__dirname, "..", "fixtures", "workshop-transcript.txt"), "utf8");
 const KEY = "sk-test-0123456789abcdef0123456789abcdef";
@@ -186,17 +188,20 @@ describe("the repair answer is checked from scratch (AC-29-04)", () => {
   });
 });
 
-describe("provenance and reference failures are not repaired (AC-29-05)", () => {
+describe("refused items are named once in the repair and never accepted as they were (AC-29-05; PO decision 2026-10-06)", () => {
   const twoSources: ContextBundle = {
     sources: [
       { id: "src-1", label: "Pasted text", kind: "pasted", text: "Residents collect parcels from a locker in the lobby." },
       { id: "src-2", label: "notes.md", kind: "file", text: "Couriers need a free compartment within a minute." },
     ],
   };
-  const onePersona = (source: Record<string, unknown>) => ({
+  const onePersona = (source: Record<string, unknown>, goal: unknown = undefined) => ({
     summary: "s",
     // A first product needs a goal to be acceptable at all; this one is quoted correctly.
-    goal: { statement: "Residents collect parcels from a locker.", source: { snippet: "Residents collect parcels", sourceId: "src-1", rationale: "r", confidence: 0.9 } },
+    goal:
+      goal === undefined
+        ? { statement: "Residents collect parcels from a locker.", source: { snippet: "Residents collect parcels", sourceId: "src-1", rationale: "r", confidence: 0.9 } }
+        : goal,
     goalAlternatives: [],
     personas: [{ ref: "new:courier", name: "Courier", description: "", roles: [], persona: true, source: { rationale: "r", confidence: 0.5, ...source } }],
     needs: [],
@@ -205,43 +210,99 @@ describe("provenance and reference failures are not repaired (AC-29-05)", () => 
     moves: [],
     unresolvedQuestions: [],
   });
+  const exact = { snippet: "Couriers need a free compartment", sourceId: "src-2" };
   const blank = () => {
     const draft = blankProduct("Parcel lockers");
     if (!draft.ok) throw new Error("blank draft");
     return draft.product;
   };
 
-  it("control: a quote from the source it names is accepted", async () => {
-    const result = await buildProposal(blank(), twoSources, scripted(onePersona({ snippet: "Couriers need a free compartment", sourceId: "src-2" })).provider);
-    expect(result.ok).toBe(true);
+  it("control: a quote from the source it names is accepted on the first call", async () => {
+    const { provider, inputs } = scripted(onePersona(exact));
+    expect((await buildProposal(blank(), twoSources, provider)).ok).toBe(true);
+    expect(inputs).toHaveLength(1);
   });
 
-  it.each<[string, Record<string, unknown>, string]>([
-    ["a fabricated quote", { snippet: "Couriers love the new lockers.", sourceId: "src-2" }, "snippet_not_in_source"],
-    ["a quote attributed to the other source", { snippet: "Couriers need a free compartment", sourceId: "src-1" }, "snippet_not_in_source"],
-    ["a quote across the boundary of two sources", { snippet: "in the lobby. Couriers need", sourceId: "src-1" }, "snippet_not_in_source"],
-    ["an unknown source", { snippet: "Couriers need a free compartment", sourceId: "src-9" }, "unknown_source"],
-    ["no source named while there are two", { snippet: "Couriers need a free compartment", sourceId: null }, "source_required"],
-  ])("%s: refused after one call", async (_name, source, code) => {
-    const { provider, inputs } = scripted(onePersona(source));
+  const refused: Array<[string, Record<string, unknown>, string, string]> = [
+    ["a fabricated quote", { snippet: "Couriers love the new lockers.", sourceId: "src-2" }, "snippet_not_in_source", "Couriers love the new lockers."],
+    ["a quote attributed to the other source", { snippet: "Couriers need a free compartment", sourceId: "src-1" }, "snippet_not_in_source", "Couriers need a free compartment"],
+    ["a quote across the boundary of two sources", { snippet: "in the lobby. Couriers need", sourceId: "src-1" }, "snippet_not_in_source", "in the lobby. Couriers need"],
+    ["a near miss (first word dropped, capital added)", { snippet: "Collect parcels from a locker", sourceId: "src-1" }, "snippet_not_in_source", "Collect parcels from a locker"],
+    ["an unknown source", { snippet: "Couriers need a free compartment", sourceId: "src-9" }, "unknown_source", "src-9"],
+    ["no source named while there are two", { snippet: "Couriers need a free compartment", sourceId: null }, "source_required", "personas[0].source.sourceId"],
+  ];
+
+  it.each(refused)("%s, answered the same way twice: refused after two calls; the repair named the item", async (_name, source, code, named) => {
+    const { provider, inputs } = scripted(onePersona(source), onePersona(source));
     const result = await buildProposal(blank(), twoSources, provider);
     expect(codes(result)).toEqual([code]);
-    expect(inputs).toHaveLength(1);
+    expect(inputs).toHaveLength(2);
+    const problems = inputs[1].repair!.problems.join("\n");
+    expect(problems).toContain("personas[0].source");
+    expect(problems).toContain(named);
   });
 
-  it("a fabricated quote in a shape-valid first answer is refused after one call", async () => {
+  it.each(refused)("%s, corrected in the repair: the corrected answer is the proposal, and the refused value is nowhere in it", async (_name, source, _code, named) => {
+    const { provider, inputs } = scripted(onePersona(source), onePersona(exact));
+    const result = await buildProposal(blank(), twoSources, provider);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(inputs).toHaveLength(2);
+    const persona = result.patch.operations.find((o) => o.op === "add_persona")!;
+    expect(persona.source).toMatchObject({ snippet: "Couriers need a free compartment", sourceId: "src-2", sourceLabel: "notes.md" });
+    if (_code === "snippet_not_in_source" && named !== exact.snippet) expect(JSON.stringify(result.patch)).not.toContain(named);
+  });
+
+  it("a fabricated quote in an answer on the existing map: named once; the same quote again is refused after two calls", async () => {
     const out = honest();
     const fabricated = { ...out, personas: out.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, snippet: "Words that are not in the text." } } : p)) };
-    const { provider, inputs } = scripted(fabricated);
+    const { provider, inputs } = scripted(fabricated, fabricated);
     expect(codes(await buildProposal(loadFixture(), TRANSCRIPT, provider))).toEqual(["snippet_not_in_source"]);
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1].repair!.problems.join("\n")).toContain("Words that are not in the text.");
+  });
+
+  it("an id that does not exist on the map: named once; an answer without it is the proposal", async () => {
+    const out = honest();
+    const ghost = { ...out, assignments: [{ step: "step-does-not-exist", persona: out.personas[0].ref, source: out.personas[0].source }] };
+    const { provider, inputs } = scripted(ghost, out);
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+    expect(result.ok).toBe(true);
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1].repair!.problems.join("\n")).toContain("step-does-not-exist");
+  });
+
+  it.each<[string, (o: AgentOutput) => unknown, string]>([
+    ["a new: ref with an underscore", (o) => ({ ...o, personas: o.personas.map((p, i) => (i === 0 ? { ...p, ref: "new:build_rota" } : p)) }), "invalid_ref"],
+    ["a ref declared twice", (o) => ({ ...o, personas: [...o.personas, { ...o.personas[0], name: `${o.personas[0].name} again` }] }), "duplicate_ref"],
+    ["a role outside the list", (o) => ({ ...o, personas: o.personas.map((p, i) => (i === 0 ? { ...p, roles: ["manager"] } : p)) }), "unknown_role"],
+  ])("%s: named once, a correct answer is the proposal", async (_name, spoil, code) => {
+    const out = honest();
+    expect(codes(resolveProposal(loadFixture(), spoil(out), TRANSCRIPT, "scripted"))).toContain(code);
+    const { provider, inputs } = scripted(spoil(out), out);
+    expect((await buildProposal(loadFixture(), TRANSCRIPT, provider)).ok).toBe(true);
+    expect(inputs).toHaveLength(2);
+  });
+});
+
+describe("what is not repaired, besides provider failures", () => {
+  const blank = () => {
+    const draft = blankProduct("Parcel lockers");
+    if (!draft.ok) throw new Error("blank draft");
+    return draft.product;
+  };
+  const empty = { summary: "s", goal: null, goalAlternatives: [], personas: [], needs: [], steps: [], assignments: [], moves: [], unresolvedQuestions: [] };
+
+  it("an answer that proposes nothing: refused after one call", async () => {
+    const { provider, inputs } = scripted(empty);
+    expect(codes(await buildProposal(loadFixture(), TRANSCRIPT, provider))).toEqual(["empty_proposal"]);
     expect(inputs).toHaveLength(1);
   });
 
-  it("an id that does not exist on the map is refused after one call", async () => {
-    const out = honest();
-    const ghost = { ...out, assignments: [{ step: "step-does-not-exist", persona: out.personas[0].ref, source: out.personas[0].source }] };
-    const { provider, inputs } = scripted(ghost);
-    expect(codes(await buildProposal(loadFixture(), TRANSCRIPT, provider))).toContain("unknown_id");
+  it("an answer that cannot be applied to the map (a first product without a goal): refused after one call", async () => {
+    const persona = { ref: "new:courier", name: "Courier", description: "", roles: [], persona: true, source: { snippet: "Couriers need", rationale: "r", confidence: 0.5 } };
+    const { provider, inputs } = scripted({ ...empty, personas: [persona] });
+    const result = await buildProposal(blank(), "Couriers need a free compartment within a minute.", provider);
+    expect(result.ok).toBe(false);
     expect(inputs).toHaveLength(1);
   });
 });
