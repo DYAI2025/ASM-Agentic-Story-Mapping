@@ -318,6 +318,15 @@ describe("the call bound (AC-29-02, AC-29-08)", () => {
 });
 
 describe("what the repair request carries (AC-29-03)", () => {
+  it("the instructions of every request state the contract, the exact-quote rule, the ref syntax and the closed role list", () => {
+    expect(SYSTEM_PROMPT).toContain(CONTRACT);
+    expect(SYSTEM_PROMPT).toContain("copied character for character");
+    expect(SYSTEM_PROMPT).toContain("lowercase letters, digits and hyphens only");
+    expect(SYSTEM_PROMPT).toContain("these exact words and no others");
+    // The pasted text never enters the instructions.
+    expect(SYSTEM_PROMPT).not.toContain("Ignore all previous instructions");
+  });
+
   it("the same system prompt and format, the sources again, the contract verbatim, the problems; no key", async () => {
     const { provider, calls } = openrouter([{ body: openrouterOk(asQaObserved(honest())) }, { body: openrouterOk(honest()) }]);
     await buildProposal(loadFixture(), TRANSCRIPT, provider);

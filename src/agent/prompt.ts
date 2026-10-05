@@ -7,6 +7,14 @@ import { strictOutputSchema } from "./json-schema";
 import type { RepairRequest, StructureInput } from "./provider";
 
 /**
+ * The proposal output contract as text: the same strict JSON Schema the
+ * structured-output APIs are given. Stated in the instructions too, because
+ * an upstream that does not enforce `response_format` leaves the model to
+ * guess the shape (ASM-29: External QA saw the reference model do exactly that).
+ */
+export const OUTPUT_CONTRACT = JSON.stringify(strictOutputSchema(AgentOutputSchema));
+
+/**
  * The instructions never contain pasted text. The pasted text only ever
  * appears inside a delimited block of the user message, labelled as data.
  */
@@ -22,7 +30,7 @@ What to propose
 - goal: a changed goal statement, only if the discussion clearly restates what the product is for. Otherwise null. If the current map has an empty goal statement, this is a first product with no goal yet: propose the goal whenever the text says what the product is for, in the text's own terms.
 - goalAlternatives: when the text supports more than one reading of what the product is for, the other readings, each with its own source. The human chooses between goal and goalAlternatives; do not merge them into one statement. Empty when there is one reading.
 - personas, needs, steps: new ones the discussion clearly introduces. Do not repeat what is already on the map.
-- personas lists everyone the discussion introduces as involved with the product. For each one say two separate things. "roles": how they relate to the value chain, any of customer, user, beneficiary, operator, seller, stakeholder, delivery_participant, system; use an empty array when the text does not say. "persona": true when the discussion describes what they need or how they act in the product's story, false when they are only mentioned as involved. A role never decides this: someone who builds, sells or governs the product is a persona only if the text describes their needs or behaviour, and taking part in the workshop is not a reason either.
+- personas lists everyone the discussion introduces as involved with the product. For each one say two separate things. "roles": how they relate to the value chain, any of customer, user, beneficiary, operator, seller, stakeholder, delivery_participant, system — these exact words and no others; use an empty array when the text does not say or none of them fits. "persona": true when the discussion describes what they need or how they act in the product's story, false when they are only mentioned as involved. A role never decides this: someone who builds, sells or governs the product is a persona only if the text describes their needs or behaviour, and taking part in the workshop is not a reason either.
 - Someone with "persona": false gets no need and takes part in no step. Entries already on the map with "persona": false are the same: do not give them a need or a step; if the discussion does, record an unresolved question instead.
 - A step names the needs it serves in "needs" where the discussion says which; use an empty array where it does not. Do not make up a need so that a step has one.
 - assignments: a persona that should be added to an existing step.
@@ -32,11 +40,16 @@ What to propose
 Rules
 - Never present something as decided or agreed. You cannot approve, decide or delete anything, and the output format has no field for it. When the discussion leaves something open, it belongs in unresolvedQuestions, not in a confident proposal.
 - Prefer an unresolved question over a guess. A short proposal that is well supported is better than a long one that is not.
-- Every item carries a source: "sourceId" is the id of the source block the quote comes from (always give it), "snippet" is a verbatim quote from that one source (copy it exactly, at most a sentence or two; never join text from two sources), "rationale" says in one sentence why you propose this, and "confidence" is your own estimate from 0 to 1. The confidence is shown to the reviewer as advice and has no other effect.
-- References: to refer to something already on the map, use its id exactly as given. To refer to something you are adding in this same output, give it a ref of the form "new:<short-name>" and use that ref. Never invent an id; ids for new items are assigned by the system.
+- Every item carries a source: "sourceId" is the id of the source block the quote comes from (always give it), "snippet" is a verbatim quote from that one source, "rationale" says in one sentence why you propose this, and "confidence" is your own estimate from 0 to 1. The confidence is shown to the reviewer as advice and has no other effect.
+- A snippet is copied character for character: a run of consecutive words exactly as they stand in that one source, usually 4 to 20 words. Keep its spelling, capitalisation, punctuation and quotation marks; do not paraphrase, summarise, shorten with "…", translate, correct, or join text from two places or two sources. Every snippet is checked against its source, and a single snippet that is not found there makes the whole proposal unusable: prefer a short exact quote, and leave an item out when no passage supports it.
+- References: to refer to something already on the map, use its id exactly as given. To refer to something you are adding in this same output, give it a ref of the form "new:<short-name>", where the short name is lowercase letters, digits and hyphens only (for example "new:night-shift-cover"; no underscores, spaces or capitals), and use that ref. Never invent an id; ids for new items are assigned by the system.
 - placement: {"kind": "after", "step": <id or ref>}, or {"kind": "start", "step": null}, or {"kind": "end", "step": null}.
 - Write in the language of the pasted text.
-- Use empty arrays and a null goal where there is nothing to propose.`;
+- Use empty arrays and a null goal where there is nothing to propose.
+
+Output format
+Answer with exactly one JSON object that matches this JSON Schema. Use exactly these field names and this nesting: every item's snippet, rationale, confidence and source id go inside its "source" object; every property is present (null or an empty array where there is nothing); add no other field.
+${OUTPUT_CONTRACT}`;
 
 /** A delimiter the pasted text cannot contain: it is derived from that text. */
 export function transcriptDelimiter(transcript: string): string {
@@ -103,9 +116,6 @@ export function buildUserMessage(context: string | ContextBundle, product: Produ
     "Propose changes to the map based on these sources.",
   ].join("\n");
 }
-
-/** The proposal output contract as text: the same strict JSON Schema the structured-output APIs are given. */
-export const OUTPUT_CONTRACT = JSON.stringify(strictOutputSchema(AgentOutputSchema));
 
 /**
  * The repair section (ASM-29): appended after the sources on the one repair

@@ -267,7 +267,12 @@ All four sit behind the same two interfaces and the same rules:
   unknown source, an undeclared ref, an id not on the map) are refused after
   the first call. There is no loop, so a submission makes one model call or
   two, never three; `/api/proposal` and `/api/bootstrap` report the number as
-  `modelCalls`. The oracle is `tests/agent/schema-repair.test.ts` (built from
+  `modelCalls`. The instructions of every proposal request state the contract
+  as well, with the exact-quote rule, the `new:` ref syntax and the closed role
+  list spelled out: after the repair alone, the reference model's remaining
+  misses on 2026-10-06 were inexact quotes, refs with underscores and roles
+  outside the list, all refused by the unchanged validation. The oracle is
+  `tests/agent/schema-repair.test.ts` (built from
   the shape QA recorded, red on the code before the change) and, in the
   browser, `tests/e2e/schema-repair.spec.ts` against a scripted model on
   localhost (`tests/e2e/model-stub-server.ts`) through the real `openai`
@@ -613,7 +618,11 @@ start screen of a fresh workspace, one minute apart (`BATTERY_PAUSE_MS`),
 records per submission the HTTP status, `modelCalls`, issue codes, seconds and
 whether a file appeared, accepts the first valid proposal as a human would and
 checks every recorded snippet against its source, then asserts at least four of
-five valid. `battery.json` in `.e2e-artifacts/live/battery/` names the commit
+five valid. When the provider answers 429 (measured: OpenRouter's upstream for
+the reference model rate-limits a shared pool and asks for 60 s), the
+submission is made once more after `BATTERY_RETRY_AFTER_MS`, as the product's
+"try again shortly" tells the human to; both attempts are recorded, and the
+record counts valid submissions both ways (`valid`, `validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit
 and whether `src/` had uncommitted changes. Each run is a sample of a
 non-deterministic model; the results per commit are recorded on the ticket.
 

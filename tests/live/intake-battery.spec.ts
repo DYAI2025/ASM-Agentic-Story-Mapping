@@ -39,9 +39,7 @@ const BATTERY: Submission[] = [
   { id: "A5", pasted: "A5-pasted.txt", files: ["A5-matrix.txt", "A5-notes.md"] },
 ];
 
-type Outcome = {
-  id: string;
-  valid: boolean;
+type Attempt = {
   httpStatus: number;
   modelCalls: number | null;
   seconds: number;
@@ -50,6 +48,16 @@ type Outcome = {
   issueCount: number;
   /** The first few messages as the human saw them (provider messages are redacted at the adapter boundary). */
   firstMessages: string[];
+};
+
+type Outcome = Attempt & {
+  id: string;
+  /** Whether the submission ended in a proposal for human review (after a resubmission following a 429, if one happened). */
+  valid: boolean;
+  /** The same, counting the first attempt only. */
+  validFirstAttempt: boolean;
+  /** Every attempt: one, or two when the provider answered 429 and the submission was made again after its retry-after. */
+  attempts: Attempt[];
   productFileAfter: boolean;
   workStateFileAfter: boolean;
   fixtureSha256: Record<string, string>;
@@ -86,7 +94,9 @@ async function writeRecord(outcome: Outcome) {
     model: process.env.ASM_AGENT_MODEL ?? null,
     threshold: "at least 4 of 5 valid; every failure writes nothing",
     valid: outcomes.filter((o) => o.valid).length,
+    validFirstAttempt: outcomes.filter((o) => o.validFirstAttempt).length,
     submitted: outcomes.length,
+    accepted: await fs.readFile(ACCEPTED_MARKER, "utf8").then((text) => JSON.parse(text), () => null),
     outcomes,
   };
   const text = JSON.stringify(record, null, 2);
@@ -94,7 +104,7 @@ async function writeRecord(outcome: Outcome) {
   await fs.writeFile(path.join(ARTIFACTS, "battery.json"), text);
 }
 
-async function submit(page: Page, submission: Submission) {
+async function submit(page: Page, submission: Submission): Promise<{ attempt: Attempt; valid: boolean }> {
   await page.goto("/");
   await expect(page.getByTestId("start-screen")).toBeVisible();
   await page.getByTestId("product-name-input").fill(NAME);
@@ -106,33 +116,18 @@ async function submit(page: Page, submission: Submission) {
   const response = await answer;
   const seconds = Math.round((Date.now() - started) / 1000);
   const body = (await response.json()) as { patch?: { operations: { op: string }[] }; issues?: { code: string; path: string; message: string }[]; modelCalls?: number };
-  return { response, body, seconds };
-}
-
-for (const submission of BATTERY) {
-  test(`@battery ${submission.id}: proposal for human review, or a refusal that writes nothing`, async ({ page }) => {
-    test.setTimeout(600_000);
-    if (submission !== BATTERY[0]) await page.waitForTimeout(PAUSE_MS);
-    await fs.rm(LIVE_PRODUCT_FILE, { force: true });
-    await fs.rm(WORK_STATE_FILE, { force: true });
-    const fixtureSha256: Record<string, string> = {};
-    for (const f of [submission.pasted, ...(submission.files ?? [])]) fixtureSha256[f] = await sha256(path.join(FIXTURES, f));
-
-    const { response, body, seconds } = await submit(page, submission);
-    const valid = response.status() === 200 && Array.isArray(body.patch?.operations);
-    if (valid) {
-      // A proposal is shown for review and nothing is canon yet.
-      await expect(page.getByTestId("proposal-review")).toBeVisible();
-      await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
-    } else {
-      await expect(page.getByTestId("proposal-issues")).toBeVisible();
-      await expect(page.getByTestId("proposal-review")).toHaveCount(0);
-    }
-    await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}.png`), fullPage: true });
-
-    const outcome: Outcome = {
-      id: submission.id,
-      valid,
+  const valid = response.status() === 200 && Array.isArray(body.patch?.operations);
+  if (valid) {
+    // A proposal is shown for review and nothing is canon yet.
+    await expect(page.getByTestId("proposal-review")).toBeVisible();
+    await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
+  } else {
+    await expect(page.getByTestId("proposal-issues")).toBeVisible();
+    await expect(page.getByTestId("proposal-review")).toHaveCount(0);
+  }
+  return {
+    valid,
+    attempt: {
       httpStatus: response.status(),
       modelCalls: typeof body.modelCalls === "number" ? body.modelCalls : null,
       seconds,
@@ -140,6 +135,44 @@ for (const submission of BATTERY) {
       issueCodes: tally((body.issues ?? []).map((i) => i.code)),
       issueCount: (body.issues ?? []).length,
       firstMessages: (body.issues ?? []).slice(0, 3).map((i) => `${i.code} ${i.path}: ${i.message}`.slice(0, 300)),
+    },
+  };
+}
+
+/**
+ * The product tells the human "rate limit reached; try again shortly" when the provider answers 429. Measured on
+ * 2026-10-06: OpenRouter's upstream for the reference model (GMICloud, shared pool) answered 429 with
+ * `retry_after_seconds: 60`. A person would try again after that, so the battery does too, once, and records both.
+ */
+const RETRY_AFTER_MS = Number(process.env.BATTERY_RETRY_AFTER_MS ?? 75_000);
+const rateLimited = (attempt: Attempt) => attempt.httpStatus === 502 && attempt.firstMessages.some((m) => /rate limit/i.test(m));
+const ACCEPTED_MARKER = path.join(ARTIFACTS, "accepted.json");
+
+for (const submission of BATTERY) {
+  test(`@battery ${submission.id}: proposal for human review, or a refusal that writes nothing`, async ({ page }) => {
+    test.setTimeout(900_000);
+    if (submission !== BATTERY[0]) await page.waitForTimeout(PAUSE_MS);
+    await fs.rm(LIVE_PRODUCT_FILE, { force: true });
+    await fs.rm(WORK_STATE_FILE, { force: true });
+    const fixtureSha256: Record<string, string> = {};
+    for (const f of [submission.pasted, ...(submission.files ?? [])]) fixtureSha256[f] = await sha256(path.join(FIXTURES, f));
+
+    const first = await submit(page, submission);
+    const attempts = [first.attempt];
+    let last = first;
+    if (rateLimited(first.attempt)) {
+      await page.waitForTimeout(RETRY_AFTER_MS);
+      last = await submit(page, submission);
+      attempts.push(last.attempt);
+    }
+    await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}.png`), fullPage: true });
+
+    const outcome: Outcome = {
+      id: submission.id,
+      valid: last.valid,
+      validFirstAttempt: first.valid,
+      ...last.attempt,
+      attempts,
       productFileAfter: await exists(LIVE_PRODUCT_FILE),
       workStateFileAfter: await exists(WORK_STATE_FILE),
       fixtureSha256,
@@ -148,36 +181,28 @@ for (const submission of BATTERY) {
     // Whatever the model did, building a proposal writes nothing.
     expect(outcome.productFileAfter).toBe(false);
     expect(outcome.workStateFileAfter).toBe(false);
-    if (outcome.modelCalls !== null) expect(outcome.modelCalls).toBeLessThanOrEqual(2);
+    for (const attempt of attempts) if (attempt.modelCalls !== null) expect(attempt.modelCalls).toBeLessThanOrEqual(2);
+
+    // The first valid proposal of the run is accepted as a human would, on the screen it was reviewed on.
+    const accepted = await fs.readFile(ACCEPTED_MARKER, "utf8").then((text) => JSON.parse(text).runId === RUN_ID, () => false);
+    if (!last.valid || accepted) return;
+    await page.getByTestId("proposal-accept").click();
+    await expect(page.getByTestId("revision-status")).toHaveText("proposed");
+    await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}-accepted.png`), fullPage: true });
+    const stored = YAML.parse(await fs.readFile(LIVE_PRODUCT_FILE, "utf8"));
+    expect(stored.revision).toEqual({ number: 1, status: "proposed" });
+    // Every recorded quote occurs in the source it names.
+    const texts: Record<string, string> = {};
+    for (const f of [submission.pasted, ...(submission.files ?? [])]) texts[f] = (await fs.readFile(path.join(FIXTURES, f), "utf8")).replace(/\s+/g, " ");
+    for (const entry of stored.provenance) {
+      const label = entry.sourceLabel === "Pasted text" ? submission.pasted : entry.sourceLabel;
+      expect(texts[label]).toContain(String(entry.snippet).replace(/\s+/g, " ").trim());
+    }
+    await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, `${submission.id}-accepted.product.yaml`));
+    await fs.writeFile(ACCEPTED_MARKER, JSON.stringify({ runId: RUN_ID, id: submission.id, revision: stored.revision, provenanceEntries: stored.provenance.length }));
+    await fs.rm(LIVE_PRODUCT_FILE, { force: true });
   });
 }
-
-test("@battery the first valid proposal becomes canon only through Human Accept", async ({ page }) => {
-  test.setTimeout(600_000);
-  const first = (await readOutcomes()).find((o) => o.valid);
-  test.skip(!first, "no valid proposal in this run to accept");
-  await page.waitForTimeout(PAUSE_MS);
-  const submission = BATTERY.find((s) => s.id === first!.id)!;
-  await fs.rm(LIVE_PRODUCT_FILE, { force: true });
-  await fs.rm(WORK_STATE_FILE, { force: true });
-  const { response } = await submit(page, submission);
-  test.skip(response.status() !== 200, "the second submission of the same text was refused this time; recorded above, nothing to accept");
-  await expect(page.getByTestId("proposal-review")).toBeVisible();
-  expect(await exists(LIVE_PRODUCT_FILE)).toBe(false);
-  await page.getByTestId("proposal-accept").click();
-  await expect(page.getByTestId("revision-status")).toHaveText("proposed");
-  await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}-accepted.png`), fullPage: true });
-  const stored = YAML.parse(await fs.readFile(LIVE_PRODUCT_FILE, "utf8"));
-  expect(stored.revision).toEqual({ number: 1, status: "proposed" });
-  // Every recorded quote occurs in the source it names.
-  const texts: Record<string, string> = {};
-  for (const f of [submission.pasted, ...(submission.files ?? [])]) texts[f] = (await fs.readFile(path.join(FIXTURES, f), "utf8")).replace(/\s+/g, " ");
-  for (const entry of stored.provenance) {
-    const label = entry.sourceLabel === "Pasted text" ? submission.pasted : entry.sourceLabel;
-    expect(texts[label]).toContain(String(entry.snippet).replace(/\s+/g, " ").trim());
-  }
-  await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, `${submission.id}-accepted.product.yaml`));
-});
 
 test("@battery threshold: at least 4 of 5 valid", async () => {
   const outcomes = await readOutcomes();
