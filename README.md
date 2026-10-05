@@ -256,30 +256,37 @@ All four sit behind the same two interfaces and the same rules:
   (`qwen/qwen3-235b-a22b-2507` through OpenRouter) ignoring that schema: the
   source fields flattened onto each item, needs as `id`/`text`. When an answer
   parsed but was refused — for its shape (`AgentOutputSchema`), or for named
-  items in it (a snippet not in the source it names, an unknown or missing
-  source, a `new:` ref that is malformed, duplicated or undeclared, an id not
-  on the map, a role outside the list, a text or count limit) — `buildProposal`
-  asks the same provider once more, with the contract as JSON Schema text and
-  a bounded list of what was refused (shape problems grouped by position, a
-  refused item with its position and its value quoted, every line clipped, at
-  most 20 lines, anything shaped like a key redacted; the whole previous answer
-  is not sent back). The second answer is untrusted like the first and goes
-  through `resolveProposal` from scratch: a refused quote is never accepted as
-  it was, and nothing is corrected by ASM. Not repaired: a provider failure
-  (credentials, rate limit, timeout, network, refusal, content filter,
-  cut-off, non-JSON, a key in the output), an answer that proposes nothing,
-  and a proposal the map cannot take; those are refused after the first call.
-  There is no loop, so a submission makes one model call or two, never three,
-  and each call is one HTTP request: the Anthropic SDK's own retries are off
-  (`maxRetries: 0`), the other adapters never had any; `/api/proposal` and
-  `/api/bootstrap` report the number as `modelCalls`. The
-  instructions of every proposal request state the contract as well, with the
-  exact-quote rule, the `new:` ref syntax and the closed role list spelled
-  out. The repair scope beyond shape (named items) is the PO's decision of
-  2026-10-06 on ASM-29, after the shape-only repair plus those instructions
-  left single refused items in otherwise valid answers on long inputs. The
-  oracle is `tests/agent/schema-repair.test.ts` (built from the shape QA
-  recorded, red on the code before each change) and, in the browser,
+  items in it of the kinds the PO decided on 2026-10-06: a quote that does not
+  occur in the source it names, an unknown or missing source, a `new:` ref that
+  is malformed, duplicated or undeclared, an id not on the map, a role outside
+  the list — `buildProposal` asks the same provider once more, with the
+  contract as JSON Schema text and a bounded list of what was refused (shape
+  problems grouped by position, a refused item with its position and its value
+  quoted, each part redacted for key-shaped text and then clipped, at most 20
+  lines). The whole previous answer is not sent back. The second answer is
+  untrusted like the first and goes through `resolveProposal` from scratch:
+  the rules are unchanged, a refused value is never accepted as it was, and
+  nothing in ASM rewrites one. A quote counts as occurring in its source when
+  it does so with runs of whitespace (spaces, line breaks) counted as one space
+  — the rule `resolveProposal` has applied since the walking skeleton; case,
+  punctuation and words must match. Not repaired: a provider failure
+  (credentials, rate limit, timeout, network, refusal, content filter, cut-off,
+  non-JSON, a key in the output), any other refusal of the answer (an empty
+  answer, a text limit, a confidence out of range, a placement), and any
+  refusal from applying the proposal to the map (`resolveProposal` marks those
+  `stage: "apply"`, e.g. a need for someone who is not a persona). Those are
+  refused after the first call. There is no loop, so a submission makes one
+  model call or two, never three, and each call is one HTTP request: the
+  Anthropic SDK's own retries are off (`maxRetries: 0`), the other adapters
+  never had any. With the Anthropic adapter the SDK itself parses the answer
+  against the contract before ASM sees it, so there a wrong shape is a
+  provider error and is not repaired (fail closed, one call).
+  `/api/proposal` and `/api/bootstrap` report the number as `modelCalls`
+  (0 when the request was refused before any call). The instructions of every
+  proposal request state the contract as well, with the exact-quote rule, the
+  `new:` ref syntax and the closed role list spelled out. The oracle is
+  `tests/agent/schema-repair.test.ts` (built from the shape QA recorded, red on
+  the code before each change) and, in the browser,
   `tests/e2e/schema-repair.spec.ts` against a scripted model on localhost
   (`tests/e2e/model-stub-server.ts`) through the real `openai` adapter.
 - CI has no keys: the adapters are tested against a stubbed `fetch`. The live

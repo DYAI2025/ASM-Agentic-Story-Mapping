@@ -2,18 +2,18 @@ import { promises as fs, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AnthropicProvider, type MessagesClient } from "../../src/agent/anthropic-provider";
+import { AnthropicProvider, buildRequest, type MessagesClient } from "../../src/agent/anthropic-provider";
 import { structureWithMarkers } from "../../src/agent/fake-provider";
 import { strictOutputSchema } from "../../src/agent/json-schema";
-import { MAX_REPAIR_PROBLEMS, buildProposal, repairRequest } from "../../src/agent/narrative-builder";
+import { MAX_REPAIR_PROBLEMS, buildProposal, repairRequest, startProposal } from "../../src/agent/narrative-builder";
 import { OpenAIProvider } from "../../src/agent/openai-provider";
 import { OpenRouterProvider } from "../../src/agent/openrouter-provider";
-import { SYSTEM_PROMPT } from "../../src/agent/prompt";
+import { SYSTEM_PROMPT, repairSection } from "../../src/agent/prompt";
 import { ProviderError, type AgentProvider, type StructureInput } from "../../src/agent/provider";
 import { POST as bootstrapRoute } from "../../src/app/api/bootstrap/route";
 import { POST as proposalRoute } from "../../src/app/api/proposal/route";
 import { blankProduct } from "../../src/domain/bootstrap";
-import type { ContextBundle } from "../../src/domain/context";
+import { bundleFromTranscript, type ContextBundle } from "../../src/domain/context";
 import { AgentOutputSchema, applyMapPatch, resolveProposal, type AgentOutput } from "../../src/domain/map-patch";
 import { loadProduct, productFilePath, workStateFilePath } from "../../src/server/store";
 import { fixtureText, loadFixture } from "../domain/helpers";
@@ -298,6 +298,43 @@ describe("what is not repaired, besides provider failures", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it("an answer refused for anything outside the decided kinds (an empty text, a confidence out of range): refused after one call", async () => {
+    const out = honest();
+    for (const spoiled of [
+      { ...out, personas: out.personas.map((p, i) => (i === 0 ? { ...p, name: "   " } : p)) },
+      { ...out, personas: out.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, confidence: 7 } } : p)) },
+    ]) {
+      const { provider, inputs } = scripted(spoiled);
+      expect((await buildProposal(loadFixture(), TRANSCRIPT, provider)).ok).toBe(false);
+      expect(inputs).toHaveLength(1);
+    }
+  });
+
+  it("a dry-run refusal whose code is also an item code (a step placed after itself: invalid_placement) is not repaired", async () => {
+    const out = honest();
+    const step = loadFixture().narrative[0].id;
+    const selfPlaced = { ...out, moves: [{ step, placement: { kind: "after", step }, source: out.personas[0].source }] };
+    const { provider, inputs } = scripted(selfPlaced);
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, provider);
+    expect(codes(result)).toContain("invalid_placement");
+    expect(result.ok === false && result.stage).toBe("apply");
+    expect(inputs).toHaveLength(1);
+  });
+
+  it("a first product: an answer in shape without a goal is refused after one call; after a shape repair, after two (startProposal asks no further)", async () => {
+    const text = "Couriers need a free compartment within a minute.";
+    const persona = { ref: "new:courier", name: "Courier", description: "", roles: [], persona: true, source: { snippet: "Couriers need", rationale: "r", confidence: 0.5 } };
+    const noGoal = { ...empty, personas: [persona] };
+    const once = { modelCalls: 0 };
+    const a = scripted(noGoal);
+    expect(codes(await startProposal("Parcel lockers", text, a.provider, once))).toEqual(["goal_required"]);
+    expect([a.inputs.length, once.modelCalls]).toEqual([1, 1]);
+    const twice = { modelCalls: 0 };
+    const b = scripted({ ...noGoal, personas: [{ ...persona, ...persona.source, source: undefined }] }, noGoal);
+    expect(codes(await startProposal("Parcel lockers", text, b.provider, twice))).toEqual(["goal_required"]);
+    expect([b.inputs.length, twice.modelCalls]).toEqual([2, 2]);
+  });
+
   it("an answer that cannot be applied to the map (a first product without a goal): refused after one call", async () => {
     const persona = { ref: "new:courier", name: "Courier", description: "", roles: [], persona: true, source: { snippet: "Couriers need", rationale: "r", confidence: 0.5 } };
     const { provider, inputs } = scripted({ ...empty, personas: [persona] });
@@ -426,23 +463,62 @@ describe("what the repair request carries (AC-29-03)", () => {
     expect(second.messages).toHaveLength(2);
   });
 
-  it("the same for the OpenAI and Anthropic adapters", async () => {
+  it("the same for the OpenAI adapter; the Anthropic request builder carries the repair section the same way", async () => {
     const { fetch, calls } = fetchStub([{ body: openaiOk(asQaObserved(honest())) }, { body: openaiOk(honest()) }]);
     expect((await buildProposal(loadFixture(), TRANSCRIPT, new OpenAIProvider({ apiKey: KEY, fetch }))).ok).toBe(true);
     expect(calls).toHaveLength(2);
     expect(JSON.parse(String(calls[1].init.body)).input[0].content).toContain(CONTRACT);
 
-    const requests: Array<{ messages: Array<{ content: string }> }> = [];
-    const answers = [asQaObserved(honest()), honest()];
-    const parse = vi.fn(async (request: { messages: Array<{ content: string }> }) => {
-      requests.push(request);
-      return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(answers[requests.length - 1]) }] };
-    });
-    const result = await buildProposal(loadFixture(), TRANSCRIPT, new AnthropicProvider({ client: { parse } as unknown as MessagesClient }));
-    expect(result.ok).toBe(true);
-    expect(parse).toHaveBeenCalledTimes(2);
-    expect(requests[1].messages[0].content).toContain(CONTRACT);
-    expect(requests[0].messages[0].content).not.toContain(CONTRACT);
+    // Request construction only: what the Anthropic adapter would send on a repair request.
+    const input = { context: bundleFromTranscript(TRANSCRIPT), product: loadFixture() };
+    const repair = repairRequest([{ code: "agent_output_invalid_type", path: "needs.0.persona", message: "Invalid input" }]);
+    expect(buildRequest({ ...input, repair }, "m").messages[0].content).toContain(CONTRACT);
+    expect(buildRequest(input, "m").messages[0].content).not.toContain(CONTRACT);
+  });
+
+  it("through the real Anthropic SDK a wrong shape is refused by the SDK's own parse before ASM sees it: a provider error after one request, no repair", async () => {
+    // A documented limitation, not a repair path: the SDK validates against the same contract and throws.
+    const calls: string[] = [];
+    const message = {
+      id: "msg_1",
+      type: "message",
+      role: "assistant",
+      model: "claude-opus-5-5",
+      content: [{ type: "text", text: JSON.stringify(asQaObserved(honest())) }],
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    const fetch = (async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(JSON.stringify(message), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof globalThis.fetch;
+    const result = await buildProposal(loadFixture(), TRANSCRIPT, new AnthropicProvider({ apiKey: KEY, fetch }));
+    expect(codes(result)).toEqual(["provider_error"]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("the previous answer itself is not sent back: only problem lines, each bounded, even with long refused values", async () => {
+    const out = honest();
+    const marked = asQaObserved({ ...out, personas: out.personas.map((p) => ({ ...p, source: { ...p.source, rationale: "RATIONALE-MARKER-7f3a" } })) });
+    const first = scripted(marked, honest());
+    await buildProposal(loadFixture(), TRANSCRIPT, first.provider);
+    const shapeProblems = first.inputs[1].repair!.problems;
+    expect(shapeProblems.join("\n")).not.toContain("RATIONALE-MARKER-7f3a");
+
+    // Under the 600-character text limit, so the only refusal is the quote (a text limit is not repaired).
+    const long = "x".repeat(590);
+    const spoiled = { ...out, personas: out.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, snippet: long, rationale: "RATIONALE-MARKER-7f3a" } } : p)) };
+    const second = scripted(spoiled, honest());
+    await buildProposal(loadFixture(), TRANSCRIPT, second.provider);
+    const repair = second.inputs[1].repair!;
+    expect(repair.problems.join("\n")).not.toContain("RATIONALE-MARKER-7f3a");
+    expect(repair.problems.join("\n")).toContain("x".repeat(100));
+    expect(repair.problems.join("\n")).not.toContain("x".repeat(200));
+    // A line is at most path 120 + message 240 + quoted value 160 + its frame.
+    for (const line of [...shapeProblems, ...repair.problems]) expect(line.length).toBeLessThanOrEqual(600);
+    // The whole repair section: the contract plus at most MAX_REPAIR_PROBLEMS bounded lines and fixed text.
+    expect(repairSection(repair).length).toBeLessThanOrEqual(CONTRACT.length + MAX_REPAIR_PROBLEMS * 600 + 2_000);
   });
 
   it("the problem list is bounded: grouped by position, clipped, at most MAX_REPAIR_PROBLEMS lines, the rest counted", () => {
@@ -512,6 +588,19 @@ describe("the routes report the model calls of a submission", () => {
     }
     expect(await fs.readFile(productFilePath(), "utf8")).toBe(fixtureText());
     expect(await exists(workStateFilePath())).toBe(false);
+  });
+
+  it("responses that made no model call say modelCalls 0: invalid request, provider not configured, product already there", async () => {
+    process.env.ASM_PRODUCT_FILE = path.join(dir, "asm.product.yaml");
+    await fs.writeFile(process.env.ASM_PRODUCT_FILE, fixtureText());
+    const proposal = (body: unknown) => proposalRoute(new Request("http://asm.test/api/proposal", { method: "POST", body: JSON.stringify(body) }));
+    const bootstrap = (body: unknown) => bootstrapRoute(new Request("http://asm.test/api/bootstrap", { method: "POST", body: JSON.stringify(body) }));
+    const seen: Array<[number, unknown]> = [];
+    for (const response of [await proposal({}), await bootstrap({}), await bootstrap({ name: "X", transcript: "Goal: y" })]) seen.push([response.status, (await response.json()).modelCalls]);
+    process.env.ASM_AGENT_PROVIDER = "nonsense";
+    const misconfigured = await proposal({ transcript: "Goal: y" });
+    seen.push([misconfigured.status, (await misconfigured.json()).modelCalls]);
+    expect(seen).toEqual([[400, 0], [400, 0], [409, 0], [500, 0]]);
   });
 
   it("POST /api/bootstrap: repaired -> 200 with modelCalls 2; nothing is created before Accept", async () => {

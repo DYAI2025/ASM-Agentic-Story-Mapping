@@ -233,7 +233,12 @@ export function allIds(p: ProductDocument): Set<string> {
 
 // ------------------------------------------------------------ resolve proposal
 
-export type ProposalResult = { ok: true; patch: MapPatch } | { ok: false; issues: Issues };
+/**
+ * A refusal from the dry run (applying the proposal to the map) says so with `stage: "apply"`; a refusal of the
+ * answer itself (its shape, its items) has no stage. The issues are the same either way; the tag only tells the
+ * caller which check refused (ASM-29: only the answer's own problems are named in a repair request).
+ */
+export type ProposalResult = { ok: true; patch: MapPatch } | { ok: false; issues: Issues; stage?: "apply" };
 
 /**
  * Turn raw provider output into a MapPatch, or into a list of reasons why
@@ -488,7 +493,7 @@ export function resolveProposal(
   const variants = goals.length > 1 ? goals.map((keep) => ({ ...patch, operations: operations.filter((o) => o.op !== "set_goal" || o.opId === keep.opId) })) : [patch];
   for (const variant of variants) {
     const dryRun = applyMapPatch(product, variant);
-    if (!dryRun.ok) return { ok: false, issues: dryRun.issues };
+    if (!dryRun.ok) return { ok: false, issues: dryRun.issues, stage: "apply" };
   }
   return { ok: true, patch };
 }

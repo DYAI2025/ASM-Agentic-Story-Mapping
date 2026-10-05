@@ -96,7 +96,7 @@ async function writeRecord(outcome: Outcome) {
     valid: outcomes.filter((o) => o.valid).length,
     validFirstAttempt: outcomes.filter((o) => o.validFirstAttempt).length,
     submitted: outcomes.length,
-    accepted: await fs.readFile(ACCEPTED_MARKER, "utf8").then((text) => JSON.parse(text), () => null),
+    accepted: await fs.readFile(ACCEPTED_MARKER, "utf8").then((text) => (JSON.parse(text).runId === RUN_ID ? JSON.parse(text) : null), () => null),
     outcomes,
   };
   const text = JSON.stringify(record, null, 2);
@@ -118,9 +118,13 @@ async function submit(page: Page, submission: Submission): Promise<{ attempt: At
   const body = (await response.json()) as { patch?: { operations: { op: string }[] }; issues?: { code: string; path: string; message: string }[]; modelCalls?: number };
   const valid = response.status() === 200 && Array.isArray(body.patch?.operations);
   if (valid) {
-    // A proposal is shown for review and nothing is canon yet.
+    // A proposal is shown for review and nothing is canon yet. With more than one reading of the goal the
+    // human has to pick one first (AC-FUF-05), and the review says so: that refusal is about the choice
+    // still open, not about the proposal.
     await expect(page.getByTestId("proposal-review")).toBeVisible();
-    await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
+    const goalChoice = (body.patch?.operations ?? []).filter((o) => o.op === "set_goal").length > 1;
+    if (goalChoice) await expect(page.getByTestId("goal-choice")).toBeVisible();
+    else await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
   } else {
     await expect(page.getByTestId("proposal-issues")).toBeVisible();
     await expect(page.getByTestId("proposal-review")).toHaveCount(0);
@@ -169,28 +173,35 @@ for (const submission of BATTERY) {
     }
     await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}.png`), fullPage: true });
 
+    const productFileAfter = await exists(LIVE_PRODUCT_FILE);
+    const workStateFileAfter = await exists(WORK_STATE_FILE);
+    // A submission only counts when it also kept the other promises: nothing written, a reported call count of 1 or 2.
+    const boundKept = (attempt: Attempt) => attempt.modelCalls !== null && attempt.modelCalls >= 1 && attempt.modelCalls <= 2;
     const outcome: Outcome = {
       id: submission.id,
-      valid: last.valid,
-      validFirstAttempt: first.valid,
+      valid: last.valid && !productFileAfter && !workStateFileAfter && boundKept(last.attempt),
+      validFirstAttempt: first.valid && !productFileAfter && !workStateFileAfter && boundKept(first.attempt),
       ...last.attempt,
       attempts,
-      productFileAfter: await exists(LIVE_PRODUCT_FILE),
-      workStateFileAfter: await exists(WORK_STATE_FILE),
+      productFileAfter,
+      workStateFileAfter,
       fixtureSha256,
     };
     await writeRecord(outcome);
-    // Whatever the model did, building a proposal writes nothing.
+    // Whatever the model did, building a proposal writes nothing, and every answer reports its model calls.
     expect(outcome.productFileAfter).toBe(false);
     expect(outcome.workStateFileAfter).toBe(false);
-    for (const attempt of attempts) if (attempt.modelCalls !== null) expect(attempt.modelCalls).toBeLessThanOrEqual(2);
+    for (const attempt of attempts) expect(boundKept(attempt), JSON.stringify(attempt)).toBe(true);
 
     // The first valid proposal of the run is accepted as a human would, on the screen it was reviewed on.
     const accepted = await fs.readFile(ACCEPTED_MARKER, "utf8").then((text) => JSON.parse(text).runId === RUN_ID, () => false);
-    if (!last.valid || accepted) return;
+    if (!outcome.valid || accepted) return;
+    // Where the human has to pick a reading of the goal, the battery picks the first, as a person would pick one.
+    const choice = page.getByTestId("goal-choice");
+    if (await choice.count()) await choice.getByRole("radio").first().check();
     await page.getByTestId("proposal-accept").click();
     await expect(page.getByTestId("revision-status")).toHaveText("proposed");
-    await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}-accepted.png`), fullPage: true });
+    await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}-accepted-${RUN_ID}.png`), fullPage: true });
     const stored = YAML.parse(await fs.readFile(LIVE_PRODUCT_FILE, "utf8"));
     expect(stored.revision).toEqual({ number: 1, status: "proposed" });
     // Every recorded quote occurs in the source it names.
@@ -200,7 +211,7 @@ for (const submission of BATTERY) {
       const label = entry.sourceLabel === "Pasted text" ? submission.pasted : entry.sourceLabel;
       expect(texts[label]).toContain(String(entry.snippet).replace(/\s+/g, " ").trim());
     }
-    await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, `${submission.id}-accepted.product.yaml`));
+    await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, `${submission.id}-accepted-${RUN_ID}.product.yaml`));
     await fs.writeFile(ACCEPTED_MARKER, JSON.stringify({ runId: RUN_ID, id: submission.id, revision: stored.revision, provenanceEntries: stored.provenance.length }));
     await fs.rm(LIVE_PRODUCT_FILE, { force: true });
   });

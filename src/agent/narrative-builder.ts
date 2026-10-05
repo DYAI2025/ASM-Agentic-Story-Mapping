@@ -24,14 +24,16 @@ export type ProposalTrace = { modelCalls: number };
  * never a partial proposal.
  *
  * One repair, and only one (ASM-29): when an answer parsed but was refused for
- * its shape or for named items in it (a quote not in its source, an unknown or
- * missing source, a ref or id, a role, a text limit), the provider is asked
- * once more, with the contract and what was refused. That answer is untrusted
- * like the first and goes through `resolveProposal` from scratch; nothing
- * refused is ever accepted as it was, and nothing is corrected here. Not
- * repaired: a provider failure (credentials, rate limit, timeout, network,
- * refusal, filter, cut-off, no JSON), an answer that proposes nothing, and a
- * proposal the map cannot take. There is no loop, so no submission makes a
+ * its shape or for named items in it (a quote not in the source it names, an
+ * unknown or missing source, a malformed, duplicated or undeclared ref, an id
+ * not on the map, a role outside the list), the provider is asked once more,
+ * with the contract and what was refused. That answer is untrusted like the
+ * first and goes through `resolveProposal` from scratch; a refused value is
+ * never accepted as it was, and nothing here rewrites one. Not repaired: a
+ * provider failure (credentials, rate limit, timeout, network, refusal,
+ * filter, cut-off, no JSON), any other refusal of the answer (an empty answer,
+ * text limits, confidence, placement), and any refusal of the dry run (a
+ * proposal the map cannot take). There is no loop, so no submission makes a
  * third call.
  */
 export async function buildProposal(
@@ -57,36 +59,35 @@ export async function buildProposal(
   };
 
   const first = await ask();
-  if (first.result.ok || !isRepairable(first.result.issues)) return first.result;
+  if (first.result.ok || !isRepairable(first.result)) return first.result;
   return (await ask(repairRequest(first.result.issues, first.raw))).result;
 }
 
 /**
- * What `resolveProposal` says about one named item of an answer: its format, a
- * reference, or its quote and source. These, and the output contract refusing
- * the answer's shape (`agent_output_*`), qualify for the one repair; any other
- * issue (an empty answer, a proposal the map cannot take) does not.
+ * The kinds of named item the PO decided may be named in the one repair
+ * (2026-10-06): quotes and their sources, refs and ids, roles. With the
+ * output contract refusing the answer's shape (`agent_output_*`), nothing else
+ * qualifies.
  */
 const REPAIRABLE_ITEM_CODES = new Set([
-  "too_many_items",
+  // quotes and their sources
+  "snippet_not_in_source",
+  "unknown_source",
+  "source_required",
+  // refs and ids
   "invalid_ref",
   "duplicate_ref",
-  "unknown_role",
-  "duplicate_role",
-  "empty_text",
-  "text_too_long",
-  "invalid_confidence",
-  "invalid_placement",
-  "alternative_without_goal",
   "unknown_ref",
   "unknown_id",
-  "source_required",
-  "unknown_source",
-  "snippet_not_in_source",
+  // roles
+  "unknown_role",
+  "duplicate_role",
 ]);
 
-function isRepairable(issues: readonly ValidationIssue[]): boolean {
-  return issues.length > 0 && issues.every((issue) => issue.code.startsWith("agent_output_") || REPAIRABLE_ITEM_CODES.has(issue.code));
+/** A refusal of the answer itself (no dry-run stage) in which every issue is one of the repairable kinds. */
+function isRepairable(result: { issues: readonly ValidationIssue[]; stage?: "apply" }): boolean {
+  if (result.stage === "apply") return false;
+  return result.issues.length > 0 && result.issues.every((issue) => issue.code.startsWith("agent_output_") || REPAIRABLE_ITEM_CODES.has(issue.code));
 }
 
 export const MAX_REPAIR_PROBLEMS = 20;
@@ -118,10 +119,11 @@ function textAt(output: unknown, path: string): string | null {
 export function repairRequest(issues: readonly ValidationIssue[], previous?: unknown): RepairRequest {
   const counts = new Map<string, number>();
   for (const issue of issues) {
-    const path = clip(oneLine(issue.path.replace(/\.\d+(?=\.|$)/g, ".*")), MAX_PROBLEM_PATH);
+    // Redacted before clipping, so a key cut at a clip boundary cannot leave a tail the pattern no longer matches.
+    const path = clip(redactSecrets(oneLine(issue.path.replace(/\.\d+(?=\.|$)/g, ".*"))), MAX_PROBLEM_PATH);
     const value = issue.code.startsWith("agent_output_") ? null : textAt(previous, issue.path);
-    const quoted = value === null ? "" : ` (your value: "${clip(oneLine(value), MAX_PROBLEM_VALUE)}")`;
-    const line = `${path}: ${clip(oneLine(issue.message), MAX_PROBLEM_MESSAGE)}${quoted}`;
+    const quoted = value === null ? "" : ` (your value: "${clip(redactSecrets(oneLine(value)), MAX_PROBLEM_VALUE)}")`;
+    const line = `${path}: ${clip(redactSecrets(oneLine(issue.message)), MAX_PROBLEM_MESSAGE)}${quoted}`;
     counts.set(line, (counts.get(line) ?? 0) + 1);
   }
   const lines = [...counts].map(([line, n]) => redactSecrets(n > 1 ? `${line} (${n} times)` : line));
