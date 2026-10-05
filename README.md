@@ -269,8 +269,10 @@ All four sit behind the same two interfaces and the same rules:
   (credentials, rate limit, timeout, network, refusal, content filter,
   cut-off, non-JSON, a key in the output), an answer that proposes nothing,
   and a proposal the map cannot take; those are refused after the first call.
-  There is no loop, so a submission makes one model call or two, never three;
-  `/api/proposal` and `/api/bootstrap` report the number as `modelCalls`. The
+  There is no loop, so a submission makes one model call or two, never three,
+  and each call is one HTTP request: the Anthropic SDK's own retries are off
+  (`maxRetries: 0`), the other adapters never had any; `/api/proposal` and
+  `/api/bootstrap` report the number as `modelCalls`. The
   instructions of every proposal request state the contract as well, with the
   exact-quote rule, the `new:` ref syntax and the closed role list spelled
   out. The repair scope beyond shape (named items) is the PO's decision of

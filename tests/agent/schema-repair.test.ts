@@ -363,6 +363,27 @@ describe("provider failures are not repaired (AC-29-07)", () => {
 });
 
 describe("the call bound (AC-29-02, AC-29-08)", () => {
+  it("the Anthropic SDK retries nothing on its own: a 429, a 500, a 529 or a dropped connection is one HTTP request", async () => {
+    const answers: Array<() => Response> = [
+      () => new Response(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: "slow down" } }), { status: 429, headers: { "content-type": "application/json" } }),
+      () => new Response(JSON.stringify({ type: "error", error: { type: "api_error", message: "boom" } }), { status: 500, headers: { "content-type": "application/json" } }),
+      () => new Response(JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "busy" } }), { status: 529, headers: { "content-type": "application/json" } }),
+      () => {
+        throw new TypeError("fetch failed");
+      },
+    ];
+    for (const answer of answers) {
+      const calls: string[] = [];
+      const fetch = (async (url: string | URL | Request) => {
+        calls.push(String(url));
+        return answer();
+      }) as typeof globalThis.fetch;
+      const result = await buildProposal(loadFixture(), TRANSCRIPT, new AnthropicProvider({ apiKey: KEY, fetch, timeoutMs: 20_000 }));
+      expect(codes(result)).toEqual(["provider_error"]);
+      expect(calls).toHaveLength(1);
+    }
+  }, 60_000);
+
   it("a model that never answers in shape is asked twice, never a third time", async () => {
     const forever = { calls: 0 };
     const provider: AgentProvider = {

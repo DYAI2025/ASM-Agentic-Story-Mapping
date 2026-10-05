@@ -80,7 +80,9 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
   }
 
   private async ask(request: ReturnType<typeof buildRequest> | ReturnType<typeof buildReviewRequest>): Promise<unknown> {
-    // A deadline, and the SDK's bounded retries on transient failures. Credentials resolve from the environment.
+    // A deadline, and no retries of the SDK's own: one structure() is one HTTP request, so a submission makes at
+    // most the two model calls ASM-29 allows (a 429, 5xx or dropped connection is shown; the human tries again).
+    // Credentials resolve from the environment.
     // The SDK's own logging stays off whatever ANTHROPIC_LOG says: at debug it would print request and
     // response bodies, the key and any echo of it included, before this adapter sees them (external review round 9).
     // API-key authentication only: the SDK would otherwise also send an ambient ANTHROPIC_AUTH_TOKEN as a bearer
@@ -90,7 +92,7 @@ export class AnthropicProvider implements AgentProvider, ReviewProvider {
       authToken: null,
       ...(this.fetch ? { fetch: this.fetch } : {}),
       timeout: this.timeoutMs,
-      maxRetries: 2,
+      maxRetries: 0,
       logLevel: "off",
     }).beta.messages;
 
