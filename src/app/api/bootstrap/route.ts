@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   const refused = crossSiteRefusal(request);
-  if (refused) return refused;
+  if (refused) return Response.json({ ...(await refused.json()), modelCalls: 0 }, { status: refused.status });
   const body = (await request.json().catch(() => null)) as { name?: unknown } | null;
   const context = contextFromBody(body);
   if (typeof body?.name !== "string" || !context)

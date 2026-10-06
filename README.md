@@ -720,13 +720,26 @@ table says which.
 | External review round 4 of `76ba4c2`: two accepts on one revision both landing (checked before either saved); a compatible OpenAI endpoint answering 200 with a status other than `completed` and valid JSON; the file label in the prompt preamble rather than inside the data block | ASM-28, `76ba4c2` | **all real** — closed by running every writing route's read → check → write inside the store queue (two mutants red: transaction not serialized; the accept loading outside it), by requiring `status: "completed"`, and by moving the label into the delimited block. The reviewer judged the reset threat model plain and honest; the provenance-at-accept boundary stays documented |
 | External review round 3 of `f4b5804`: a save in flight during a reset recreating the old product; the alias-export GET guard examining only the export clause | ASM-28, `f4b5804` | **both real** — closed by the in-process mutex plus the existence check at commit time (three mutants red: save recreates, orphan work state, no mutex) and by examining the whole file for an aliased GET. The round's Blocker — a hostile local process swapping a parent directory into a symlink between realpath and unlink — is not patched: it is outside the threat model written above (that process can delete the seed itself) and is recorded as an accepted limitation for the PO |
 | External review round 2 of `b0fe88c`: the seed reached through a directory symlink; a work-state override holding something else; a cross-site `text/plain` POST resetting or approving on localhost; OpenRouter's provider-level failover left on; the Anthropic key not passed to the redactor; `export { handler as GET }` | ASM-28, `b0fe88c` | **all real** — closed by the realpath seed check, the work-state content check, the same-origin refusal on all twelve writing/model routes, `allow_fallbacks: false`, the key passed through, and the wider pattern; six mutants red (seed check, content check, unlink order, fetch metadata, Origin, fallbacks). Two pre-existing findings stay documented limitations: concurrent accepts are last-writer-wins; a client can hand the accept route a patch whose source fields it changed |
+| Verifier on `cd9ba8a` (ASM-29): no repair; a retry loop; repair of every refusal; no contract in the repair; no redaction; the first answer's result returned after the repair; no `modelCalls`; Anthropic SDK retries back; refused values not quoted; quotes not repairable | ASM-29, `cd9ba8a` | all ten red. The verifier's own two **survived**: the whole previous answer sent back; `startProposal` asking again after a refusal for a missing goal — closed by tests in `44acfc6` (red in round 2) |
+| Verifier round 2 on `ba119a7` (ASM-29): excluded kinds back in the repairable set; the dry-run stage tag dropped; `modelCalls: 0` dropped | ASM-29, `ba119a7` | all red. **Survived**: `every` → `some` in the repairability check; four excluded codes (text limit, count limit, alternative without goal, placement without a step) without a test; redact-before-clip without a test; the stage guard (equivalent at the time); two `modelCalls: 0` branches — closed by tests in the following commit; external review round 2 (codex) found the 403 refusals without `modelCalls`, closed there too |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
 ### What a green run does not prove
 
 The deterministic provider has no understanding; the live providers have only
-run against stubbed transports except for the recorded live smoke. The store is
+run against stubbed transports except for the recorded live smoke and the
+live intake battery. The battery on the reference model
+(`qwen/qwen3-235b-a22b-2507` through OpenRouter) reached 2 of 5 valid
+proposals on the ASM-29 candidates `cd9ba8a` and `ba119a7` (the run on the
+final commit is recorded on ASM-29): the wrong-shape class is fixed, but on long
+inputs the model still misquotes a few of 30–60 items after the one repair, a
+proposal is refused whole for one bad item, and OpenRouter's upstream for the
+model often answers 429 (shared pool); reliability on that model is a separate
+ticket, not a property this branch has. With the Anthropic adapter the SDK
+checks the answer against the contract itself, so a wrong shape there is a
+provider error and gets no repair. A quote counts as found in its source with
+runs of whitespace treated as one space (accepted by the PO on 2026-10-06). The store is
 serialized within one server process, and every human action names what the
 human looked at — an accept carries the proposal's base fingerprint, an
 approval and a people check the map fingerprint, a selection the map

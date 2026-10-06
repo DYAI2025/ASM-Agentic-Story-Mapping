@@ -176,11 +176,13 @@ for (const submission of BATTERY) {
     const productFileAfter = await exists(LIVE_PRODUCT_FILE);
     const workStateFileAfter = await exists(WORK_STATE_FILE);
     // A submission only counts when it also kept the other promises: nothing written, a reported call count of 1 or 2.
-    const boundKept = (attempt: Attempt) => attempt.modelCalls !== null && attempt.modelCalls >= 1 && attempt.modelCalls <= 2;
+    const boundKept = (attempt: Attempt) => Number.isInteger(attempt.modelCalls) && attempt.modelCalls! >= 1 && attempt.modelCalls! <= 2;
+    const nothingWritten = !productFileAfter && !workStateFileAfter;
     const outcome: Outcome = {
       id: submission.id,
-      valid: last.valid && !productFileAfter && !workStateFileAfter && boundKept(last.attempt),
-      validFirstAttempt: first.valid && !productFileAfter && !workStateFileAfter && boundKept(first.attempt),
+      // Every attempt of the submission has to have kept the bound, not only the last one.
+      valid: last.valid && nothingWritten && attempts.every(boundKept),
+      validFirstAttempt: first.valid && nothingWritten && boundKept(first.attempt),
       ...last.attempt,
       attempts,
       productFileAfter,
@@ -204,7 +206,8 @@ for (const submission of BATTERY) {
     await page.screenshot({ path: path.join(ARTIFACTS, `${submission.id}-accepted-${RUN_ID}.png`), fullPage: true });
     const stored = YAML.parse(await fs.readFile(LIVE_PRODUCT_FILE, "utf8"));
     expect(stored.revision).toEqual({ number: 1, status: "proposed" });
-    // Every recorded quote occurs in the source it names.
+    // Every recorded quote occurs in the source it names, with runs of whitespace counted as one space: the
+    // rule resolveProposal applies, accepted by the PO on 2026-10-06 as the meaning of an exact quote.
     const texts: Record<string, string> = {};
     for (const f of [submission.pasted, ...(submission.files ?? [])]) texts[f] = (await fs.readFile(path.join(FIXTURES, f), "utf8")).replace(/\s+/g, " ");
     for (const entry of stored.provenance) {

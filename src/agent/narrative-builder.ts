@@ -85,7 +85,7 @@ const REPAIRABLE_ITEM_CODES = new Set([
 ]);
 
 /** A refusal of the answer itself (no dry-run stage) in which every issue is one of the repairable kinds. */
-function isRepairable(result: { issues: readonly ValidationIssue[]; stage?: "apply" }): boolean {
+export function isRepairable(result: { issues: readonly ValidationIssue[]; stage?: "apply" }): boolean {
   if (result.stage === "apply") return false;
   return result.issues.length > 0 && result.issues.every((issue) => issue.code.startsWith("agent_output_") || REPAIRABLE_ITEM_CODES.has(issue.code));
 }
