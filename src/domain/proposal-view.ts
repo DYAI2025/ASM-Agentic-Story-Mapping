@@ -70,6 +70,18 @@ export function goalChoice(patch: MapPatch): Array<{ opId: string; statement: st
   return goals.length > 1 ? goals : [];
 }
 
+/**
+ * Whether the goal is still the human's open decision: the proposal offers
+ * several readings and not exactly one of them is kept. Validity cannot stand
+ * in for this — on an existing product the old goal keeps a patch valid with
+ * every reading left out (ASM-31) — so Accept asks this first, on every screen
+ * that reviews a proposal.
+ */
+export function goalChoiceOpen(patch: MapPatch, excluded: ReadonlySet<string>): boolean {
+  const choice = goalChoice(patch);
+  return choice.length > 0 && choice.filter((goal) => !excluded.has(goal.opId)).length !== 1;
+}
+
 export interface Suggestion {
   label: string;
   text: string;

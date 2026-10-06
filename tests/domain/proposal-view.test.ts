@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { structureWithMarkers } from "../../src/agent/fake-provider";
 import { blankProduct } from "../../src/domain/bootstrap";
 import { applyMapPatch, resolveProposal, type MapPatch } from "../../src/domain/map-patch";
-import { goalChoice, groupProposal, suggestionsFor } from "../../src/domain/proposal-view";
+import { goalChoice, goalChoiceOpen, groupProposal, suggestionsFor } from "../../src/domain/proposal-view";
 import { loadFixture } from "./helpers";
 
 /**
@@ -170,5 +170,85 @@ describe("suggestions fill a draft field and nothing else", () => {
     expect(suggestionsFor(patch, need, "statement")).toEqual([{ label: "As written", text: "Need (Resident): Get my parcel on the day it arrives." }]);
     // Never for fields that are not text the human edits.
     expect(suggestionsFor(patch, need, "personaId")).toEqual([]);
+  });
+});
+
+describe("ASM-31: several goal readings need exactly one explicit choice before Accept", () => {
+  const FIRST = "Teams agree on one product narrative before they plan any delivery.";
+  const SECOND = "Product leads hand agents a work order they can execute without asking.";
+  const WORKSHOP = [`Goal: ${FIRST}`, `Goal: ${SECOND}`, "Do we ship the export first?"].join("\n");
+
+  function workshopProposal() {
+    const product = loadFixture();
+    const result = resolveProposal(product, structureWithMarkers(WORKSHOP, product), WORKSHOP, "test");
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    return { product, patch: result.patch, goals: goalChoice(result.patch).map((g) => g.opId) };
+  }
+  const without = (patch: MapPatch, excluded: Set<string>) => ({ ...patch, operations: patch.operations.filter((o) => !excluded.has(o.opId)) });
+
+  it("on an existing product, leaving every reading out still applies — so validity cannot be the gate, the choice is", () => {
+    const { product, patch, goals } = workshopProposal();
+    expect(goals).toHaveLength(2);
+    const none = new Set(goals);
+    // The defect QA reproduced: the old goal keeps the reduced patch valid.
+    const applied = applyMapPatch(product, without(patch, none));
+    expect(applied.ok).toBe(true);
+    expect(applied.ok && applied.product.goal.statement).toBe(product.goal.statement);
+    // The rule says the decision is still open.
+    expect(goalChoiceOpen(patch, none)).toBe(true);
+  });
+
+  it("exactly one reading kept closes the choice, whichever it is; both kept or none kept leaves it open", () => {
+    const { patch, goals } = workshopProposal();
+    const [first, second] = goals;
+    expect(goalChoiceOpen(patch, new Set([second]))).toBe(false);
+    expect(goalChoiceOpen(patch, new Set([first]))).toBe(false);
+    expect(goalChoiceOpen(patch, new Set())).toBe(true);
+    expect(goalChoiceOpen(patch, new Set([first, second]))).toBe(true);
+    // Leaving out an op that is not a goal does not count as a choice.
+    const other = patch.operations.find((o) => o.op !== "set_goal")!.opId;
+    expect(goalChoiceOpen(patch, new Set([first, second, other]))).toBe(true);
+  });
+
+  it("with three readings, one kept closes it and two kept do not", () => {
+    const product = loadFixture();
+    const text = [WORKSHOP, "Goal: Agents never change the map on their own."].join("\n");
+    const result = resolveProposal(product, structureWithMarkers(text, product), text, "test");
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    const [a, b, c] = goalChoice(result.patch).map((g) => g.opId);
+    expect(goalChoiceOpen(result.patch, new Set([b, c]))).toBe(false);
+    expect(goalChoiceOpen(result.patch, new Set([c]))).toBe(true);
+    expect(goalChoiceOpen(result.patch, new Set([a, b, c]))).toBe(true);
+  });
+
+  it("one goal, or none, is no choice: nothing to decide, the rule never blocks", () => {
+    const { patch: single } = proposal();
+    expect(goalChoiceOpen(single, new Set())).toBe(false);
+    const goal = single.operations.find((o) => o.op === "set_goal")!.opId;
+    expect(goalChoiceOpen(single, new Set([goal]))).toBe(false);
+    const product = loadFixture();
+    const question = "Do we ship the export first?";
+    const noGoal = resolveProposal(product, structureWithMarkers(question, product), question, "test");
+    expect(noGoal.ok && goalChoiceOpen(noGoal.patch, new Set())).toBe(false);
+  });
+
+  it("the same rule holds on a first product: Bootstrap and Workshop share it", () => {
+    const blank = blankProduct("Parcel lockers");
+    if (!blank.ok) throw new Error("blank");
+    const text = [TEXT, "Goal: Couriers deliver to the building in one stop."].join("\n");
+    const result = resolveProposal(blank.product, structureWithMarkers(text, blank.product), text, "test");
+    if (!result.ok) throw new Error("proposal");
+    const goals = goalChoice(result.patch).map((g) => g.opId);
+    expect(goalChoiceOpen(result.patch, new Set(goals))).toBe(true);
+    expect(goalChoiceOpen(result.patch, new Set([goals[1]]))).toBe(false);
+  });
+
+  it("the domain still refuses two goals on an existing product, and the product is not touched", () => {
+    const { product, patch } = workshopProposal();
+    const before = JSON.stringify(product);
+    const applied = applyMapPatch(product, patch);
+    expect(applied.ok).toBe(false);
+    expect(codes(applied)).toEqual(["conflicting_goal"]);
+    expect(JSON.stringify(product)).toBe(before);
   });
 });

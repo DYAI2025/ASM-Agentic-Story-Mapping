@@ -10,7 +10,7 @@ import {
   type ContextSource,
 } from "../domain/context";
 import { applyMapPatch, type MapPatch, type PatchOperation, type Touch } from "../domain/map-patch";
-import { goalChoice } from "../domain/proposal-view";
+import { goalChoice, goalChoiceOpen } from "../domain/proposal-view";
 import type { ProductDocument } from "../domain/schema";
 import type { ValidationIssue } from "../domain/validate";
 import { ProposalReview } from "./ProposalReview";
@@ -135,6 +135,8 @@ export function WorkshopPanel({
     [patch, excluded],
   );
   const result = useMemo(() => (effective ? applyMapPatch(product, effective) : null), [product, effective]);
+  // Several goal readings and not exactly one chosen: the decision is the human's and still open, whatever validity says.
+  const goalOpen = patch !== null && goalChoiceOpen(patch, excluded);
 
   useEffect(() => {
     onPreview(result?.ok ? { product: result.product, touched: result.touched } : null);
@@ -196,7 +198,7 @@ export function WorkshopPanel({
   }
 
   async function accept() {
-    if (!effective || busy) return;
+    if (!effective || busy || goalOpen) return;
     setBusy(true);
     // Until the answer is in, nothing about the proposal can change: what was sent is what will land.
     const answer = await post(endpoints.accept, { ...extra, patch: effective });
@@ -347,11 +349,19 @@ export function WorkshopPanel({
             pending={busy}
           />
 
+          {goalOpen && (
+            // Said in words, not only by a disabled button: which decision is missing and that it is the human's.
+            <p id="goal-choice-required" className="stale" role="status" data-testid="goal-choice-required">
+              Choose exactly one goal reading above to accept this proposal. ASM does not choose one for you, and until you do, Accept is unavailable.
+            </p>
+          )}
+
           <div className="row actions">
             <button
               type="button"
               data-testid="proposal-accept"
-              disabled={busy || !result?.ok}
+              disabled={busy || goalOpen || !result?.ok}
+              aria-describedby={goalOpen ? "goal-choice-required" : undefined}
               onClick={() => void accept()}
             >
               Accept {includedCount} change{includedCount === 1 ? "" : "s"}
