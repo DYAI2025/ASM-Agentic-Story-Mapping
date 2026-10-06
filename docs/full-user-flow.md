@@ -60,8 +60,8 @@ label and size, removable. Nothing is saved.
 
 Goal (two readings, nothing chosen), personas, other actors, needs, the
 suggested main path, open questions — each item with Use / Edit, the source
-behind a disclosure, the preview below. Accept is disabled until a goal is
-chosen.
+behind a disclosure, the preview below. Accept is unavailable until exactly one
+goal reading is chosen, and the line above it says so.
 
 ![4 — grouped proposal](screenshots/fuf-04-grouped-proposal.png)
 
@@ -174,3 +174,29 @@ with its value; the corrected answer is reviewed, and what Accept makes canon
 quotes the text exactly.
 
 ![18 — near-miss quote repaired](screenshots/asm29-03-inexact-quote-repaired.png)
+
+## A goal choice on an existing product (ASM-31)
+
+These two states come from `tests/e2e/goal-choice.spec.ts`, on the ASM
+self-map, whose goal already exists. The text offers two readings of the goal
+and one open question. Without a choice the proposal is still valid (the old
+goal would simply stay), so validity is not what blocks Accept; the open
+choice is, by the same rule the first product follows. Nothing is written in
+either state.
+
+### 19. Two readings, none chosen: Accept unavailable, and why
+
+No radio is checked; the line above the buttons says that exactly one goal
+reading has to be chosen and that ASM does not choose one. Accept is
+unavailable; a forced click sends nothing.
+
+![19 — goal choice open](screenshots/goal-choice-01-none-chosen-blocked.png)
+
+### 20. One reading chosen: Accept available
+
+The first reading is chosen; the notice is gone, Accept counts the chosen goal
+and the question, and the preview shows the goal changed. Accepting writes
+this reading and not the other; choosing the second one instead, or switching
+before Accept, writes only the last choice.
+
+![20 — goal chosen](screenshots/goal-choice-02-one-chosen-eligible.png)

@@ -152,11 +152,17 @@ only fills the field in the proposal draft.
 
 When the text supports more than one reading of what the product is for, the
 provider says so (`goalAlternatives`) and the goal becomes a choice: radio
-buttons with nothing chosen, "ASM does not choose for you". A patch that still
-carries two goals is refused by `applyMapPatch` (`conflicting_goal`), so no
-client and no provider can skip the choice; a first product cannot be accepted
-until one is picked. The map shows what the proposal would look like; nothing
-is written until *Accept*.
+buttons with nothing chosen, "ASM does not choose for you". Until exactly one
+reading is chosen, *Accept* is unavailable and the review says in words that
+the goal is the choice still missing — on a first product and on an existing
+one alike (`goalChoiceOpen` in `src/domain/proposal-view.ts`, ASM-31). On an
+existing product validity cannot stand in for this: the old goal keeps a
+proposal valid with every reading left out. Choosing again before *Accept*
+replaces the earlier choice. A patch that still carries two goals is refused
+by `applyMapPatch` (`conflicting_goal`), so no client and no provider can get
+two goals accepted; a client that leaves out every reading is not stopped by
+the server (see "What a green run does not prove"). The map shows what the
+proposal would look like; nothing is written until *Accept*.
 
 ![Reviewing a proposal](docs/screenshots/asm-proposal-review.png)
 
@@ -722,6 +728,7 @@ table says which.
 | External review round 2 of `b0fe88c`: the seed reached through a directory symlink; a work-state override holding something else; a cross-site `text/plain` POST resetting or approving on localhost; OpenRouter's provider-level failover left on; the Anthropic key not passed to the redactor; `export { handler as GET }` | ASM-28, `b0fe88c` | **all real** — closed by the realpath seed check, the work-state content check, the same-origin refusal on all twelve writing/model routes, `allow_fallbacks: false`, the key passed through, and the wider pattern; six mutants red (seed check, content check, unlink order, fetch metadata, Origin, fallbacks). Two pre-existing findings stay documented limitations: concurrent accepts are last-writer-wins; a client can hand the accept route a patch whose source fields it changed |
 | Verifier on `cd9ba8a` (ASM-29): no repair; a retry loop; repair of every refusal; no contract in the repair; no redaction; the first answer's result returned after the repair; no `modelCalls`; Anthropic SDK retries back; refused values not quoted; quotes not repairable | ASM-29, `cd9ba8a` | all ten red. The verifier's own two **survived**: the whole previous answer sent back; `startProposal` asking again after a refusal for a missing goal — closed by tests in `44acfc6` (red in round 2) |
 | Verifier round 2 on `ba119a7` (ASM-29): excluded kinds back in the repairable set; the dry-run stage tag dropped; `modelCalls: 0` dropped | ASM-29, `ba119a7` | all red. **Survived**: `every` → `some` in the repairability check; four excluded codes (text limit, count limit, alternative without goal, placement without a step) without a test; redact-before-clip without a test; the stage guard (equivalent at the time); two `modelCalls: 0` branches — closed by tests in the following commit; external review round 2 (codex) found the 403 refusals without `modelCalls`, closed there too |
+| A goal choice left open on an existing product (ASM-31): the Accept button back to `busy || !result?.ok`; the rule counting "more than one kept" instead of "not exactly one"; the rule blind to two readings; the gate forced off; the missing-choice notice removed; `conflicting_goal` disabled | ASM-31, `3ad14bb` | all red (the first is the defect External QA reproduced; the new browser test was also red on `3acc12a` before the fix). Removing only the guard inside `accept()` **survived** — an equivalent mutant through the browser, since the disabled button is its only caller; kept as a second line |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
@@ -757,7 +764,11 @@ serializes across processes. The accept routes take the edited patch from the br
 re-validate its shape and fingerprint, not its source fields: a client that
 rewrote `sourceId`/`sourceLabel` on an op would record an attribution the
 server never checked — the browser is the human's own, but it is a trust
-boundary worth naming. `POST /api/product/import` replaces the product with the file it
+boundary worth naming. The goal choice is enforced in the review, not by
+the server: the accept routes refuse a patch with two goals, but a patch that
+leaves out every offered reading is indistinguishable from a proposal that had
+none, so a client other than the review can skip the choice and keep the old
+goal (on a first product it is refused for a missing goal). `POST /api/product/import` replaces the product with the file it
 is given, approval record included, without the proposal path: it is the way
 to bring your own file, and it is a human's own file, but a client on the
 network could use it the same way. Nothing authenticates a request: every
