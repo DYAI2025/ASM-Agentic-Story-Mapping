@@ -158,8 +158,30 @@ test("a choice belongs to one proposal: after Reject and after Accept, the next 
   expect(sha(await stored())).toBe(sha(accepted));
 });
 
-test("Bootstrap follows the same rule: two readings, none chosen, the same notice and no Accept", async ({ page }) => {
+test("an existing work state stays byte-identical while a goal choice is open, made and changed", async ({ page }) => {
+  // A real work state: the map approved by a named human, then the people check, both through their own routes.
+  await page.goto("/");
+  const etag = (await page.request.get("/api/product")).headers()["etag"].replaceAll('"', "");
+  const approved = await page.request.post("/api/product/approve", { data: { approvedBy: "Maya", mapFingerprint: etag } });
+  expect(approved.status()).toBe(200);
+  const { mapFingerprint } = await (await page.request.get("/api/slices")).json();
+  expect((await page.request.post("/api/people-check", { data: { confirmedBy: "Maya", mapFingerprint } })).status()).toBe(200);
+  const workState = await fs.readFile(E2E_WORK_STATE_FILE, "utf8");
+  expect(JSON.parse(workState).personaCheck).toMatchObject({ confirmedBy: "Maya", mapFingerprint });
+  const product = await stored();
+
+  await proposeTwoReadings(page);
+  await expect(page.getByTestId("proposal-accept")).toBeDisabled();
+  await page.getByTestId("proposal-accept").click({ force: true });
+  await reading(page, FIRST).check();
+  await reading(page, SECOND).check();
+  expect(await fs.readFile(E2E_WORK_STATE_FILE, "utf8")).toBe(workState);
+  expect(await stored()).toBe(product);
+});
+
+test("Bootstrap follows the same rule: two readings, none chosen, the same notice and no Accept; the chosen one is created", async ({ page }) => {
   await fs.rm(E2E_PRODUCT_FILE, { force: true });
+  const sent = acceptRequests(page);
   await page.goto("/");
   await page.getByTestId("product-name-input").fill("Parcel lockers");
   await page.getByTestId("transcript-input").fill(TEXT);
@@ -173,6 +195,14 @@ test("Bootstrap follows the same rule: two readings, none chosen, the same notic
   await expect(page.getByTestId("goal-choice-required")).toHaveCount(0);
   await expect(page.getByTestId("proposal-accept")).toBeEnabled();
   await expect(fs.access(E2E_PRODUCT_FILE)).rejects.toThrow();
+
+  // Accepting creates the product with the chosen reading and not the other.
+  await page.getByTestId("proposal-accept").click();
+  await expect(page.getByTestId("goal-statement")).toHaveText(SECOND);
+  expect(YAML.parse(await stored()).goal.statement).toBe(SECOND);
+  expect(await stored()).not.toContain(FIRST);
+  expect(sent).toHaveLength(1);
+  expect(sent[0].patch.operations.filter((o) => o.op === "set_goal").map((o) => o.statement)).toEqual([SECOND]);
 });
 
 test("the workshop accept route still refuses a patch with both readings as conflicting_goal, and the file is untouched", async ({ page }) => {
