@@ -63,6 +63,8 @@ test("existing product, two readings, none chosen: Accept is unavailable, the sc
   const notice = page.getByTestId("goal-choice-required");
   await expect(notice).toBeVisible();
   await expect(notice).toContainText("Choose exactly one goal reading");
+  // A live region a screen reader can find, not only a styled paragraph.
+  await expect(page.getByRole("status").filter({ hasText: "Choose exactly one goal reading" })).toBeVisible();
   await expect(page.getByTestId("proposal-accept")).toHaveAttribute("aria-describedby", "goal-choice-required");
   await page.screenshot({ path: shot("01-none-chosen-blocked"), fullPage: true });
 
@@ -128,6 +130,32 @@ test("first, then second: only the last explicit choice is accepted", async ({ p
   expect(await stored()).not.toContain(FIRST);
   expect(sent).toHaveLength(1);
   expect(sent[0].patch.operations.filter((o) => o.op === "set_goal").map((o) => o.statement)).toEqual([SECOND]);
+});
+
+test("a choice belongs to one proposal: after Reject and after Accept, the next proposal starts with none chosen", async ({ page }) => {
+  // Found by the independent verifier on 0b5b787: a choice carried into the next proposal survived every test.
+  await proposeTwoReadings(page);
+  await reading(page, FIRST).check();
+  await page.getByTestId("proposal-reject").click();
+  await expect(page.getByTestId("proposal-review")).toHaveCount(0);
+
+  await page.getByTestId("transcript-input").fill(TEXT);
+  await page.getByTestId("structure-button").click();
+  await expect(page.locator("input[name='goal-choice']")).toHaveCount(2);
+  await expect(page.locator("input[name='goal-choice']:checked")).toHaveCount(0);
+  await expect(page.getByTestId("goal-choice-required")).toBeVisible();
+  await expect(page.getByTestId("proposal-accept")).toBeDisabled();
+
+  // Accept the second reading; the next proposal offering the same two readings is open again.
+  await reading(page, SECOND).check();
+  expect((await acceptAndRead(page)).goal.statement).toBe(SECOND);
+  const accepted = await stored();
+  await page.getByTestId("transcript-input").fill(TEXT);
+  await page.getByTestId("structure-button").click();
+  await expect(page.locator("input[name='goal-choice']")).toHaveCount(2);
+  await expect(page.locator("input[name='goal-choice']:checked")).toHaveCount(0);
+  await expect(page.getByTestId("proposal-accept")).toBeDisabled();
+  expect(sha(await stored())).toBe(sha(accepted));
 });
 
 test("Bootstrap follows the same rule: two readings, none chosen, the same notice and no Accept", async ({ page }) => {
