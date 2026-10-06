@@ -13,18 +13,18 @@
     "approval": {
       "revision": 1,
       "approvedBy": "Maya (E2E)",
-      "approvedAt": "2026-10-06T01:18:32.040Z"
+      "approvedAt": "2026-10-06T14:42:47.089Z"
     },
     "selection": {
       "candidateId": "slice-shared-steps",
       "selectedBy": "Maya (E2E)",
-      "selectedAt": "2026-10-06T01:18:32.284Z",
+      "selectedAt": "2026-10-06T14:42:47.272Z",
       "candidateFingerprint": "f66ec7d4",
       "derivationVersion": 2
     },
     "peopleConsidered": {
       "confirmedBy": "Maya (E2E)",
-      "confirmedAt": "2026-10-06T01:18:32.188Z",
+      "confirmedAt": "2026-10-06T14:42:47.223Z",
       "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
     },
     "value": {
@@ -33,7 +33,7 @@
       "exception": {
         "rationale": "The hand-over points have to work before we can observe which need they serve.",
         "acceptedBy": "Maya (E2E)",
-        "acceptedAt": "2026-10-06T01:18:32.632Z"
+        "acceptedAt": "2026-10-06T14:42:47.621Z"
       },
       "note": "No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value."
     },
@@ -422,7 +422,7 @@
     "revision": 1,
     "status": "approved",
     "approvedBy": "Maya (E2E)",
-    "approvedAt": "2026-10-06T01:18:32.040Z",
-    "mapFingerprint": "80889447"
+    "approvedAt": "2026-10-06T14:42:47.089Z",
+    "mapFingerprint": "510a9d87"
   }
 }
