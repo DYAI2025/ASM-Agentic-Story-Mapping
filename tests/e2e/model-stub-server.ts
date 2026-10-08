@@ -19,7 +19,11 @@ import { asQaObserved } from "../fixtures/qa-observed-shape";
  * - a text containing `[stub:inexact-quote]` is first answered in the right
  *   shape with one quote that is not in the text (its first word dropped and
  *   the case of the next letter changed, the kind of near miss the reference
- *   model made on 2026-10-06), then correctly on the repair request.
+ *   model made on 2026-10-06), then correctly on the repair request;
+ *   `[stub:inexact-quote-always]` makes the same near miss on the repair too;
+ * - `[stub:status-401]` and `[stub:status-429]` answer with that HTTP error,
+ *   and `[stub:leak-key]` answers with the key the app sent inside the
+ *   output (ASM-30: the failure messages a human sees).
  *
  * It records every request so a test can count them (`GET /calls`) and see
  * whether the key travelled anywhere but the header. `POST /reset` forgets them.
@@ -80,10 +84,13 @@ const server = http.createServer((request, response) => {
       authorized: request.headers.authorization === `Bearer ${KEY}`,
       namesRefusedQuote: repair && inexact !== "" && message.includes(inexact),
     });
-    if (text.includes("[stub:inexact-quote]") && !repair) {
-      const spoiled = { ...valid, personas: valid.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, snippet: inexact } } : p)) };
-      return send(200, answer(spoiled));
-    }
+    if (text.includes("[stub:status-401]")) return send(401, { error: { message: "Incorrect API key provided", type: "invalid_request_error" } });
+    if (text.includes("[stub:status-429]")) return send(429, { error: { message: "Rate limit reached", type: "requests" } });
+    // The key the app sent, put into the answer as a key of its own: the adapter has to discard the whole answer.
+    if (text.includes("[stub:leak-key]")) return send(200, answer({ ...asQaObserved(valid), [KEY]: KEY }));
+    const spoiled = { ...valid, personas: valid.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, snippet: inexact } } : p)) };
+    if (text.includes("[stub:inexact-quote-always]")) return send(200, answer(spoiled));
+    if (text.includes("[stub:inexact-quote]") && !repair) return send(200, answer(spoiled));
     if (text.includes("[stub:never-in-shape]") || !repair) return send(200, answer(asQaObserved(valid)));
     return send(200, answer(valid));
   });

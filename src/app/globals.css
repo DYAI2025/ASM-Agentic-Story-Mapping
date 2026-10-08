@@ -226,6 +226,16 @@ textarea {
   background: var(--worst-bg);
 }
 
+/* ASM-30: the technical list of an unreadable answer, closed until asked for. */
+.failure-details summary {
+  cursor: pointer;
+}
+
+.failure-details ul {
+  max-height: 320px;
+  overflow: auto;
+}
+
 /* Context bundle: the files added next to the pasted text. */
 .context-files {
   display: flex;

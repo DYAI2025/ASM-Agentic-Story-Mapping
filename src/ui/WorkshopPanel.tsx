@@ -13,6 +13,7 @@ import { applyMapPatch, type MapPatch, type PatchOperation, type Touch } from ".
 import { goalChoice, goalChoiceOpen } from "../domain/proposal-view";
 import type { ProductDocument } from "../domain/schema";
 import type { ValidationIssue } from "../domain/validate";
+import { ProposalIssues } from "./ProposalIssues";
 import { ProposalReview } from "./ProposalReview";
 
 /**
@@ -393,18 +394,7 @@ export function WorkshopPanel({
         </div>
       )}
 
-      {shownIssues.length > 0 && (
-        <div className="panel error" role="alert" data-testid="proposal-issues">
-          <strong>{patch ? "This proposal cannot be accepted as it stands." : "No proposal."}</strong>
-          <ul>
-            {shownIssues.map((issue, i) => (
-              <li key={i}>
-                <code>{issue.path}</code> — {issue.message} <small>({issue.code})</small>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <ProposalIssues issues={shownIssues} reviewing={patch !== null} />
     </section>
   );
 }
