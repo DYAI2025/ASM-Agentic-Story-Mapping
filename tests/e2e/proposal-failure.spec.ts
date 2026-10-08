@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_REPAIR_PRODUCT_FILE, E2E_REPAIR_WORK_STATE_FILE, MODEL_STUB_KEY, MODEL_STUB_PORT, REPAIR_PORT } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
+import { screenLines, unreadableParts } from "./on-screen";
 import { FIXTURE_FILE } from "./global-setup";
 
 /**
@@ -33,8 +34,6 @@ const HEADLINE = "The model's answer could not be read safely, so ASM did not us
 /** What a schema dump looks like: the codes, the paths, the validator's own words. */
 const SCHEMA_TALK = /agent_output_|\bneeds\.\d|\bsteps\.\d|Unrecognized key|Invalid input/;
 
-/** The lines a reader sees in an element's innerText, trimmed, empty ones dropped. */
-const screenLines = (text: string) => text.split("\n").map((line) => line.trim()).filter((line) => line !== "");
 const exists = (file: string) => fs.access(file).then(() => true, () => false);
 const shot = (name: string) => path.join(SCREENSHOTS, `proposal-failure-${name}.png`);
 
@@ -71,9 +70,11 @@ async function expectBoundedMessage(page: Page, answer: Answer) {
   // Announced, not only painted: the box is an alert, as the issue list was before (verifier round 1).
   await expect(page.getByRole("alert").filter({ hasText: HEADLINE })).toBeVisible();
 
-  // What is on screen, line by line and exactly: innerText leaves out whatever is hidden (a closed disclosure,
-  // a `hidden` element, display:none), so a sentence that is in the markup but not on screen fails here. Two
-  // verifier rounds found single sentences checked as markup; comparing the whole screen text closes that class.
+  // What is on screen, line by line and exactly. innerText leaves out a closed disclosure, a `hidden` element,
+  // display:none and visibility:hidden; what it still counts (transparent, zero-sized, off-screen or clipped
+  // text, and nothing of CSS-generated text) the paint check below covers. Three verifier rounds found the
+  // class "in the DOM but not readable"; these two checks together are the answer to it, not one more sentence.
+  expect(await unreadableParts(box)).toEqual([]);
   const visible = await box.innerText();
   expect(screenLines(visible)).toEqual([
     HEADLINE,
@@ -107,9 +108,12 @@ test("first map, 50+ issues: one bounded message, nothing created, the technical
   await details.locator("summary").click();
   await expect(details).toHaveJSProperty("open", true);
   await expect(details.locator("li")).toHaveCount(answer.issues.length);
-  await expect(details.locator("li").first()).toBeVisible();
-  await expect(details).toContainText(answer.issues[0].path);
-  await expect(details).toContainText(answer.issues[0].code);
+  // Read as on screen: the summary, then one line per issue as the server returned it, in order.
+  expect(screenLines(await details.innerText())).toEqual([
+    `Technical details (${answer.issues.length} problems in the answer)`,
+    ...answer.issues.map((issue) => `${issue.path} — ${issue.message} (${issue.code})`),
+  ]);
+  expect(await unreadableParts(details.locator("li").first())).toEqual([]);
   await page.screenshot({ path: shot("02-technical-details-open"), fullPage: true });
 
   // No key anywhere: not on the page, open or closed, and not in the response.
@@ -149,8 +153,10 @@ async function expectSpecific(page: Page, answer: Answer, code: string, words: s
   const lines = screenLines(await box.innerText());
   expect(lines[0]).toBe("No proposal.");
   expect(lines).toHaveLength(1 + answer.issues.length);
+  expect(lines[1]).toContain(answer.issues[0].path);
   expect(lines[1]).toContain(words);
   expect(lines[1]).toContain(`(${code})`);
+  expect(await unreadableParts(box)).toEqual([]);
   await expect(page.getByTestId("proposal-failure-headline")).toHaveCount(0);
   await expect(page.getByTestId("proposal-failure-details")).toHaveCount(0);
   expect(answer.issues.map((issue) => issue.code)).toContain(code);

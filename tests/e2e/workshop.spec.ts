@@ -7,6 +7,7 @@ import { FIXTURE_FILE, resetProductFile } from "./global-setup";
 
 const TRANSCRIPT_FILE = path.join(__dirname, "..", "fixtures", "workshop-transcript.txt");
 import { SCREENSHOTS } from "./artifacts";
+import { screenLines, unreadableParts } from "./on-screen";
 const NEW_STEP = "card-step-walk-through-the-slice-with-the-team";
 
 test.describe.configure({ mode: "serial" });
@@ -115,10 +116,12 @@ test("a proposal can be edited before it is accepted", async ({ page }) => {
   // Dropping the persona that other changes depend on blocks acceptance.
   await page.getByLabel("Include op-1").uncheck();
   await expect(page.getByTestId("proposal-issues")).toContainText("unknown_id");
-  // Said as a refusal of this proposal, not as "No proposal." (found by the ASM-30 verifier: the heading had no browser test).
-  // Read as on screen (innerText leaves out hidden elements), not as markup.
-  const shown = (await page.getByTestId("proposal-issues").innerText()).split("\n").map((line) => line.trim()).filter(Boolean);
+  // Said as a refusal of this proposal, not as "No proposal." (found by the ASM-30 verifier: the heading had no browser test),
+  // read as on screen and checked as painted, not as markup.
+  const shown = screenLines(await page.getByTestId("proposal-issues").innerText());
   expect(shown[0]).toBe("This proposal cannot be accepted as it stands.");
+  expect(shown.slice(1).some((line) => line.endsWith("(unknown_id)"))).toBe(true);
+  expect(await unreadableParts(page.getByTestId("proposal-issues"))).toEqual([]);
   await expect(page.getByTestId("proposal-accept")).toBeDisabled();
   await page.getByLabel("Include op-1").check();
   await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
