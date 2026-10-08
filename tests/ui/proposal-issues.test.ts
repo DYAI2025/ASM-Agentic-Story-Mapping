@@ -39,6 +39,8 @@ describe("ASM-30: an answer in the wrong shape is one bounded message, the list 
     expect(visible).not.toMatch(/agent_output_|needs\.\d|steps\.\d|Unrecognized key|Invalid input/);
     // An alert, so a screen reader announces it, as it did the list before (verifier round 1).
     expect(html).toMatch(/^<div[^>]*role="alert"[^>]*data-testid="proposal-issues"/);
+    // Static markup cannot see layout; it can see an element hidden outright. The browser test reads the screen.
+    expect(html).not.toMatch(/\shidden(=|\s|>)|\sstyle=/);
 
     const details = /<details([^>]*)>([\s\S]*?)<\/details>/.exec(html);
     expect(details).not.toBeNull();
@@ -93,6 +95,7 @@ describe("ASM-30: specific failures keep their specific message", () => {
     expect(unreadableAnswer([issue])).toBeNull();
     const html = render([issue]);
     expect(html).not.toContain("<details");
+    expect(html).not.toMatch(/\shidden(=|\s|>)|\sstyle=/);
     expect(text(html)).not.toContain(UNREADABLE_HEADLINE);
     const visible = text(html);
     expect(visible).toContain("No proposal.");

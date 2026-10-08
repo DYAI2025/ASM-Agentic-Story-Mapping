@@ -33,6 +33,8 @@ const HEADLINE = "The model's answer could not be read safely, so ASM did not us
 /** What a schema dump looks like: the codes, the paths, the validator's own words. */
 const SCHEMA_TALK = /agent_output_|\bneeds\.\d|\bsteps\.\d|Unrecognized key|Invalid input/;
 
+/** The lines a reader sees in an element's innerText, trimmed, empty ones dropped. */
+const screenLines = (text: string) => text.split("\n").map((line) => line.trim()).filter((line) => line !== "");
 const exists = (file: string) => fs.access(file).then(() => true, () => false);
 const shot = (name: string) => path.join(SCREENSHOTS, `proposal-failure-${name}.png`);
 
@@ -69,12 +71,18 @@ async function expectBoundedMessage(page: Page, answer: Answer) {
   // Announced, not only painted: the box is an alert, as the issue list was before (verifier round 1).
   await expect(page.getByRole("alert").filter({ hasText: HEADLINE })).toBeVisible();
 
-  // What is on screen: a few sentences whatever the number of issues, and none of the validator's language.
-  // innerText leaves out what a closed disclosure hides, so these sentences are checked as read, not as markup.
+  // What is on screen, line by line and exactly: innerText leaves out whatever is hidden (a closed disclosure,
+  // a `hidden` element, display:none), so a sentence that is in the markup but not on screen fails here. Two
+  // verifier rounds found single sentences checked as markup; comparing the whole screen text closes that class.
   const visible = await box.innerText();
-  expect(visible).toContain(HEADLINE);
-  expect(visible).toContain("Nothing was changed.");
-  expect(visible).toContain("Try again");
+  expect(screenLines(visible)).toEqual([
+    HEADLINE,
+    "Nothing was changed.",
+    "Try again: the model may answer in the expected form the next time.",
+    "If it fails again, shorten the text or split it into smaller parts.",
+    "If it keeps failing, the configured model may not follow ASM's format; another one can be set on the server (ASM_AGENT_MODEL).",
+    `Technical details (${answer.issues.length} problems in the answer)`,
+  ]);
   expect(visible.length).toBeLessThanOrEqual(700);
   expect(visible).not.toMatch(SCHEMA_TALK);
   for (const issue of answer.issues) expect(visible).not.toContain(issue.path);
@@ -137,9 +145,12 @@ test("existing map, 50+ issues: the same message, and the product file and the w
 async function expectSpecific(page: Page, answer: Answer, code: string, words: string) {
   const box = page.getByTestId("proposal-issues");
   await expect(box).toBeVisible();
-  await expect(box).toContainText("No proposal.");
-  await expect(box).toContainText(words);
-  await expect(box).toContainText(code);
+  // Read as on screen: the heading first, then the one issue with its words, path and code.
+  const lines = screenLines(await box.innerText());
+  expect(lines[0]).toBe("No proposal.");
+  expect(lines).toHaveLength(1 + answer.issues.length);
+  expect(lines[1]).toContain(words);
+  expect(lines[1]).toContain(`(${code})`);
   await expect(page.getByTestId("proposal-failure-headline")).toHaveCount(0);
   await expect(page.getByTestId("proposal-failure-details")).toHaveCount(0);
   expect(answer.issues.map((issue) => issue.code)).toContain(code);
