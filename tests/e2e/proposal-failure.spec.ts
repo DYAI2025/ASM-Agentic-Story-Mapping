@@ -71,8 +71,8 @@ async function expectBoundedMessage(page: Page, answer: Answer) {
   await expect(page.getByRole("alert").filter({ hasText: HEADLINE })).toBeVisible();
 
   // What is on screen, in two measurements: the words, line by line and exactly, from innerText (which leaves
-  // out a closed disclosure, `hidden`, display:none and visibility:hidden); and that each line is painted
-  // readably, from the pixels (see on-screen.ts for what that covers and what it does not).
+  // out a closed disclosure, `hidden`, display:none and visibility:hidden); and that each line shows legible
+  // ink, from the pixels — presence, not completeness (see on-screen.ts for what it does not detect).
   expect(await unreadableParts(box)).toEqual([]);
   const visible = await box.innerText();
   expect(screenLines(visible)).toEqual([
@@ -113,7 +113,7 @@ test("first map, 50+ issues: one bounded message, nothing created, the technical
     ...answer.issues.map((issue) => `${issue.path} — ${issue.message} (${issue.code})`),
   ]);
   await page.screenshot({ path: shot("02-technical-details-open"), fullPage: true });
-  // Every line of the open list painted readably, each scrolled into view in turn (verifier round 4: only the first was).
+  // Every line of the open list shows legible ink, each scrolled into view in turn (verifier round 4: only the first was).
   expect(await unreadableParts(details)).toEqual([]);
 
   // No key anywhere: not on the page, open or closed, and not in the response.
