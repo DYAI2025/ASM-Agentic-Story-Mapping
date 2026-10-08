@@ -161,8 +161,9 @@ saved until Accept.
 ### 17. Refused after the one repair
 
 An answer that never has the contract's shape is refused after two calls,
-never a third. The product file and the work state are unchanged. (How the
-refusal reads to a first-time user is ASM-30.)
+never a third. The product file and the work state are unchanged. The refusal
+is said in a few sentences with the technical list closed (ASM-30, states 21
+and 22 below).
 
 ![17 — refused after repair](screenshots/asm29-02-refused-after-repair.png)
 
@@ -200,3 +201,28 @@ this reading and not the other; choosing the second one instead, or switching
 before Accept, writes only the last choice.
 
 ![20 — goal chosen](screenshots/goal-choice-02-one-chosen-eligible.png)
+
+## When the model's answer cannot be read (ASM-30)
+
+These two states come from `tests/e2e/proposal-failure.spec.ts`. Like the
+ASM-29 states, the real `openai` adapter talks to the scripted model on
+localhost. Here the model answers in the wrong shape on both calls, with ten
+needs and ten steps, and the output contract refuses the answer with 74
+issues. Nothing is written in either state. Failures that already say what is
+wrong (rejected credentials, a rate limit, a quote not in the text, an answer
+carrying the key) keep their own message, as in state 15.
+
+### 21. One bounded message
+
+The panel says that the model's answer could not be read safely and was not
+used, that nothing was changed, and three things to try. The technical list is
+closed; the same sentences appear for 4 issues or for 200.
+
+![21 — bounded message](screenshots/proposal-failure-01-bounded-message.png)
+
+### 22. The technical details, on request
+
+Opened by the human: all 74 issues as the server returned them, with path,
+message and code, in a list that scrolls.
+
+![22 — technical details open](screenshots/proposal-failure-02-technical-details-open.png)

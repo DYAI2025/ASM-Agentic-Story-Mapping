@@ -295,6 +295,24 @@ All four sit behind the same two interfaces and the same rules:
   the code before each change) and, in the browser,
   `tests/e2e/schema-repair.spec.ts` against a scripted model on localhost
   (`tests/e2e/model-stub-server.ts`) through the real `openai` adapter.
+- What a human reads when the answer is refused for its shape (ASM-30). The
+  contract raises one issue per misplaced field, so External QA saw 45–134
+  of them per failure. If any issue is `agent_output_*`, the panel says in a
+  few fixed sentences that the model's answer could not be read safely and was
+  not used, that nothing was changed, and what to try: again; with a shorter
+  or split text; with another model set on the server. The same sentences
+  appear whatever the count. The full list (path, message, code) sits behind a
+  disclosure that starts closed, and the 422 body still carries every issue
+  (`unreadableAnswer` in `src/domain/proposal-failure.ts`, rendered by
+  `src/ui/ProposalIssues.tsx` on the start screen and in the workshop). Every
+  other refusal keeps its own words, path and code, because it already says
+  what is wrong: a provider failure (credentials, rate limit, timeout,
+  refusal, cut-off, a key in the output), a quote not in its source, a file
+  that cannot be read, nothing structured. The oracle:
+  `tests/ui/proposal-issues.test.ts`, and in the browser
+  `tests/e2e/proposal-failure.spec.ts`, where an answer with 74 issues meets
+  the stub and the stub also answers 401, 429, a quote still wrong after the
+  repair, and an answer carrying the key.
 - CI has no keys: the adapters are tested against a stubbed `fetch`. The live
   smoke (`npm run smoke:live`, see Checks) is run by hand with a real key.
 
@@ -730,6 +748,7 @@ table says which.
 | Verifier round 2 on `ba119a7` (ASM-29): excluded kinds back in the repairable set; the dry-run stage tag dropped; `modelCalls: 0` dropped | ASM-29, `ba119a7` | all red. **Survived**: `every` → `some` in the repairability check; four excluded codes (text limit, count limit, alternative without goal, placement without a step) without a test; redact-before-clip without a test; the stage guard (equivalent at the time); two `modelCalls: 0` branches — closed by tests in the following commit; external review round 2 (codex) found the 403 refusals without `modelCalls`, closed there too |
 | A goal choice left open on an existing product (ASM-31): the Accept button back to `busy || !result?.ok`; the rule counting "more than one kept" instead of "not exactly one"; the rule blind to two readings; the gate forced off; the missing-choice notice removed; `conflicting_goal` disabled | ASM-31, `3ad14bb` | all red (the first is the defect External QA reproduced; the new browser test was also red on `3acc12a` before the fix). Removing only the guard inside `accept()` **survived** — an equivalent mutant through the browser, since the disabled button is its only caller; kept as a second line |
 | Verifier on `0b5b787` (ASM-31): four of the mutants above (the button, the "more than one" count, the notice, `conflicting_goal`); its own: a second choice not excluding the first, the gate on the Workshop only, the gate only when a product has no goal, readings not left open at the start, the first reading pre-chosen, the rule evaluated on the already-filtered patch | ASM-31, `0b5b787` | all red. **Survived**: a choice carried into the next proposal (both `close()` and `structure()` keeping it); the notice without its `status` role — closed by tests in `bedfb5b` (both red); the guard inside `accept()` again, equivalent (React does not dispatch a click on a disabled button, even one re-enabled in the DOM). Verifier round 2 on `5be266d`: those two red; its completeness critic found the work state proven only by a grep and no Bootstrap test that accepts a chosen reading — closed in `7db0790` (a proposal route that touches an existing work state, and an accept that sends every reading, both red) |
+| An unreadable answer shown as a wall of issues (ASM-30): the bounded message never chosen; the technical list open by default; "Nothing was changed." removed; every refusal treated as unreadable (provider errors and quotes lose their own words); the list also outside the disclosure; one shape issue among others no longer enough (`some` → `every`); the details cut to the first ten | ASM-30, `1b76611` | all red, each mutant type-checked (the first is the defect; the new browser tests were also red on `4bab8e0` before the fix). The `every` mutant is caught by the unit test only: no browser case mixes a shape issue with another refusal |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
@@ -778,7 +797,10 @@ cross-site request is refused, see above; a direct client is not). This
 prototype is for one person on localhost; before it is exposed on a LAN or a
 VPS, the import route and the mutation routes need authentication (that is
 the next slice, not this one). The accessibility check is a smoke test, not an
-audit. The visual and usability verdict is a human's, on one exact commit, and
+audit. The bounded failure message covers proposals only (ASM-30). The
+narrative review panel still lists a refused review answer issue by issue, and
+whether the three suggested next steps actually help is a human verdict, not
+something a test measures. The visual and usability verdict is a human's, on one exact commit, and
 is recorded on the ticket, not in this repository.
 
 ## Not built
