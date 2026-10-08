@@ -37,6 +37,8 @@ describe("ASM-30: an answer in the wrong shape is one bounded message, the list 
     expect(visible).toContain(NOTHING_CHANGED);
     for (const step of UNREADABLE_NEXT) expect(visible).toContain(step);
     expect(visible).not.toMatch(/agent_output_|needs\.\d|steps\.\d|Unrecognized key|Invalid input/);
+    // An alert, so a screen reader announces it, as it did the list before (verifier round 1).
+    expect(html).toMatch(/^<div[^>]*role="alert"[^>]*data-testid="proposal-issues"/);
 
     const details = /<details([^>]*)>([\s\S]*?)<\/details>/.exec(html);
     expect(details).not.toBeNull();
@@ -49,6 +51,7 @@ describe("ASM-30: an answer in the wrong shape is one bounded message, the list 
   it("bounded: what is on screen does not grow with the number of issues", () => {
     const visible = (n: number) => text(outsideDetails(render(shapeIssues(n))));
     expect(visible(200)).toBe(visible(1));
+    expect(visible(200)).toBe(visible(4));
     expect(visible(200).length).toBeLessThanOrEqual(700);
   });
 
@@ -58,7 +61,12 @@ describe("ASM-30: an answer in the wrong shape is one bounded message, the list 
       ...shapeIssues(1),
     ];
     expect(unreadableAnswer(mixed)?.details).toEqual(mixed);
-    expect(text(outsideDetails(render(mixed)))).toContain(UNREADABLE_HEADLINE);
+    const html = render(mixed);
+    expect(text(outsideDetails(html))).toContain(UNREADABLE_HEADLINE);
+    // The details are every issue, not only the shape ones, and the count says so (verifier round 1).
+    const details = text(/<details[^>]*>([\s\S]*?)<\/details>/.exec(html)![1]);
+    expect(details).toContain("Technical details (2 problems in the answer)");
+    for (const issue of mixed) expect(details).toContain(`${issue.path} — ${issue.message} (${issue.code})`);
   });
 
   it("one problem is counted in the singular", () => {

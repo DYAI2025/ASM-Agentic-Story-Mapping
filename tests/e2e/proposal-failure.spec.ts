@@ -66,8 +66,15 @@ async function expectBoundedMessage(page: Page, answer: Answer) {
   await expect(page.getByTestId("proposal-failure-unchanged")).toHaveText("Nothing was changed.");
   await expect(page.getByTestId("proposal-failure-next").locator("li")).toHaveCount(3);
 
+  // Announced, not only painted: the box is an alert, as the issue list was before (verifier round 1).
+  await expect(page.getByRole("alert").filter({ hasText: HEADLINE })).toBeVisible();
+
   // What is on screen: a few sentences whatever the number of issues, and none of the validator's language.
+  // innerText leaves out what a closed disclosure hides, so these sentences are checked as read, not as markup.
   const visible = await box.innerText();
+  expect(visible).toContain(HEADLINE);
+  expect(visible).toContain("Nothing was changed.");
+  expect(visible).toContain("Try again");
   expect(visible.length).toBeLessThanOrEqual(700);
   expect(visible).not.toMatch(SCHEMA_TALK);
   for (const issue of answer.issues) expect(visible).not.toContain(issue.path);
@@ -130,6 +137,7 @@ test("existing map, 50+ issues: the same message, and the product file and the w
 async function expectSpecific(page: Page, answer: Answer, code: string, words: string) {
   const box = page.getByTestId("proposal-issues");
   await expect(box).toBeVisible();
+  await expect(box).toContainText("No proposal.");
   await expect(box).toContainText(words);
   await expect(box).toContainText(code);
   await expect(page.getByTestId("proposal-failure-headline")).toHaveCount(0);
@@ -169,6 +177,15 @@ test("an answer carrying the key is discarded whole; the key is in neither the m
   await page.goto("/");
   await page.getByTestId("product-name-input").fill("Parcel lockers");
   const answer = await structure(page, "/api/bootstrap", `${SHORT}\n[stub:leak-key]`);
+  expect(answer.status).toBe(502);
+  await expectSpecific(page, answer, "provider_error", "the model's output contained a configured secret and was discarded");
+});
+
+test("the key as a field name alone is discarded the same way: an unrecognized key would otherwise be quoted in the details", async ({ page }) => {
+  // Found by the verifier on 14e9006: with the key in both name and value, a check of values alone passed too.
+  await page.goto("/");
+  await page.getByTestId("product-name-input").fill("Parcel lockers");
+  const answer = await structure(page, "/api/bootstrap", `${SHORT}\n[stub:leak-key-name]`);
   expect(answer.status).toBe(502);
   await expectSpecific(page, answer, "provider_error", "the model's output contained a configured secret and was discarded");
 });

@@ -115,6 +115,9 @@ test("a proposal can be edited before it is accepted", async ({ page }) => {
   // Dropping the persona that other changes depend on blocks acceptance.
   await page.getByLabel("Include op-1").uncheck();
   await expect(page.getByTestId("proposal-issues")).toContainText("unknown_id");
+  // Said as a refusal of this proposal, not as "No proposal." (found by the ASM-30 verifier: the heading had no browser test).
+  await expect(page.getByTestId("proposal-issues")).toContainText("This proposal cannot be accepted as it stands.");
+  await expect(page.getByTestId("proposal-issues")).not.toContainText("No proposal.");
   await expect(page.getByTestId("proposal-accept")).toBeDisabled();
   await page.getByLabel("Include op-1").check();
   await expect(page.getByTestId("proposal-issues")).toHaveCount(0);

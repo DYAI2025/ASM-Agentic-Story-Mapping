@@ -22,8 +22,9 @@ import { asQaObserved } from "../fixtures/qa-observed-shape";
  *   model made on 2026-10-06), then correctly on the repair request;
  *   `[stub:inexact-quote-always]` makes the same near miss on the repair too;
  * - `[stub:status-401]` and `[stub:status-429]` answer with that HTTP error,
- *   and `[stub:leak-key]` answers with the key the app sent inside the
- *   output (ASM-30: the failure messages a human sees).
+ *   `[stub:leak-key]` answers with the key the app sent as a field name and
+ *   value inside the output, `[stub:leak-key-name]` as a field name only
+ *   (ASM-30: the failure messages a human sees).
  *
  * It records every request so a test can count them (`GET /calls`) and see
  * whether the key travelled anywhere but the header. `POST /reset` forgets them.
@@ -88,6 +89,7 @@ const server = http.createServer((request, response) => {
     if (text.includes("[stub:status-429]")) return send(429, { error: { message: "Rate limit reached", type: "requests" } });
     // The key the app sent, put into the answer as a key of its own: the adapter has to discard the whole answer.
     if (text.includes("[stub:leak-key]")) return send(200, answer({ ...asQaObserved(valid), [KEY]: KEY }));
+    if (text.includes("[stub:leak-key-name]")) return send(200, answer({ ...asQaObserved(valid), [KEY]: "x" }));
     const spoiled = { ...valid, personas: valid.personas.map((p, i) => (i === 0 ? { ...p, source: { ...p.source, snippet: inexact } } : p)) };
     if (text.includes("[stub:inexact-quote-always]")) return send(200, answer(spoiled));
     if (text.includes("[stub:inexact-quote]") && !repair) return send(200, answer(spoiled));
