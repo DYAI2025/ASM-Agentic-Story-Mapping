@@ -70,10 +70,9 @@ async function expectBoundedMessage(page: Page, answer: Answer) {
   // Announced, not only painted: the box is an alert, as the issue list was before (verifier round 1).
   await expect(page.getByRole("alert").filter({ hasText: HEADLINE })).toBeVisible();
 
-  // What is on screen, line by line and exactly. innerText leaves out a closed disclosure, a `hidden` element,
-  // display:none and visibility:hidden; what it still counts (transparent, zero-sized, off-screen or clipped
-  // text, and nothing of CSS-generated text) the paint check below covers. Three verifier rounds found the
-  // class "in the DOM but not readable"; these two checks together are the answer to it, not one more sentence.
+  // What is on screen, in two measurements: the words, line by line and exactly, from innerText (which leaves
+  // out a closed disclosure, `hidden`, display:none and visibility:hidden); and that each line is painted
+  // readably, from the pixels (see on-screen.ts for what that covers and what it does not).
   expect(await unreadableParts(box)).toEqual([]);
   const visible = await box.innerText();
   expect(screenLines(visible)).toEqual([
@@ -113,8 +112,9 @@ test("first map, 50+ issues: one bounded message, nothing created, the technical
     `Technical details (${answer.issues.length} problems in the answer)`,
     ...answer.issues.map((issue) => `${issue.path} — ${issue.message} (${issue.code})`),
   ]);
-  expect(await unreadableParts(details.locator("li").first())).toEqual([]);
   await page.screenshot({ path: shot("02-technical-details-open"), fullPage: true });
+  // Every line of the open list painted readably, each scrolled into view in turn (verifier round 4: only the first was).
+  expect(await unreadableParts(details)).toEqual([]);
 
   // No key anywhere: not on the page, open or closed, and not in the response.
   expect(await page.content()).not.toContain(MODEL_STUB_KEY);
