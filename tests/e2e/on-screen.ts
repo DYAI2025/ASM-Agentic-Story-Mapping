@@ -28,7 +28,7 @@ import type { Locator, Page } from "@playwright/test";
  * 29a41d1): part of a line covered, clipped by the line's own box, cut by
  * `text-overflow: ellipsis`, masked in part, squeezed by `scaleX`, struck
  * through by a bar; glyphs that are not the words (an icon font, reversed
- * text); blur; a change after the photograph (a delayed fade); contrast
+ * text); mild blur (1 px; 3 px is caught); a change after the photograph (a delayed fade); contrast
  * between 3:1 and the 4.5:1 that WCAG asks for body text. Text painted only
  * by `text-shadow` fails although readable. The words are checked by
  * `innerText` beside this; that the whole message reads well is the human's

@@ -95,6 +95,8 @@ async function expectBoundedMessage(page: Page, answer: Answer) {
 }
 
 test("first map, 50+ issues: one bounded message, nothing created, the technical list only on request", async ({ page }) => {
+  // The paint check photographs every line of the open list twice (about 20 s); a red here must mean a finding, not the clock.
+  test.setTimeout(90_000);
   await page.goto("/");
   await page.getByTestId("product-name-input").fill("Parcel lockers");
   const answer = await structure(page, "/api/bootstrap", WIDE_FAILURE);
