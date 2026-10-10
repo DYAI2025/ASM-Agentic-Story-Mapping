@@ -13,18 +13,18 @@
     "approval": {
       "revision": 2,
       "approvedBy": "Maya (Product Lead)",
-      "approvedAt": "2026-10-08T21:19:47.344Z"
+      "approvedAt": "2026-10-10T13:50:54.920Z"
     },
     "selection": {
       "candidateId": "slice-primary-persona",
       "selectedBy": "Maya (Product Lead)",
-      "selectedAt": "2026-10-08T21:19:47.791Z",
+      "selectedAt": "2026-10-10T13:50:55.437Z",
       "candidateFingerprint": "4ce9e53f",
       "derivationVersion": 2
     },
     "peopleConsidered": {
       "confirmedBy": "Maya (Product Lead)",
-      "confirmedAt": "2026-10-08T21:19:47.593Z",
+      "confirmedAt": "2026-10-10T13:50:55.203Z",
       "note": "A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete."
     },
     "value": {
@@ -169,7 +169,7 @@
     "revision": 2,
     "status": "approved",
     "approvedBy": "Maya (Product Lead)",
-    "approvedAt": "2026-10-08T21:19:47.344Z",
-    "mapFingerprint": "67dea62c"
+    "approvedAt": "2026-10-10T13:50:54.920Z",
+    "mapFingerprint": "0d590937"
   }
 }

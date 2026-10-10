@@ -1,6 +1,6 @@
 # Work order: Steps shared between personas
 
-Slice `slice-shared-steps` of ASM – Agentic Story Mapping, revision 1 (`6bed78cc`).
+Slice `slice-shared-steps` of ASM – Agentic Story Mapping, revision 1 (`d29e554b`).
 
 Work order contract: `asm.execution-brief`, briefVersion 3.
 
@@ -10,10 +10,10 @@ Software teams without prior AI experience can move from product discussion to a
 
 ## VERIFIED / APPROVED CONTEXT
 
-- Approved: revision 1 by Maya (E2E) at 2026-10-08T21:19:38.442Z.
-- Who else matters: considered by Maya (E2E) at 2026-10-08T21:19:38.593Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
-- Slice selected by Maya (E2E) at 2026-10-08T21:19:38.659Z (candidate `f66ec7d4`, derivation rules version 2).
-- Value: VALUE_EXCEPTION_ACCEPTED. Exception accepted by Maya (E2E) at 2026-10-08T21:19:39.044Z: “The hand-over points have to work before we can observe which need they serve.” No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value.
+- Approved: revision 1 by Maya (E2E) at 2026-10-10T13:50:45.084Z.
+- Who else matters: considered by Maya (E2E) at 2026-10-10T13:50:45.288Z. A named human confirmed that they considered who else is relevant for the goal. That is what they did; it does not say the people on the map are complete.
+- Slice selected by Maya (E2E) at 2026-10-10T13:50:45.372Z (candidate `f66ec7d4`, derivation rules version 2).
+- Value: VALUE_EXCEPTION_ACCEPTED. Exception accepted by Maya (E2E) at 2026-10-10T13:50:46.191Z: “The hand-over points have to work before we can observe which need they serve.” No step of this slice references a need. A named human authorized it anyway. That is a decision under uncertainty, not proof that the slice has business value.
 - Verified: nothing. Approved means a named human approved the narrative. ASM has verified nothing: no behaviour described here has been built or tested.
 
 Why this slice:
@@ -110,5 +110,5 @@ A draft derived from the map. A human has to confirm it before it binds anyone.
 
 - Product: ASM – Agentic Story Mapping (`asm`), schema version 1
 - Revision: 1 (approved)
-- Approved by: Maya (E2E) at 2026-10-08T21:19:38.442Z
-- Map fingerprint: `6bed78cc`
+- Approved by: Maya (E2E) at 2026-10-10T13:50:45.084Z
+- Map fingerprint: `d29e554b`

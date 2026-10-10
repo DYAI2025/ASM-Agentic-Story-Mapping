@@ -136,6 +136,9 @@ from the first one.
 
 From the live harness: the configured provider with a key that cannot work.
 The failure is said in the browser, nothing is written, no secret is shown.
+Taken by `npm run smoke:live` on 2026-10-10 with the reference configuration
+(`anthropic`, `claude-haiku-5-5`), on a commit whose `src/` is the same as
+the candidate's; the rest of the page comes from `npm run docs:refresh`.
 
 ![15 — provider error](screenshots/live-provider-error-bad-key.png)
 
@@ -226,3 +229,20 @@ Opened by the human: all 74 issues as the server returned them, with path,
 message and code, in a list that scrolls.
 
 ![22 — technical details open](screenshots/proposal-failure-02-technical-details-open.png)
+
+## When the model does not answer at all (ASM-28)
+
+From `tests/e2e/proposal-failure.spec.ts` too: the scripted model keeps the
+request open and never answers. The app's own deadline ends the call (8 seconds
+in this test; 120 seconds by default, `ASM_AGENT_TIMEOUT_MS`), the message says
+so and what to try, and nothing is written. Sent again, the same material
+reaches the review.
+
+### 23. A model that does not answer in time
+
+![23 — timed out](screenshots/proposal-failure-03-timeout.png)
+
+A start over the disk refuses (the browser test makes the workspace directory
+read-only) keeps the map on screen with the reason, removes nothing, and
+starts clean when tried again once the cause is gone. That screenshot is not
+kept here: the reason names the workspace path on the machine that ran it.
