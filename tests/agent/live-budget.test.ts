@@ -369,6 +369,17 @@ describe("the ledger", () => {
     await expect(ledger.reserve(bound(0.1), meta)).resolves.toBeDefined();
   });
 
+  it("counts anything at the stop file's path as a stop, a link to nowhere included (review round 5 on c88a981)", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    await fs.symlink(path.join(dir, "missing-dir", "nothing"), `${file}.stop`);
+    await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
+    await fs.rm(`${file}.stop`);
+    await fs.mkdir(`${file}.stop`);
+    await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
+    await fs.rm(`${file}.stop`, { recursive: true });
+    await expect(ledger.reserve(bound(0.1), meta)).resolves.toBeDefined();
+  });
+
   it("takes no submission once it is stopped, not even after it is opened again", async () => {
     const ledger = await openLedger(file, 5, { create: true });
     await ledger.stop("the server answered as anthropic (claude-opus-5-5)");

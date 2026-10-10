@@ -267,9 +267,18 @@ export async function withLedgerLock<T>(file: string, waitMs: number, work: () =
 /** The stop file beside a ledger: written without the lock when the ledger itself cannot take a stop in time (paid.ts). */
 export const stopFileOf = (file: string) => `${file}.stop`;
 
-/** Its text, or null when there is none; a stop file that cannot be read counts as a stop. */
+/**
+ * Its text, or null when nothing is at its path. Anything that is there counts as a stop, a file that cannot be
+ * read, a directory or a link to nowhere included (review round 5 on c88a981).
+ */
 async function readStopFile(file: string): Promise<string | null> {
-  return fs.readFile(stopFileOf(file), "utf8").catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? null : `unreadable (${error.code})`));
+  const stop = stopFileOf(file);
+  try {
+    await fs.lstat(stop);
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? null : `cannot be looked at (${(error as NodeJS.ErrnoException).code})`;
+  }
+  return fs.readFile(stop, "utf8").catch((error: NodeJS.ErrnoException) => `there, but not readable (${error.code})`);
 }
 
 /** Opens the ledger. A missing ledger is created only with `create`; a ledger made for another budget, or one that cannot be read or does not add up, is refused. */

@@ -116,6 +116,20 @@ describe("a paid submission", () => {
     expect(sent).toBe(false);
   });
 
+  it("still stops the ledger when the stop file cannot be written (review round 5 on c88a981)", async () => {
+    await expect(
+      paid("t", NAME, SOURCES, async () => {
+        // Something already sits at the stop file's path that a file cannot be written over.
+        await fs.mkdir(`${ledgerFile}.stop`);
+        return answer({ modelCalls: 1, provider: "anthropic (claude-opus-5-5)" });
+      }),
+    ).rejects.toThrow(/claude-opus-5-5/);
+    const onDisk = JSON.parse(await fs.readFile(ledgerFile, "utf8"));
+    expect(onDisk.stoppedReason).toMatch(/claude-opus-5-5/);
+    expect(onDisk.entries[0]).toMatchObject({ status: "settled", serverProvider: "anthropic (claude-opus-5-5)" });
+    await fs.rm(`${ledgerFile}.stop`, { recursive: true });
+  });
+
   it("does not put key-shaped text from the server's answer into the ledger", async () => {
     const shaped = `anthropic (${"sk-ant-api03-"}${"G".repeat(60)})`;
     await expect(paid("t", NAME, SOURCES, async () => answer({ modelCalls: 1, provider: shaped }))).rejects.toThrow();

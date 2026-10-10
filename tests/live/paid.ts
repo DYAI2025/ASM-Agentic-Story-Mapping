@@ -57,11 +57,15 @@ export async function paidSubmission(
     // Stopped in this process and in a stop file beside the ledger first (written without the lock, so a ledger
     // another run holds stops nothing less, and a restarted worker reads it too), then in the ledger itself.
     state.stopped = mismatch.message;
-    await fs.writeFile(stopFileOf(ledgerFile), `${new Date().toISOString()} ${label}: ${mismatch.message}\n`);
+    // A stop file that cannot be written does not keep the ledger from taking the stop (review round 5 on c88a981).
+    const stopFileFailure = await fs
+      .writeFile(stopFileOf(ledgerFile), `${new Date().toISOString()} ${label}: ${mismatch.message}\n`)
+      .then(() => null, (error: Error) => error.message);
     try {
       await ledger.settle(id, { modelCalls, serverProvider, stop: mismatch.message });
     } catch (error) {
-      throw new Error(`${mismatch.message}; the stop could not be written to the ledger (${(error as Error).message}); this run sends nothing more, and the ledger has to be stopped by hand`);
+      const both = stopFileFailure ? `, nor to the stop file (${stopFileFailure})` : "";
+      throw new Error(`${mismatch.message}; the stop could not be written to the ledger (${(error as Error).message})${both}; this run sends nothing more, and the ledger has to be stopped by hand`);
     }
     throw mismatch;
   }
