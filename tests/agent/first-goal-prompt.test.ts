@@ -25,6 +25,17 @@ describe("a first product always gets a proposed goal (ASM-34 §11)", () => {
     expect(SYSTEM_PROMPT).toMatch(/only implies the purpose[^\n]*goalAlternatives[^\n]*the human chooses/);
   });
 
+  it("where no passage says what the product is for, still proposes the closest reading, marked as uncertain and asked about", () => {
+    expect(SYSTEM_PROMPT).toContain(
+      "When no passage says what the product is for, still propose the closest reading: give it a low confidence, say in its rationale that the text does not state the purpose, and add an unresolved question asking what the product is for.",
+    );
+  });
+
+  it("names the goal of a first product as the exception to the rules that would leave it out (review round 7)", () => {
+    expect(SYSTEM_PROMPT).toMatch(/leave an item out when no passage supports it \(the goal of a first product is the one exception/);
+    expect(SYSTEM_PROMPT).toMatch(/Prefer an unresolved question over a guess \(for the goal of a first product, give both/);
+  });
+
   it("keeps the rule for an existing map: a new goal only when the text clearly restates it", () => {
     expect(SYSTEM_PROMPT).toContain("only if the discussion clearly restates what the product is for");
   });
