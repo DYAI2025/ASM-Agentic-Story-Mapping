@@ -24,7 +24,9 @@ import { asQaObserved } from "../fixtures/qa-observed-shape";
  * - `[stub:status-401]` and `[stub:status-429]` answer with that HTTP error,
  *   `[stub:leak-key]` answers with the key the app sent as a field name and
  *   value inside the output, `[stub:leak-key-name]` as a field name only
- *   (ASM-30: the failure messages a human sees).
+ *   (ASM-30: the failure messages a human sees);
+ * - `[stub:hang]` never answers: the app's own deadline has to end the call
+ *   (ASM-28: the timeout a human sees in the browser).
  *
  * It records every request so a test can count them (`GET /calls`) and see
  * whether the key travelled anywhere but the header. `POST /reset` forgets them.
@@ -85,6 +87,8 @@ const server = http.createServer((request, response) => {
       authorized: request.headers.authorization === `Bearer ${KEY}`,
       namesRefusedQuote: repair && inexact !== "" && message.includes(inexact),
     });
+    // No answer at all: the request stays open until the app gives up on it.
+    if (text.includes("[stub:hang]")) return;
     if (text.includes("[stub:status-401]")) return send(401, { error: { message: "Incorrect API key provided", type: "invalid_request_error" } });
     if (text.includes("[stub:status-429]")) return send(429, { error: { message: "Rate limit reached", type: "requests" } });
     // The key the app sent, put into the answer as a key of its own: the adapter has to discard the whole answer.

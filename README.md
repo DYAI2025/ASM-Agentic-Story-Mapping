@@ -214,7 +214,7 @@ code does not know which provider produced a proposal.
 | `ASM_AGENT_PROVIDER` | What it is |
 |---|---|
 | `fake` (default) | No model. A deterministic parser for explicit markers (`Persona:`, `Actor:`, `Need (…):`, `Step:`, `Assign:`, `Move:`, `Goal:`, `Question:`), documented in `src/agent/fake-provider.ts`. All tests use it. |
-| `anthropic` | Claude through the Anthropic SDK (`src/agent/anthropic-provider.ts`). Needs `ANTHROPIC_API_KEY`; optional `ASM_AGENT_MODEL` (default `claude-opus-5-5`). |
+| `anthropic` | Claude through the Anthropic SDK (`src/agent/anthropic-provider.ts`). Needs `ANTHROPIC_API_KEY`; optional `ASM_AGENT_MODEL` (default `claude-opus-5-5`). The reference configuration of the live runs is `claude-haiku-5-5`, set explicitly (ASM-34, see "Paid runs and their budget"). |
 | `openai` | OpenAI through the Responses API with a strict JSON schema (`src/agent/openai-provider.ts`, plain `fetch`). Needs `OPENAI_API_KEY`; optional `ASM_AGENT_MODEL` (default `gpt-6-astra`), `OPENAI_BASE_URL`. |
 | `openrouter` | OpenRouter chat completions with a strict JSON schema and `require_parameters` (`src/agent/openrouter-provider.ts`, plain `fetch`). Needs `OPENROUTER_API_KEY` and `ASM_AGENT_MODEL` (no default is guessed). |
 
@@ -623,10 +623,40 @@ npm run docs:refresh       # same browser tests, writing into docs/
 fails if the run changed a tracked file, and uploads `.e2e-artifacts/` named
 by that commit.
 
+### Paid runs and their budget
+
+Every run below calls a real model and costs money. The reference
+configuration since ASM-34 (PO decision 2026-10-10) is the Anthropic adapter
+with `claude-haiku-5-5`; a run names its model, the ledger it is counted in
+and that ledger's budget, or it does not start:
+
+```bash
+export ASM_AGENT_PROVIDER=anthropic ASM_AGENT_MODEL=claude-haiku-5-5 ANTHROPIC_API_KEY=…
+export ASM_LIVE_LEDGER=.e2e-artifacts/live/budget/ASM-34-ledger.json ASM_LIVE_BUDGET_USD=5
+# ASM_LIVE_LEDGER_CREATE=1 only for the very first run of a new ledger
+```
+
+`tests/live/budget.ts` is the guard. Before a submission is sent it reserves
+the most that submission can cost: the bytes of the request the adapter would
+send bound its input tokens (every token is at least one byte), the schema and
+a fixed allowance are added for what the API puts around a structured-output
+request, and the whole 16 000-token output budget is counted, at the model's
+list price, for the first call and for the one repair call. The reservation is
+written to the ledger before the request goes out; when the server answers,
+the submission is charged the bound of the model calls it reported (the whole
+bound when it reported none). The next submission is refused when it could
+take the ledger past its budget, when the guard has no price for the model
+(only `claude-haiku-5-5` has one), when there is no ledger, or when the
+ledger was made for another budget. The server's answer names the provider
+and model it used; a run stops when that is not the model it named, so neither
+the code's default nor `.env.local` decides what is paid for. The app reads no
+token usage, so the ledger holds bounds, not measured cost; the measured cost
+is in the Anthropic console.
+
 ### The live provider smoke
 
 ```bash
-ASM_AGENT_PROVIDER=openai OPENAI_API_KEY=… npm run smoke:live
+npm run smoke:live
 ```
 
 `playwright.live.config.ts` starts the built app twice: once with the
@@ -636,15 +666,17 @@ cannot work. `tests/live/provider-smoke.spec.ts` pastes ordinary meeting notes
 people, needs, a path and open questions, accepts it as a human would and reads
 revision 1 back from disk, with every snippet found in the notes and attributed
 to the pasted source; the second server has to show the credential failure in
-the browser and write nothing. Screenshots, `record.json` (provider, seconds to
-proposal, counts, what was accepted) and the accepted map go to
+the browser and write nothing. Where the model reads more than one goal into
+the notes, the smoke picks the first reading, as a person would. Screenshots,
+`record.json` (commit, provider and model the server reported, model calls,
+what the ledger charged, seconds to proposal, counts, what was accepted) and the accepted map go to
 `.e2e-artifacts/live/`; the record is checked to contain no key. CI never runs
 this; the evidence is recorded on the ticket.
 
 ### The live intake battery
 
 ```bash
-ASM_AGENT_PROVIDER=openrouter ASM_AGENT_MODEL=qwen/qwen3-235b-a22b-2507 OPENROUTER_API_KEY=… npm run battery:live
+npm run battery:live
 ```
 
 The External-QA submissions of 2026-10-04 (`tests/live/fixtures/qa/`, checksums
@@ -660,9 +692,31 @@ the reference model rate-limits a shared pool and asks for 60 s), the
 submission is made again after `BATTERY_RETRY_AFTER_MS`, up to three times, as
 the product's "try again shortly" tells the human to; every attempt is
 recorded, and the record counts valid submissions both ways (`valid`,
-`validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit
-and whether `src/` had uncommitted changes. Each run is a sample of a
+`validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit,
+whether `src/` had uncommitted changes, the model the run named, the
+provider and model the server reported on every attempt, what the ledger
+charged per attempt and the ledger after the run. Each run is a sample of a
 non-deterministic model; the results per commit are recorded on the ticket.
+
+### The live real-input intake
+
+```bash
+npm run intake:live
+```
+
+`tests/live/real-intake.spec.ts` (ASM-28) takes the External-QA kickoff
+transcript (A3: five people in different roles, no markers) through the
+configured model to the review, and then does what a human reviewer does,
+by a fixed rule so a rerun does the same: picks the first reading of the goal
+where there is a choice, rejects the last proposed step, edits the first need.
+Nothing is written before Accept; after it, revision 1 holds the edit and not
+the rejected step, and every kept quote occurs in the transcript.
+`.e2e-artifacts/live/intake/` gets the screenshots (input, review, corrected,
+accepted map), `record.json` (input checksum, what was proposed by group,
+what the human chose, rejected and edited, the accepted goal, personas and
+other actors, needs, steps and open questions) and the accepted map. Whether
+the proposal is any good is not something the test judges: that is the human
+verdict on the exact commit.
 
 ### The whole first-time path in one test
 

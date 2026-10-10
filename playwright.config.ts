@@ -6,6 +6,8 @@ const PORT = 3311;
 export const REPAIR_PORT = 3314;
 export const MODEL_STUB_PORT = 3315;
 export const MODEL_STUB_KEY = "sk-stub-e2e-0000000000000000000000";
+/** The repair app's deadline for one model call: short, so a model that never answers ends in seconds (the stub answers everything else at once). */
+export const REPAIR_TIMEOUT_MS = 8_000;
 
 /** The browser tests edit a scratch copy, never the canonical fixture. */
 export const E2E_PRODUCT_FILE = path.join(__dirname, ".e2e-tmp", "asm.product.yaml");
@@ -51,6 +53,7 @@ export default defineConfig({
         ASM_PRODUCT_FILE: E2E_REPAIR_PRODUCT_FILE,
         ASM_AGENT_PROVIDER: "openai",
         ASM_AGENT_MODEL: "stub-model",
+        ASM_AGENT_TIMEOUT_MS: String(REPAIR_TIMEOUT_MS),
         OPENAI_API_KEY: MODEL_STUB_KEY,
         OPENAI_BASE_URL: `http://127.0.0.1:${MODEL_STUB_PORT}/v1`,
       },

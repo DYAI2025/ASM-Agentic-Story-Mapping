@@ -275,16 +275,18 @@ describe("refused items are named once in the repair and never accepted as they 
     expect(inputs[1].repair!.problems.join("\n")).toContain("step-does-not-exist");
   });
 
-  it.each<[string, (o: AgentOutput) => unknown, string]>([
-    ["a new: ref with an underscore", (o) => ({ ...o, personas: o.personas.map((p, i) => (i === 0 ? { ...p, ref: "new:build_rota" } : p)) }), "invalid_ref"],
-    ["a ref declared twice", (o) => ({ ...o, personas: [...o.personas, { ...o.personas[0], name: `${o.personas[0].name} again` }] }), "duplicate_ref"],
-    ["a role outside the list", (o) => ({ ...o, personas: o.personas.map((p, i) => (i === 0 ? { ...p, roles: ["manager"] } : p)) }), "unknown_role"],
-  ])("%s: named once, a correct answer is the proposal", async (_name, spoil, code) => {
+  it.each<[string, (o: AgentOutput) => unknown, string, (o: AgentOutput) => string]>([
+    ["a new: ref with an underscore", (o) => ({ ...o, personas: o.personas.map((p, i) => (i === 0 ? { ...p, ref: "new:build_rota" } : p)) }), "invalid_ref", () => "new:build_rota"],
+    ["a ref declared twice", (o) => ({ ...o, personas: [...o.personas, { ...o.personas[0], name: `${o.personas[0].name} again` }] }), "duplicate_ref", (o) => o.personas[0].ref],
+    ["a role outside the list", (o) => ({ ...o, personas: o.personas.map((p, i) => (i === 0 ? { ...p, roles: ["manager"] } : p)) }), "unknown_role", () => "manager"],
+  ])("%s: named once, a correct answer is the proposal", async (_name, spoil, code, named) => {
     const out = honest();
     expect(codes(resolveProposal(loadFixture(), spoil(out), TRANSCRIPT, "scripted"))).toContain(code);
     const { provider, inputs } = scripted(spoil(out), out);
     expect((await buildProposal(loadFixture(), TRANSCRIPT, provider)).ok).toBe(true);
     expect(inputs).toHaveLength(2);
+    // The repair names the refused value, not only that something was refused (codex F7, ASM-29 review).
+    expect(inputs[1].repair!.problems.join("\n")).toContain(named(out));
   });
 });
 
@@ -562,6 +564,20 @@ describe("what the repair request carries (AC-29-03)", () => {
     expect(text).not.toContain("sk-live-0123456789abcdefXYZ");
     expect(text).toContain("[redacted]");
     expect(inputs[1].repair!.problems.every((line) => !line.includes("\n"))).toBe(true);
+  });
+
+  // Verifier OWN1 (ASM-29): the message and the path are clipped too. A key placed so that the clip would keep only
+  // its first five characters ("sk-ab", too short for the key pattern) shows whether redaction runs before the clip.
+  it("a key-shaped text cut by the clip of the message is redacted first, so no part of it survives", () => {
+    const message = `${"m".repeat(233)} sk-abcdefg0123456789XYZ`;
+    const text = repairRequest([{ code: "agent_output_invalid_type", path: "needs.0.persona", message }]).problems.join("\n");
+    expect(text).not.toMatch(/sk-/);
+  });
+
+  it("a key-shaped text cut by the clip of the path is redacted first, so no part of it survives", () => {
+    const path = `${"p".repeat(113)}.sk-abcdefg0123456789XYZ`;
+    const text = repairRequest([{ code: "agent_output_invalid_type", path, message: "Invalid input" }]).problems.join("\n");
+    expect(text).not.toMatch(/sk-/);
   });
 
   it("a key-shaped value cut by the clip is redacted first, so no tail of it survives", async () => {

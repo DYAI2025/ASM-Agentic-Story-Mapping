@@ -67,6 +67,7 @@ test("first map: an answer in the QA-observed shape is repaired once, reviewed, 
   await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
   await expect(page.getByTestId("preview-goal")).toHaveText("Residents collect parcels whenever they come home.");
   expect(await exists(E2E_REPAIR_PRODUCT_FILE)).toBe(false);
+  expect(await exists(E2E_REPAIR_WORK_STATE_FILE)).toBe(false);
   await page.screenshot({ path: path.join(SCREENSHOTS, "asm29-01-repaired-proposal.png"), fullPage: true });
 
   // The existing explicit Human Accept is the only write.
@@ -108,6 +109,7 @@ test("first map: a quote that is not in the text is named in the one repair; the
   await expect(page.getByTestId("proposal-review")).toBeVisible();
   await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
   expect(await exists(E2E_REPAIR_PRODUCT_FILE)).toBe(false);
+  expect(await exists(E2E_REPAIR_WORK_STATE_FILE)).toBe(false);
   await page.screenshot({ path: path.join(SCREENSHOTS, "asm29-03-inexact-quote-repaired.png"), fullPage: true });
 
   // What becomes canon on Accept quotes the text exactly; the refused near miss is nowhere.
@@ -134,6 +136,7 @@ test("existing map: a repaired answer is reviewed; the file changes only on Acce
   expectOneRepair(await stubCalls());
   await expect(page.getByTestId("proposal-review")).toBeVisible();
   expect(await fs.readFile(E2E_REPAIR_PRODUCT_FILE, "utf8")).toBe(before);
+  expect(await exists(E2E_REPAIR_WORK_STATE_FILE)).toBe(false);
 
   await page.getByTestId("proposal-accept").click();
   await expect(page.getByTestId("proposal-status")).toContainText(`proposed revision ${revision + 1}`);

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { E2E_REPAIR_PRODUCT_FILE, E2E_REPAIR_WORK_STATE_FILE, MODEL_STUB_KEY, MODEL_STUB_PORT, REPAIR_PORT } from "../../playwright.config";
+import { E2E_REPAIR_PRODUCT_FILE, E2E_REPAIR_WORK_STATE_FILE, MODEL_STUB_KEY, MODEL_STUB_PORT, REPAIR_PORT, REPAIR_TIMEOUT_MS } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
 import { screenLines, unreadableParts } from "./on-screen";
 import { FIXTURE_FILE } from "./global-setup";
@@ -181,6 +181,23 @@ test("a rate limit keeps its specific message", async ({ page }) => {
   const answer = await structure(page, "/api/bootstrap", `${SHORT}\n[stub:status-429]`);
   expect(answer.status).toBe(502);
   await expectSpecific(page, answer, "provider_error", "OpenAI rate limit reached; try again shortly");
+});
+
+test("a model that does not answer in time: its specific message, nothing written, and the next try gets a proposal", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("product-name-input").fill("Parcel lockers");
+  const answer = await structure(page, "/api/bootstrap", `${SHORT}\n[stub:hang]`);
+  expect(answer.status).toBe(502);
+  await expectSpecific(page, answer, "provider_error", `OpenAI timed out after ${REPAIR_TIMEOUT_MS} ms; try again or shorten the text`);
+  expect(await exists(E2E_REPAIR_WORK_STATE_FILE)).toBe(false);
+  await page.screenshot({ path: path.join(SCREENSHOTS, "proposal-failure-03-timeout.png"), fullPage: true });
+
+  // Recovery: the same material again, the model answers this time, and the proposal is there for review.
+  const again = await structure(page, "/api/bootstrap", SHORT);
+  expect(again.status).toBe(200);
+  await expect(page.getByTestId("proposal-review")).toBeVisible();
+  await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
+  expect(await exists(E2E_REPAIR_PRODUCT_FILE)).toBe(false);
 });
 
 test("a quote that is not in the text, still wrong after the repair, keeps its specific message", async ({ page }) => {

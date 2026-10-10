@@ -64,6 +64,14 @@ test("@live ordinary meeting text -> real provider -> proposal -> human accept -
   });
   await expect(page.getByTestId("proposal-review")).toBeVisible({ timeout: 240_000 });
   const seconds = Math.round((Date.now() - started) / 1000);
+  // A real model may read more than one goal into the notes (measured 2026-10-10 with claude-haiku-5-5). The human
+  // picks one (AC-FUF-05), as a person would: the first. Until then the review says Accept is unavailable.
+  const choice = page.getByTestId("goal-choice");
+  const goalReadings = await choice.getByRole("radio").count();
+  if (goalReadings) {
+    await expect(page.getByTestId("proposal-accept")).toBeDisabled();
+    await choice.getByRole("radio").first().check();
+  }
   await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
 
   // What came back, as the human sees it: a goal, people, needs, a path, and the open points as questions.
@@ -109,6 +117,7 @@ test("@live ordinary meeting text -> real provider -> proposal -> human accept -
     modelCalls: paid.modelCalls,
     chargedUsd: paid.chargedUsd,
     budget: await ledgerSummary(),
+    goalReadings,
     secondsToProposal: seconds,
     operations: kinds.reduce<Record<string, number>>((sum, kind) => ({ ...sum, [kind!]: (sum[kind!] ?? 0) + 1 }), {}),
     accepted: { revision: stored.revision, goal: stored.goal.statement, personas: stored.personas.map((p: { name: string }) => p.name), steps: stored.narrative.map((s: { title: string }) => s.title), openQuestions: stored.decisions.map((d: { title: string }) => d.title) },

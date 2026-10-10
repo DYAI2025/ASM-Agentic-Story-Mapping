@@ -93,6 +93,43 @@ test("start over asks first; cancel changes nothing on disk or on screen", async
   expect((await page.request.get("/api/brief?format=json")).status()).toBe(200);
 });
 
+// ASM-28 (reset failure and recovery in the browser): the disk refuses to remove anything, here because the
+// workspace directory is read-only. Root ignores directory permissions, so there the disk cannot be made to refuse.
+test("start over the disk refuses: the map stays with the reason, nothing is half-removed, and the retry starts clean", async ({ page }) => {
+  test.skip(process.getuid?.() === 0, "running as root: a read-only directory does not stop an unlink");
+  await populate(page);
+  const productBefore = await storedText();
+  const workBefore = await workStateText();
+  const dir = path.dirname(E2E_PRODUCT_FILE);
+  const mode = (await fs.stat(dir)).mode & 0o777;
+  await fs.chmod(dir, 0o555);
+  try {
+    await page.getByTestId("start-over").click();
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/product/reset") && r.request().method() === "POST");
+    await page.getByTestId("start-over-confirm").click();
+    const response = await answer;
+    expect(response.status()).toBe(500);
+    expect((await response.json()).issues.map((issue: { code: string }) => issue.code)).toEqual(["reset_failed"]);
+    // The map stays, with the reason; no start screen pretends a fresh state the server does not have.
+    await expect(page.getByTestId("issues")).toContainText("reset_failed");
+    await expect(page.getByTestId("product-name")).toBeVisible();
+    await expect(page.getByTestId("start-screen")).toHaveCount(0);
+    await page.screenshot({ path: shot("04-start-over-refused"), fullPage: true });
+  } finally {
+    await fs.chmod(dir, mode);
+  }
+  // Nothing was half-removed: the work state goes first, and it could not go, so the product was not touched.
+  expect(await storedText()).toBe(productBefore);
+  expect(await workStateText()).toBe(workBefore);
+
+  // With the cause gone, the same action, confirmed again, starts clean.
+  await page.getByTestId("start-over").click();
+  await page.getByTestId("start-over-confirm").click();
+  await expect(page.getByTestId("start-screen")).toBeVisible();
+  expect(await exists(E2E_PRODUCT_FILE)).toBe(false);
+  expect(await exists(E2E_WORK_STATE_FILE)).toBe(false);
+});
+
 test("start over, confirmed: product and work state gone, start screen back, nothing old left effective; a new product starts clean", async ({ page }) => {
   await populate(page);
   await page.screenshot({ path: shot("02-before"), fullPage: true });
