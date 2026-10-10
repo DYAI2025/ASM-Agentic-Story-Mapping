@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 import YAML from "yaml";
 import { LIVE_PRODUCT_FILE } from "../../playwright.live.config";
 import { liveSettings } from "./budget";
-import { assertNoSecretInRecord } from "./key-shapes";
+import { copyCheckedArtifact, writeCheckedRecord } from "./key-shapes";
 import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
@@ -57,7 +57,7 @@ type Attempt = {
   firstMessages: string[];
   /** The provider and model the server named in its answer (`provider`), not the one the shell asked for. */
   serverProvider: string | null;
-  /** What the budget ledger charged for this attempt: the bound of the model calls the server reported. */
+  /** What the budget ledger charged for this attempt: its whole reservation, raised only for more than two model calls. */
   chargedUsd: number;
 };
 
@@ -93,10 +93,8 @@ async function readOutcomes(): Promise<Outcome[]> {
 
 async function writeRecord(outcome: Outcome) {
   await fs.mkdir(ARTIFACTS, { recursive: true });
-  // Checked before it is written, like the summary below: nothing of a paid run reaches the disk unchecked.
-  const caseText = JSON.stringify({ runId: RUN_ID, ...outcome }, null, 2);
-  assertNoSecretInRecord(caseText);
-  await fs.writeFile(path.join(ARTIFACTS, `${outcome.id}.json`), caseText);
+  // The records and the copied maps are checked before they are written; the screenshots are not.
+  await writeCheckedRecord(path.join(ARTIFACTS, `${outcome.id}.json`), { runId: RUN_ID, ...outcome });
   const outcomes = await readOutcomes();
   const record = {
     runId: RUN_ID,
@@ -116,9 +114,7 @@ async function writeRecord(outcome: Outcome) {
     accepted: await fs.readFile(ACCEPTED_MARKER, "utf8").then((text) => (JSON.parse(text).runId === RUN_ID ? JSON.parse(text) : null), () => null),
     outcomes,
   };
-  const text = JSON.stringify(record, null, 2);
-  assertNoSecretInRecord(text);
-  await fs.writeFile(path.join(ARTIFACTS, "battery.json"), text);
+  await writeCheckedRecord(path.join(ARTIFACTS, "battery.json"), record);
 }
 
 async function submit(page: Page, submission: Submission): Promise<{ attempt: Attempt; valid: boolean }> {
@@ -240,8 +236,8 @@ for (const submission of BATTERY) {
       const label = entry.sourceLabel === "Pasted text" ? submission.pasted : entry.sourceLabel;
       expect(texts[label]).toContain(String(entry.snippet).replace(/\s+/g, " ").trim());
     }
-    await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, `${submission.id}-accepted-${RUN_ID}.product.yaml`));
-    await fs.writeFile(ACCEPTED_MARKER, JSON.stringify({ runId: RUN_ID, id: submission.id, revision: stored.revision, provenanceEntries: stored.provenance.length }));
+    await copyCheckedArtifact(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, `${submission.id}-accepted-${RUN_ID}.product.yaml`));
+    await writeCheckedRecord(ACCEPTED_MARKER, { runId: RUN_ID, id: submission.id, revision: stored.revision, provenanceEntries: stored.provenance.length });
     await fs.rm(LIVE_PRODUCT_FILE, { force: true });
   });
 }

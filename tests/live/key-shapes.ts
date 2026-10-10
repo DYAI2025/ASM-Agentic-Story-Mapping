@@ -19,6 +19,22 @@ export const KEY_NAMES = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API
 
 export const matchesRealKeyShape = (text: string) => REAL_KEY_SHAPES.some((shape) => shape.test(text));
 
+/** Writes a record of a paid run as JSON, only after the check; nothing is written when the check refuses. */
+export async function writeCheckedRecord(file: string, record: unknown, env: Record<string, string | undefined> = process.env) {
+  const { promises: fs } = await import("node:fs");
+  const text = JSON.stringify(record, null, 2);
+  assertNoSecretInRecord(text, env);
+  await fs.writeFile(file, text);
+}
+
+/** Copies an artifact of a paid run (an accepted map) only after the same check as the records (review round 3 on 198b1f9). */
+export async function copyCheckedArtifact(from: string, to: string, env: Record<string, string | undefined> = process.env) {
+  const { promises: fs } = await import("node:fs");
+  const text = await fs.readFile(from, "utf8");
+  assertNoSecretInRecord(text, env);
+  await fs.writeFile(to, text);
+}
+
 /** Throws, without repeating any key, when a record holds a real key shape or the value of a key set in `env`. */
 export function assertNoSecretInRecord(text: string, env: Record<string, string | undefined> = process.env) {
   if (matchesRealKeyShape(text)) throw new Error("the record holds text in the shape of a provider key; it is not written");

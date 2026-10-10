@@ -16,7 +16,9 @@ import { PASTED_LABEL, type ContextBundle } from "../../src/domain/context";
  * reads no token usage, so the ledger counts bounds, never measured cost; the
  * measured cost is in the Anthropic console. A charge only ever goes up: a
  * submission keeps its whole reservation whatever the server reports, so no
- * settlement and no edited entry can give headroom back (review round 2).
+ * settlement can give headroom back (review round 2). A ledger edited by hand
+ * is checked for entries that contradict themselves or their model's prices,
+ * not against what was really spent.
  *
  * The bound of one model call rests on two assumptions, stated rather than
  * proven: a token of this text-only request is at least one byte of it (for
@@ -122,6 +124,9 @@ export function liveSettings(env: Record<string, string | undefined> = process.e
   const budgetText = (env.ASM_LIVE_BUDGET_USD ?? "").trim();
   const budgetUsd = Number(budgetText);
   if (!model) throw new BudgetRefusal("set ASM_AGENT_MODEL: a paid run names its model");
+  // The prices are Anthropic's, for Anthropic's own endpoint (review round 3 on 198b1f9).
+  if (provider !== "anthropic") throw new BudgetRefusal(`the guard has prices for the anthropic provider only, not for ${JSON.stringify(provider)}`);
+  if ((env.ANTHROPIC_BASE_URL ?? "").trim() !== "") throw new BudgetRefusal("ANTHROPIC_BASE_URL is set: the guard's prices are for Anthropic's own endpoint; unset it for a paid run");
   if (!ledgerFile) throw new BudgetRefusal("set ASM_LIVE_LEDGER to the ledger file this budget is counted in");
   checkBudget(budgetText === "" ? Number.NaN : budgetUsd);
   return { provider, model, ledgerFile, budgetUsd, createLedger: env.ASM_LIVE_LEDGER_CREATE === "1" };
@@ -178,6 +183,16 @@ export type Ledger = {
 
 const isMicro = (value: unknown): value is Micro => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+/** The least one call of a model can cost: its whole output budget and no input (review round 3 on 198b1f9); null for a model without a price. */
+function leastCallMicro(model: unknown): Micro | null {
+  if (typeof model !== "string") return null;
+  try {
+    return Math.floor(callBoundUsd(model, 0) * 1_000_000);
+  } catch {
+    return null;
+  }
+}
+
 /** The least a submission is charged: its whole bound, and each call beyond the two a submission may make at the repair bound. */
 const chargeFor = (b: { first: Micro; repair: Micro; total: Micro }, calls: number | null): Micro =>
   Math.max(b.total, typeof calls === "number" && calls > 2 ? b.first + (calls - 1) * b.repair : 0);
@@ -208,6 +223,9 @@ async function readLedger(file: string, budgetUsd: number): Promise<LedgerFile |
     const b = entry.boundMicroUsd;
     if (!b || !isMicro(b.first) || !isMicro(b.repair) || !isMicro(b.total) || b.total < b.first + b.repair) throw bad(`entry ${i} has a bound whose parts do not add up`);
     if (!isMicro(entry.chargedMicroUsd)) throw bad(`entry ${i} has no charge in whole micro-dollars`);
+    const least = leastCallMicro(entry.model);
+    if (least === null) throw bad(`entry ${i} names a model the guard has no price for (${JSON.stringify(entry.model)})`);
+    if (b.first < least || b.repair < least) throw bad(`entry ${i} has a bound below what one call of ${entry.model} costs at least`);
     if (entry.status === "reserved" && entry.chargedMicroUsd !== b.total) throw bad(`entry ${i} is reserved for less than its bound`);
     const calls = entry.modelCalls;
     if (calls !== null && (typeof calls !== "number" || !Number.isInteger(calls) || calls < 0)) throw bad(`entry ${i} has a call count that is not a whole number`);
@@ -285,7 +303,7 @@ export async function openLedger(
     spentUsd: () => spent(state) / 1_000_000,
     entries: () => state.entries,
     reserve: (bound, meta, reserveOptions = {}) =>
-      update(reserveOptions.lockWaitMs ?? LOCK_WAIT_MS, (current) => {
+      update(reserveOptions.lockWaitMs ?? options.lockWaitMs ?? LOCK_WAIT_MS, (current) => {
         for (const amount of [bound.firstCallUsd, bound.repairCallUsd, bound.totalUsd])
           if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0)
             throw new BudgetRefusal(`${meta.label}: a bound of ${amount} USD is not an amount; not sent`);
@@ -294,6 +312,9 @@ export async function openLedger(
         const first = micro(bound.firstCallUsd);
         const repair = micro(bound.repairCallUsd);
         const total = Math.max(first + repair, micro(bound.totalUsd));
+        const least = leastCallMicro(meta.model);
+        if (least === null || first < least || repair < least)
+          throw new BudgetRefusal(`${meta.label}: a bound below what one call of ${JSON.stringify(meta.model)} costs at least is not a bound; not sent`);
         if (spent(current) + total > micro(budgetUsd))
           throw new BudgetRefusal(
             `${meta.label}: up to ${(total / 1e6).toFixed(6)} USD on top of ${(spent(current) / 1e6).toFixed(6)} USD would pass the budget of ${budgetUsd} USD; not sent`,
@@ -312,7 +333,7 @@ export async function openLedger(
         return { next: { ...current, entries: [...current.entries, entry] }, result: id };
       }),
     settle: (id, outcome) =>
-      update(LOCK_WAIT_MS, (current) => {
+      update(options.lockWaitMs ?? LOCK_WAIT_MS, (current) => {
         const entry = current.entries[id];
         if (!entry || entry.status !== "reserved") throw new BudgetRefusal(`no open reservation ${id} in ${file}`);
         const calls = typeof outcome.modelCalls === "number" && Number.isInteger(outcome.modelCalls) && outcome.modelCalls >= 0 ? outcome.modelCalls : null;
@@ -322,7 +343,7 @@ export async function openLedger(
         return { next: { ...current, ...(stoppedReason ? { stoppedReason } : {}), entries: current.entries.map((e) => (e.id === id ? settled : e)) }, result: undefined };
       }),
     stop: (reason) =>
-      update(LOCK_WAIT_MS, (current) => ({ next: current.stoppedReason ? current : { ...current, stoppedReason: reason }, result: undefined })),
+      update(options.lockWaitMs ?? LOCK_WAIT_MS, (current) => ({ next: current.stoppedReason ? current : { ...current, stoppedReason: reason }, result: undefined })),
   };
 }
 

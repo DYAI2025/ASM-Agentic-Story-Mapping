@@ -10,7 +10,8 @@ import { liveSettings } from "./tests/live/budget";
  *
  * Every paid submission goes through the budget guard (ASM-34): the run names
  * its model, the ledger it counts against and the ledger's budget, or it does
- * not start.
+ * not start; the guard has prices for the anthropic provider at Anthropic's own
+ * endpoint only, so a paid run with another provider is refused.
  *
  *   ASM_AGENT_PROVIDER=anthropic ASM_AGENT_MODEL=claude-haiku-5-5 ANTHROPIC_API_KEY=… \
  *   ASM_LIVE_LEDGER=.e2e-artifacts/live/budget/ledger.json ASM_LIVE_BUDGET_USD=5 npm run smoke:live

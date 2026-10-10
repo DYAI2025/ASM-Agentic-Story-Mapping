@@ -86,6 +86,11 @@ describe("the most one submission can cost", () => {
     expect(bound.repairCallUsd).toBe(callBoundUsd(MODEL, bound.repairRequestBytes + bound.schemaBytes + API_ALLOWANCE_TOKENS));
   });
 
+  it("bounds the repair section at its widest: every line at full length, three bytes a character", () => {
+    const bound = boundForContext(MODEL, "RotaCare", sources);
+    expect(bound.repairRequestBytes - bound.firstRequestBytes).toBeGreaterThanOrEqual(20 * MAX_REPAIR_LINE_UNITS * 3);
+  });
+
   it("grows with the input: a longer text has a higher bound", () => {
     const short = boundForContext(MODEL, "RotaCare", sources);
     const long = boundForContext(MODEL, "RotaCare", [{ label: "Pasted text", text: "word ".repeat(10_000) }]);
@@ -169,7 +174,7 @@ describe("the ledger", () => {
   });
 
   // The charge only ever goes up (review round 2 on e4fb12a): a submission keeps its whole reservation whatever the
-  // server reports, so no settlement and no edited entry can give headroom back.
+  // server reports, so no settlement can give headroom back.
   it("settling records what the server reported and never lowers the charge", async () => {
     const ledger = await openLedger(file, 5, { create: true });
     for (const modelCalls of [1, 2, null, 0]) {
@@ -229,7 +234,12 @@ describe("the ledger", () => {
     ["a settled entry charged less than its bound", (entry) => ({ ...entry, status: "settled", modelCalls: 2, chargedMicroUsd: (entry.boundMicroUsd as { first: number }).first })],
     ["a settled entry with more calls charged less than they cost", (entry) => ({ ...entry, status: "settled", modelCalls: 5, chargedMicroUsd: (entry.boundMicroUsd as { total: number }).total })],
     ["a call count that is not a whole number", (entry) => ({ ...entry, status: "settled", modelCalls: 1.5 })],
+    // Review round 3 on 198b1f9: a bound below what one call of the entry's model can cost at least (its output budget).
+    ["bounds of zero", (entry) => ({ ...entry, status: "settled", modelCalls: 2, boundMicroUsd: { first: 0, repair: 0, total: 0 }, chargedMicroUsd: 0 })],
+    ["a model the guard has no price for", (entry) => ({ ...entry, model: "claude-opus-5-5" })],
     ["a bound whose parts do not add up", (entry) => ({ ...entry, boundMicroUsd: { first: 10, repair: 10, total: 5 } })],
+    // The same rule alone: everything else about this entry is in order (verifier round 3, OWNA).
+    ["a total below its parts, nothing else wrong", (entry) => ({ ...entry, boundMicroUsd: { first: 20_000, repair: 20_000, total: 30_000 }, chargedMicroUsd: 30_000 })],
     ["an unknown status", (entry) => ({ ...entry, status: "paid" })],
     ["an id out of order", (entry) => ({ ...entry, id: 7 })],
   ])("refuses a ledger with %s, instead of counting it as nothing", async (_name, spoil) => {
@@ -346,6 +356,15 @@ describe("the ledger", () => {
 
 describe("a paid run's settings", () => {
   const env = { ASM_AGENT_PROVIDER: "anthropic", ASM_AGENT_MODEL: MODEL, ASM_LIVE_LEDGER: "/tmp/ledger.json", ASM_LIVE_BUDGET_USD: "5" };
+
+  // Review round 3 on 198b1f9: the prices are Anthropic's, for Anthropic's own endpoint.
+  it("refuse a provider the prices are not for, even with the same model name", () => {
+    for (const provider of ["openai", "openrouter", "fake", ""]) expect(() => liveSettings({ ...env, ASM_AGENT_PROVIDER: provider })).toThrow(BudgetRefusal);
+  });
+
+  it("refuse another endpoint than Anthropic's own", () => {
+    expect(() => liveSettings({ ...env, ANTHROPIC_BASE_URL: "https://proxy.example.com" })).toThrow(BudgetRefusal);
+  });
 
   it("name the model, the ledger and the budget explicitly", () => {
     expect(liveSettings(env)).toEqual({ provider: "anthropic", model: MODEL, ledgerFile: "/tmp/ledger.json", budgetUsd: 5, createLedger: false });

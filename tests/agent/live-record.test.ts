@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertNoSecretInRecord } from "../live/key-shapes";
+import { KEY_NAMES, assertNoSecretInRecord, copyCheckedArtifact, writeCheckedRecord } from "../live/key-shapes";
 
 /**
  * The records of the paid live runs (battery, smoke, intake) are checked for
@@ -39,6 +40,41 @@ describe("a live record is checked for keys, not for words that look like them",
     }
     expect(message).toMatch(/ANTHROPIC_API_KEY/);
     expect(message).not.toContain(value);
+  });
+
+  it("copies an accepted map only after the same check (review round 3 on 198b1f9: a rationale can carry a key shape)", async () => {
+    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "asm-artifact-")));
+    try {
+      await fs.writeFile(path.join(dir, "clean.yaml"), "goal: like-for-like-auto\n");
+      await copyCheckedArtifact(path.join(dir, "clean.yaml"), path.join(dir, "clean-copy.yaml"));
+      expect(await fs.readFile(path.join(dir, "clean-copy.yaml"), "utf8")).toBe("goal: like-for-like-auto\n");
+      await fs.writeFile(path.join(dir, "leaky.yaml"), `rationale: ${"sk-ant-api03-"}${"E".repeat(60)}\n`);
+      await expect(copyCheckedArtifact(path.join(dir, "leaky.yaml"), path.join(dir, "leaky-copy.yaml"))).rejects.toThrow();
+      await expect(fs.access(path.join(dir, "leaky-copy.yaml"))).rejects.toThrow();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("checks the value of every provider key name, trimmed as the environment may hold it", () => {
+    expect([...KEY_NAMES].sort()).toEqual(["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"]);
+    const value = "value-of-a-key-0123456789";
+    for (const name of KEY_NAMES) {
+      expect(() => assertNoSecretInRecord(`x ${value} y`, { [name]: value }), name).toThrow();
+      expect(() => assertNoSecretInRecord(`x ${value} y`, { [name]: `  ${value}\n` }), `${name} with spaces`).toThrow();
+    }
+  });
+
+  it("writes a record only after the check, and nothing when the check refuses", async () => {
+    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "asm-record-")));
+    try {
+      await writeCheckedRecord(path.join(dir, "ok.json"), { quote: "like-for-like-auto" });
+      expect(JSON.parse(await fs.readFile(path.join(dir, "ok.json"), "utf8"))).toEqual({ quote: "like-for-like-auto" });
+      await expect(writeCheckedRecord(path.join(dir, "leak.json"), { quote: `${"sk-ant-api03-"}${"F".repeat(60)}` })).rejects.toThrow();
+      await expect(fs.access(path.join(dir, "leak.json"))).rejects.toThrow();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("passes the fake keys the tests and the bad-key server use", () => {

@@ -5,7 +5,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { LIVE_PRODUCT_FILE } from "../../playwright.live.config";
-import { assertNoSecretInRecord } from "./key-shapes";
+import { copyCheckedArtifact, writeCheckedRecord } from "./key-shapes";
 import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
@@ -76,9 +76,7 @@ test("@intake realistic meeting transcript -> real provider -> human review with
     budget: await ledgerSummary(),
   };
   const write = async (record: object) => {
-    const text = JSON.stringify(record, null, 2);
-    assertNoSecretInRecord(text);
-    await fs.writeFile(path.join(ARTIFACTS, "record.json"), text);
+    await writeCheckedRecord(path.join(ARTIFACTS, "record.json"), record);
   };
 
   if (paid.status !== 200) {
@@ -171,5 +169,5 @@ test("@intake realistic meeting transcript -> real provider -> human review with
       provenanceEntries: stored.provenance.length,
     },
   });
-  await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, "accepted.product.yaml"));
+  await copyCheckedArtifact(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, "accepted.product.yaml"));
 });

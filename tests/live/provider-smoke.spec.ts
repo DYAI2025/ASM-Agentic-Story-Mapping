@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { BAD_KEY_PRODUCT_FILE, LIVE_PRODUCT_FILE } from "../../playwright.live.config";
-import { assertNoSecretInRecord } from "./key-shapes";
+import { copyCheckedArtifact, writeCheckedRecord } from "./key-shapes";
 import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
@@ -123,10 +123,8 @@ test("@live ordinary meeting text -> real provider -> proposal -> human accept -
     operations: kinds.reduce<Record<string, number>>((sum, kind) => ({ ...sum, [kind!]: (sum[kind!] ?? 0) + 1 }), {}),
     accepted: { revision: stored.revision, goal: stored.goal.statement, personas: stored.personas.map((p: { name: string }) => p.name), steps: stored.narrative.map((s: { title: string }) => s.title), openQuestions: stored.decisions.map((d: { title: string }) => d.title) },
   };
-  const text = JSON.stringify(record, null, 2);
-  assertNoSecretInRecord(text);
-  await fs.writeFile(path.join(ARTIFACTS, "record.json"), text);
-  await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, "accepted.product.yaml"));
+  await writeCheckedRecord(path.join(ARTIFACTS, "record.json"), record);
+  await copyCheckedArtifact(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, "accepted.product.yaml"));
 });
 
 test("@bad-key a key that cannot work: the failure is visible, nothing is written, no secret is shown", async ({ page }) => {

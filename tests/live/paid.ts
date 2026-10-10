@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { boundForContext, expectServerModel, liveSettings, openLedger, type SourceText } from "./budget";
+import { BudgetRefusal, boundForContext, expectServerModel, liveSettings, openLedger, type SourceText } from "./budget";
 
 const ROOT = path.join(__dirname, "..", "..");
 const git = (...args: string[]) => execFileSync("/usr/bin/git", args, { cwd: ROOT, encoding: "utf8" }).trim();
@@ -8,15 +8,32 @@ const git = (...args: string[]) => execFileSync("/usr/bin/git", args, { cwd: ROO
 export type PaidAnswer = { status: number; body: Record<string, unknown> };
 export type PaidRecord = { serverProvider: string | null; modelCalls: number | null; boundUsd: number; chargedUsd: number; ledgerSpentUsd: number };
 
+/** What this process knows beyond the ledger: once a run has seen the wrong model, it sends nothing more, whatever the ledger says. */
+export type PaidState = { stopped: string | null };
+const PROCESS_STATE: PaidState = { stopped: null };
+
 /**
  * One paid submission under the budget guard (ASM-34, AC-6): reserve the most
  * it can cost before anything is sent, send, settle what the server reported,
  * and stop when the server used another model than the run named. A send that
- * throws leaves the whole bound reserved.
+ * throws leaves the whole bound reserved. `options` are for tests: their own
+ * process state, a hook on every ledger write, a shorter wait for the lock.
  */
-export async function paidSubmission(label: string, name: string, sources: readonly SourceText[], send: () => Promise<PaidAnswer>): Promise<PaidAnswer & PaidRecord> {
+export async function paidSubmission(
+  label: string,
+  name: string,
+  sources: readonly SourceText[],
+  send: () => Promise<PaidAnswer>,
+  options: { state?: PaidState; onWrite?: (file: string) => void | Promise<void>; lockWaitMs?: number } = {},
+): Promise<PaidAnswer & PaidRecord> {
+  const state = options.state ?? PROCESS_STATE;
+  if (state.stopped) throw new BudgetRefusal(`this run is stopped (${state.stopped}); nothing more is sent`);
   const settings = liveSettings();
-  const ledger = await openLedger(path.resolve(ROOT, settings.ledgerFile), settings.budgetUsd, { create: settings.createLedger });
+  const ledger = await openLedger(path.resolve(ROOT, settings.ledgerFile), settings.budgetUsd, {
+    create: settings.createLedger,
+    onWrite: options.onWrite,
+    lockWaitMs: options.lockWaitMs,
+  });
   const bound = boundForContext(settings.model, name, sources);
   const id = await ledger.reserve(bound, { label, commit: git("rev-parse", "HEAD"), model: settings.model });
   const answer = await send();
@@ -31,8 +48,17 @@ export async function paidSubmission(label: string, name: string, sources: reado
   // The charge stays the whole reservation. When the server did not answer as the model the run named (another model,
   // or none named after a call), the ledger is stopped in the same write: no further submission is sent, in this run
   // or the next, until a human looks (review round 2 on e4fb12a).
-  await ledger.settle(id, { modelCalls, serverProvider, ...(mismatch ? { stop: mismatch.message } : {}) });
-  if (mismatch) throw mismatch;
+  if (mismatch) {
+    // Stopped in this process first, so a ledger that cannot take the stop (another run holds it) stops nothing less.
+    state.stopped = mismatch.message;
+    try {
+      await ledger.settle(id, { modelCalls, serverProvider, stop: mismatch.message });
+    } catch (error) {
+      throw new Error(`${mismatch.message}; the stop could not be written to the ledger (${(error as Error).message}); this run sends nothing more, and the ledger has to be stopped by hand`);
+    }
+    throw mismatch;
+  }
+  await ledger.settle(id, { modelCalls, serverProvider });
   const entry = ledger.entries()[id];
   return { ...answer, serverProvider, modelCalls, boundUsd: entry.boundMicroUsd.total / 1e6, chargedUsd: entry.chargedMicroUsd / 1e6, ledgerSpentUsd: ledger.spentUsd() };
 }
