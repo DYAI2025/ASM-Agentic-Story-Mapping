@@ -114,7 +114,8 @@ test("start over the disk refuses: the map stays with the reason, nothing is hal
     await expect(page.getByTestId("issues")).toContainText("reset_failed");
     await expect(page.getByTestId("product-name")).toBeVisible();
     await expect(page.getByTestId("start-screen")).toHaveCount(0);
-    await page.screenshot({ path: shot("04-start-over-refused"), fullPage: true });
+    // Never into docs/: the reason names the workspace path on this machine, home directory included.
+    await page.screenshot({ path: path.join(__dirname, "..", "..", ".e2e-artifacts", "screenshots", "reset-04-start-over-refused.png"), fullPage: true });
   } finally {
     await fs.chmod(dir, mode);
   }

@@ -33,13 +33,13 @@ const shot = (name: string) => path.join(ARTIFACTS, `intake-${name}.png`);
 const exists = (file: string) => fs.access(file).then(() => true, () => false);
 const GROUPS = ["goal", "personas", "actors", "needs", "path", "questions"] as const;
 
-type Operation = { op: string; [field: string]: unknown };
+type Operation = { op: string; opId?: string; [field: string]: unknown };
 
 /** One line per proposed item, as the review groups it: what it says and where it says it came from. */
 function describeOperation(operation: Operation) {
   const source = operation.source as { sourceId?: string; snippet?: string } | undefined;
   const text = ["statement", "name", "title", "question", "text"].map((field) => operation[field]).find((value) => typeof value === "string");
-  return { op: operation.op, text: (text as string | undefined) ?? null, sourceId: source?.sourceId ?? null, snippet: source?.snippet ?? null };
+  return { opId: operation.opId ?? null, op: operation.op, text: (text as string | undefined) ?? null, sourceId: source?.sourceId ?? null, snippet: source?.snippet ?? null };
 }
 
 test("@intake realistic meeting transcript -> real provider -> human review with corrections -> accepted map", async ({ page }) => {
@@ -96,9 +96,10 @@ test("@intake realistic meeting transcript -> real provider -> human review with
   // 1. A reading of the goal, where there is a choice.
   const choice = page.getByTestId("goal-choice");
   if (await choice.count()) {
-    const radio = choice.getByRole("radio").first();
-    await radio.check();
-    human.goalChoice = { readings: await choice.getByRole("radio").count(), chosen: await radio.getAttribute("aria-label") };
+    const reading = choice.locator("[data-testid^='diff-op-']").first();
+    const opId = (await reading.getAttribute("data-testid"))!.replace(/^diff-/, "");
+    await reading.getByRole("radio").check();
+    human.goalChoice = { readings: await choice.getByRole("radio").count(), chosen: operations.find((o) => o.opId === opId) ?? { opId } };
   }
   // 2. Reject the last proposed step, when there are at least two.
   const steps = page.getByTestId("proposal-section-path").locator("[data-testid^='diff-op-']");
@@ -107,7 +108,7 @@ test("@intake realistic meeting transcript -> real provider -> human review with
     const opId = (await last.getAttribute("data-testid"))!.replace(/^diff-/, "");
     await page.getByLabel(`Include ${opId}`, { exact: true }).uncheck();
     await expect(last).toHaveAttribute("data-state", "rejected");
-    human.rejected = { opId, shown: (await last.innerText()).split("\n")[0] };
+    human.rejected = operations.find((o) => o.opId === opId) ?? { opId };
   }
   // 3. Edit the first need.
   const needs = page.getByTestId("proposal-section-needs").locator("[data-testid^='diff-op-']");
@@ -136,6 +137,11 @@ test("@intake realistic meeting transcript -> real provider -> human review with
   const stored = YAML.parse(await fs.readFile(LIVE_PRODUCT_FILE, "utf8"));
   expect(stored.revision).toEqual({ number: 1, status: "proposed" });
   if (human.edited) expect(stored.needs.map((n: { statement: string }) => n.statement)).toContain((human.edited as { after: string }).after);
+  // The rejected step is not on the map, unless another kept step has the same title.
+  const rejected = human.rejected as { op?: string; text?: string | null; opId?: string } | undefined;
+  if (rejected?.op === "add_step" && rejected.text && operations.filter((o) => o.op === "add_step" && o.text === rejected.text).length === 1)
+    expect(stored.narrative.map((step: { title: string }) => step.title)).not.toContain(rejected.text);
+  if (human.goalChoice) expect(stored.goal.statement).toBe(((human.goalChoice as { chosen: { text?: string } }).chosen.text));
   // Every quote the map keeps occurs in the transcript, runs of whitespace counted as one space.
   const flat = transcript.replace(/\s+/g, " ");
   for (const entry of stored.provenance) expect(flat).toContain(String(entry.snippet).replace(/\s+/g, " ").trim());
