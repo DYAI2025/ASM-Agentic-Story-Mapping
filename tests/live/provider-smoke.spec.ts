@@ -1,8 +1,10 @@
+import { execFileSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { BAD_KEY_PRODUCT_FILE, LIVE_PRODUCT_FILE } from "../../playwright.live.config";
+import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
  * Live provider smoke (ASM-25, AC-7): ordinary meeting text, no markers, through
@@ -54,7 +56,12 @@ test("@live ordinary meeting text -> real provider -> proposal -> human accept -
   await page.screenshot({ path: shot("01-meeting-notes-pasted"), fullPage: true });
 
   const started = Date.now();
-  await page.getByTestId("structure-button").click();
+  const paid = await paidSubmission("smoke live", NAME, [{ label: "Pasted text", text: MEETING_NOTES }], async () => {
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/bootstrap") && r.request().method() === "POST", { timeout: 240_000 });
+    await page.getByTestId("structure-button").click();
+    const response = await answer;
+    return { status: response.status(), body: (await response.json()) as Record<string, unknown> };
+  });
   await expect(page.getByTestId("proposal-review")).toBeVisible({ timeout: 240_000 });
   const seconds = Math.round((Date.now() - started) / 1000);
   await expect(page.getByTestId("proposal-issues")).toHaveCount(0);
@@ -96,7 +103,12 @@ test("@live ordinary meeting text -> real provider -> proposal -> human accept -
   // The record of this run, without anything secret: what was asked, what came back, how long it took.
   const record = {
     ranAt: new Date().toISOString(),
+    commit: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], { cwd: path.join(__dirname, "..", ".."), encoding: "utf8" }).trim(),
     provider,
+    serverProvider: paid.serverProvider,
+    modelCalls: paid.modelCalls,
+    chargedUsd: paid.chargedUsd,
+    budget: await ledgerSummary(),
     secondsToProposal: seconds,
     operations: kinds.reduce<Record<string, number>>((sum, kind) => ({ ...sum, [kind!]: (sum[kind!] ?? 0) + 1 }), {}),
     accepted: { revision: stored.revision, goal: stored.goal.statement, personas: stored.personas.map((p: { name: string }) => p.name), steps: stored.narrative.map((s: { title: string }) => s.title), openQuestions: stored.decisions.map((d: { title: string }) => d.title) },
@@ -113,7 +125,13 @@ test("@bad-key a key that cannot work: the failure is visible, nothing is writte
   await page.goto("/");
   await page.getByTestId("product-name-input").fill(NAME);
   await page.getByTestId("transcript-input").fill(MEETING_NOTES);
-  await page.getByTestId("structure-button").click();
+  // A key that cannot work costs nothing, but it is counted like any other submission: the guard does not trust the key to fail.
+  await paidSubmission("smoke bad-key", NAME, [{ label: "Pasted text", text: MEETING_NOTES }], async () => {
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/bootstrap") && r.request().method() === "POST", { timeout: 120_000 });
+    await page.getByTestId("structure-button").click();
+    const response = await answer;
+    return { status: response.status(), body: (await response.json()) as Record<string, unknown> };
+  });
   const issues = page.getByTestId("proposal-issues");
   await expect(issues).toBeVisible({ timeout: 120_000 });
   await expect(issues).toContainText("rejected the credentials");

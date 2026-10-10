@@ -5,6 +5,8 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import YAML from "yaml";
 import { LIVE_PRODUCT_FILE } from "../../playwright.live.config";
+import { liveSettings } from "./budget";
+import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
  * ASM-29, AC-29-01: the External-QA intake battery (A2, A3, A4-mid, A4-large,
@@ -16,6 +18,10 @@ import { LIVE_PRODUCT_FILE } from "../../playwright.live.config";
  * The fixtures are the External-QA files of 2026-10-04 (`fixtures/qa`, see
  * `SHA256SUMS`). Run by hand: `npm run battery:live`. The record goes to
  * `.e2e-artifacts/live/battery.json` and names the commit it ran on.
+ *
+ * ASM-34: every submission goes through the budget guard (`./paid`), and each
+ * attempt records the provider and model the server said it used and what the
+ * ledger charged for it.
  */
 const ARTIFACTS = path.join(__dirname, "..", "..", ".e2e-artifacts", "live", "battery");
 const FIXTURES = path.join(__dirname, "fixtures", "qa");
@@ -48,6 +54,10 @@ type Attempt = {
   issueCount: number;
   /** The first few messages as the human saw them (provider messages are redacted at the adapter boundary). */
   firstMessages: string[];
+  /** The provider and model the server named in its answer (`provider`), not the one the shell asked for. */
+  serverProvider: string | null;
+  /** What the budget ledger charged for this attempt: the bound of the model calls the server reported. */
+  chargedUsd: number;
 };
 
 type Outcome = Attempt & {
@@ -91,7 +101,10 @@ async function writeRecord(outcome: Outcome) {
     // Uncommitted changes under src/ would make the commit the wrong name for what ran.
     srcChangesSinceCommit: git("status", "--porcelain", "--", "src"),
     provider: process.env.ASM_AGENT_PROVIDER,
-    model: process.env.ASM_AGENT_MODEL ?? null,
+    model: liveSettings().model,
+    // What the server said it used, over every attempt of the run: one value, the model above, or the run stopped.
+    serverProviders: [...new Set(outcomes.flatMap((o) => o.attempts.map((a) => a.serverProvider)))],
+    budget: await ledgerSummary(),
     threshold: "at least 4 of 5 valid; every failure writes nothing",
     valid: outcomes.filter((o) => o.valid).length,
     validFirstAttempt: outcomes.filter((o) => o.validFirstAttempt).length,
@@ -110,13 +123,20 @@ async function submit(page: Page, submission: Submission): Promise<{ attempt: At
   await page.getByTestId("product-name-input").fill(NAME);
   await page.getByTestId("transcript-input").fill(await fs.readFile(path.join(FIXTURES, submission.pasted), "utf8"));
   if (submission.files) await page.getByTestId("context-files").setInputFiles(submission.files.map((f) => path.join(FIXTURES, f)));
-  const answer = page.waitForResponse((r) => r.url().endsWith("/api/bootstrap") && r.request().method() === "POST", { timeout: 540_000 });
+  const sources = [
+    { label: "Pasted text", text: await fs.readFile(path.join(FIXTURES, submission.pasted), "utf8") },
+    ...(await Promise.all((submission.files ?? []).map(async (f) => ({ label: f, text: await fs.readFile(path.join(FIXTURES, f), "utf8") })))),
+  ];
   const started = Date.now();
-  await page.getByTestId("structure-button").click();
-  const response = await answer;
+  const paid = await paidSubmission(`battery ${submission.id}`, NAME, sources, async () => {
+    const answer = page.waitForResponse((r) => r.url().endsWith("/api/bootstrap") && r.request().method() === "POST", { timeout: 540_000 });
+    await page.getByTestId("structure-button").click();
+    const response = await answer;
+    return { status: response.status(), body: (await response.json()) as Record<string, unknown> };
+  });
   const seconds = Math.round((Date.now() - started) / 1000);
-  const body = (await response.json()) as { patch?: { operations: { op: string }[] }; issues?: { code: string; path: string; message: string }[]; modelCalls?: number };
-  const valid = response.status() === 200 && Array.isArray(body.patch?.operations);
+  const body = paid.body as { patch?: { operations: { op: string }[] }; issues?: { code: string; path: string; message: string }[]; modelCalls?: number };
+  const valid = paid.status === 200 && Array.isArray(body.patch?.operations);
   if (valid) {
     // A proposal is shown for review and nothing is canon yet. With more than one reading of the goal the
     // human has to pick one first (AC-FUF-05), and the review says so: that refusal is about the choice
@@ -132,13 +152,15 @@ async function submit(page: Page, submission: Submission): Promise<{ attempt: At
   return {
     valid,
     attempt: {
-      httpStatus: response.status(),
+      httpStatus: paid.status,
       modelCalls: typeof body.modelCalls === "number" ? body.modelCalls : null,
       seconds,
       operations: tally((body.patch?.operations ?? []).map((o) => o.op)),
       issueCodes: tally((body.issues ?? []).map((i) => i.code)),
       issueCount: (body.issues ?? []).length,
       firstMessages: (body.issues ?? []).slice(0, 3).map((i) => `${i.code} ${i.path}: ${i.message}`.slice(0, 300)),
+      serverProvider: paid.serverProvider,
+      chargedUsd: paid.chargedUsd,
     },
   };
 }
