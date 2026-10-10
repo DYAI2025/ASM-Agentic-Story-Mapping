@@ -657,7 +657,9 @@ file beside it, so two runs cannot both spend the same headroom. The next
 submission is refused when it could take the ledger past its budget, when the
 budget is above the PO's ceiling of 5.00 USD, when the provider is not
 `anthropic` or `ANTHROPIC_BASE_URL` points anywhere (the prices are
-Anthropic's, for its own endpoint), when the guard has no price for the model
+Anthropic's, for its own endpoint, which the live server is started with
+explicitly so that `.env.local` cannot change it), when the ledger file is a
+symbolic link, when the guard has no price for the model
 (only `claude-haiku-5-5` has one), when there is no ledger, when
 the ledger cannot be read or an entry in it does not add up (a bound whose
 parts exceed its total, a charge below the entry's bound, a call count that is
@@ -667,10 +669,14 @@ for another budget, when another run holds the lock, and when the ledger is
 stopped. The server's answer names the provider and the model it was
 configured to request; when that is not the model the run named (another
 model, or none named after a call), the ledger is stopped in the same write
-that records the answer: no further submission is sent, in this run or a
-later one, until a human removes `stoppedReason` from the ledger file. If
-another run holds the ledger so long that the stop cannot be written, this run
-still sends nothing more, and the stop has to be written by hand. The
+that records the answer, and before that in a stop file beside the ledger
+(`<ledger>.stop`, written without the lock, so a ledger another run holds, or a
+Playwright worker that restarts after the failed test, stops all the same): no
+further submission is sent, in this run or a later one, until a human looks and
+removes the stop file and `stoppedReason`. The server's provider text goes into
+the ledger only after the key check. The 5.00 USD ceiling holds per ledger
+file; two ledgers would be two budgets, which is why a ledger is created only
+on purpose. The
 charge of that one submission is a `claude-haiku-5-5` bound; when a dearer
 model answered (the code's default is `claude-opus-5-5`), it may have cost
 more, up to two calls at that model's price, which is why nothing else is sent. So neither the code's default nor
@@ -681,8 +687,9 @@ checked first for real key shapes and for the values of the keys in the
 environment (`tests/live/key-shapes.ts`); the screenshots are not checked. A
 ledger edited by hand is checked for entries that contradict themselves or
 their model's prices, not against what was really spent. The app itself discards a model
-answer that carries the configured key; other key-shaped text in an answer is
-not filtered and lands in the map if the human accepts it.
+answer that carries the configured key; other key-shaped text in an answer
+(a key of another provider that the human pasted into their own material, for
+example) is not filtered and lands in the map if the human accepts it.
 
 ### The live provider smoke
 
@@ -722,10 +729,11 @@ five valid. When the provider answers 429, the submission is made again after
 `BATTERY_RETRY_AFTER_MS` (75 s by default, chosen for the earlier OpenRouter
 reference, whose shared upstream pool asked for 60 s on 2026-10-06; no
 Anthropic 429 has been measured), up to three times, as
-the product's "try again shortly" tells the human to; every attempt that
-comes back with an answer is recorded (an attempt that ends the case, such as
-a budget refusal, a model mismatch or a failed send, leaves its trace in the
-ledger only), and the record counts valid submissions both ways (`valid`,
+the product's "try again shortly" tells the human to; the attempts of a case
+are recorded when the case completes (a case that ends early, through a model
+mismatch, a failed send or a budget refusal, leaves its paid attempts in the
+ledger only; a refusal is never sent and leaves nothing), and the record counts
+valid submissions both ways (`valid`,
 `validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit,
 whether `src/` had uncommitted changes, the model the run named, the
 provider and model the server reported on every recorded attempt, what the ledger

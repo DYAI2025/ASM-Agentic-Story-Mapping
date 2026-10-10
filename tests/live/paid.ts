@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { BudgetRefusal, boundForContext, expectServerModel, liveSettings, openLedger, type SourceText } from "./budget";
+import { promises as fs } from "node:fs";
+import { BudgetRefusal, boundForContext, expectServerModel, liveSettings, openLedger, stopFileOf, type SourceText } from "./budget";
+import { assertNoSecretInRecord } from "./key-shapes";
 
 const ROOT = path.join(__dirname, "..", "..");
 const git = (...args: string[]) => execFileSync("/usr/bin/git", args, { cwd: ROOT, encoding: "utf8" }).trim();
@@ -29,7 +31,8 @@ export async function paidSubmission(
   const state = options.state ?? PROCESS_STATE;
   if (state.stopped) throw new BudgetRefusal(`this run is stopped (${state.stopped}); nothing more is sent`);
   const settings = liveSettings();
-  const ledger = await openLedger(path.resolve(ROOT, settings.ledgerFile), settings.budgetUsd, {
+  const ledgerFile = path.resolve(ROOT, settings.ledgerFile);
+  const ledger = await openLedger(ledgerFile, settings.budgetUsd, {
     create: settings.createLedger,
     onWrite: options.onWrite,
     lockWaitMs: options.lockWaitMs,
@@ -38,7 +41,9 @@ export async function paidSubmission(
   const id = await ledger.reserve(bound, { label, commit: git("rev-parse", "HEAD"), model: settings.model });
   const answer = await send();
   const modelCalls = typeof answer.body.modelCalls === "number" ? answer.body.modelCalls : null;
-  const serverProvider = typeof answer.body.provider === "string" ? answer.body.provider : null;
+  const reported = typeof answer.body.provider === "string" ? answer.body.provider : null;
+  // The server's own words go into the ledger and the stop message only after the key check (verifier round 4).
+  const serverProvider = reported !== null && !passesKeyCheck(reported) ? "[withheld: key-shaped text]" : reported;
   let mismatch: Error | null = null;
   try {
     expectServerModel(settings.provider, settings.model, serverProvider, modelCalls);
@@ -49,8 +54,10 @@ export async function paidSubmission(
   // or none named after a call), the ledger is stopped in the same write: no further submission is sent, in this run
   // or the next, until a human looks (review round 2 on e4fb12a).
   if (mismatch) {
-    // Stopped in this process first, so a ledger that cannot take the stop (another run holds it) stops nothing less.
+    // Stopped in this process and in a stop file beside the ledger first (written without the lock, so a ledger
+    // another run holds stops nothing less, and a restarted worker reads it too), then in the ledger itself.
     state.stopped = mismatch.message;
+    await fs.writeFile(stopFileOf(ledgerFile), `${new Date().toISOString()} ${label}: ${mismatch.message}\n`);
     try {
       await ledger.settle(id, { modelCalls, serverProvider, stop: mismatch.message });
     } catch (error) {
@@ -61,6 +68,15 @@ export async function paidSubmission(
   await ledger.settle(id, { modelCalls, serverProvider });
   const entry = ledger.entries()[id];
   return { ...answer, serverProvider, modelCalls, boundUsd: entry.boundMicroUsd.total / 1e6, chargedUsd: entry.chargedMicroUsd / 1e6, ledgerSpentUsd: ledger.spentUsd() };
+}
+
+function passesKeyCheck(text: string) {
+  try {
+    assertNoSecretInRecord(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The ledger's state for a record: where it is, its budget, what it holds now. */

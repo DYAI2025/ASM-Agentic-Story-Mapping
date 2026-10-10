@@ -65,6 +65,20 @@ describe("a live record is checked for keys, not for words that look like them",
     }
   });
 
+  it("writes a record and copies a map only after the check of the environment's key values too (verifier round 4, X1/X2)", async () => {
+    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "asm-record-env-")));
+    const env = { ANTHROPIC_API_KEY: "plain-looking-value-0123456789" };
+    try {
+      await expect(writeCheckedRecord(path.join(dir, "r.json"), { note: `x ${env.ANTHROPIC_API_KEY}` }, env)).rejects.toThrow(/ANTHROPIC_API_KEY/);
+      await expect(fs.access(path.join(dir, "r.json"))).rejects.toThrow();
+      await fs.writeFile(path.join(dir, "m.yaml"), `rationale: ${env.ANTHROPIC_API_KEY}\n`);
+      await expect(copyCheckedArtifact(path.join(dir, "m.yaml"), path.join(dir, "m-copy.yaml"), env)).rejects.toThrow(/ANTHROPIC_API_KEY/);
+      await expect(fs.access(path.join(dir, "m-copy.yaml"))).rejects.toThrow();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes a record only after the check, and nothing when the check refuses", async () => {
     const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "asm-record-")));
     try {

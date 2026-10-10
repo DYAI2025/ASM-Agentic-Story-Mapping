@@ -18,7 +18,7 @@ import { ledgerSummary, paidSubmission } from "./paid";
  *
  * The fixtures are the External-QA files of 2026-10-04 (`fixtures/qa`, see
  * `SHA256SUMS`). Run by hand: `npm run battery:live`. The record goes to
- * `.e2e-artifacts/live/battery.json` and names the commit it ran on.
+ * `.e2e-artifacts/live/battery/battery.json` and names the commit it ran on.
  *
  * ASM-34: every submission goes through the budget guard (`./paid`), and each
  * attempt records the provider and model the server said it used and what the

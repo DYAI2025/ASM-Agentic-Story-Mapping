@@ -204,6 +204,19 @@ describe("the ledger", () => {
     await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
   });
 
+  // Review round 4 on e2ce76e: a write replaces the file by renaming, which would replace a link and leave the
+  // ledger it pointed to without the reservation.
+  it("refuses a ledger reached through a symbolic link", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    await ledger.reserve(bound(0.4), meta);
+    const alias = path.join(dir, "alias.json");
+    await fs.symlink(file, alias);
+    await expect(openLedger(alias, 5)).rejects.toThrow(BudgetRefusal);
+    await expect(openLedger(alias, 5, { create: true })).rejects.toThrow(BudgetRefusal);
+    expect((await fs.lstat(alias)).isSymbolicLink()).toBe(true);
+    expectCharged((await openLedger(file, 5)).spentUsd(), 0.4);
+  });
+
   it("keeps an existing ledger when it is asked to create one", async () => {
     const first = await openLedger(file, 5, { create: true });
     await first.reserve(bound(0.4), meta);
@@ -309,6 +322,14 @@ describe("the ledger", () => {
     expect(held).toEqual([true, true, true, true]);
   });
 
+  it("refuses a bound below what one call of the model costs at least, and writes nothing (verifier round 4, Q2)", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    const before = await fs.readFile(file, "utf8");
+    await expect(ledger.reserve({ firstCallUsd: 0.001, repairCallUsd: 0.5, totalUsd: 0.501 }, meta)).rejects.toThrow(/at least/);
+    await expect(ledger.reserve({ firstCallUsd: 0.5, repairCallUsd: 0.001, totalUsd: 0.501 }, meta)).rejects.toThrow(/at least/);
+    expect(await fs.readFile(file, "utf8")).toBe(before);
+  });
+
   it("refuses a bound that is not a finite, non-negative amount, and writes nothing", async () => {
     const ledger = await openLedger(file, 5, { create: true });
     const before = await fs.readFile(file, "utf8");
@@ -336,6 +357,16 @@ describe("the ledger", () => {
     });
     expect(await fs.readFile(lock, "utf8")).toBe("another run's lock");
     await fs.rm(lock, { force: true });
+  });
+
+  it("takes no submission while a stop file lies beside it, whatever the ledger itself says", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    await fs.writeFile(`${file}.stop`, "the server answered as another model");
+    await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
+    await expect((await openLedger(file, 5)).reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
+    expect(JSON.parse(await fs.readFile(file, "utf8")).entries).toEqual([]);
+    await fs.rm(`${file}.stop`);
+    await expect(ledger.reserve(bound(0.1), meta)).resolves.toBeDefined();
   });
 
   it("takes no submission once it is stopped, not even after it is opened again", async () => {

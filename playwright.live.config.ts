@@ -1,6 +1,7 @@
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
 import { liveSettings } from "./tests/live/budget";
+import { liveServerEnv } from "./tests/live/server-env";
 
 /**
  * The live provider smoke: the same app, a real model, run by hand with a key
@@ -18,29 +19,15 @@ import { liveSettings } from "./tests/live/budget";
  */
 const LIVE_PORT = 3312;
 const BAD_KEY_PORT = 3313;
-const provider = (process.env.ASM_AGENT_PROVIDER ?? "").trim().toLowerCase();
-if (!["anthropic", "openai", "openrouter"].includes(provider))
-  throw new Error("set ASM_AGENT_PROVIDER to anthropic, openai or openrouter for the live smoke");
-const KEY_VAR = { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", openrouter: "OPENROUTER_API_KEY" }[provider]!;
-if (!process.env[KEY_VAR]) throw new Error(`${KEY_VAR} is not set in the environment`);
+// Paid runs are anthropic only: the guard's prices are Anthropic's (liveSettings refuses anything else).
 const { model } = liveSettings();
+if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set in the environment");
 
 export const LIVE_PRODUCT_FILE = path.join(__dirname, ".e2e-tmp", "live.product.yaml");
 export const BAD_KEY_PRODUCT_FILE = path.join(__dirname, ".e2e-tmp", "live-bad-key.product.yaml");
 
-/**
- * The variables the server needs, set explicitly. Playwright still passes the
- * rest of the shell environment on, and Next fills unset names from
- * `.env.local`; what is set here wins over both.
- */
-const serverEnv = (productFile: string, key: string) => ({
-  ASM_PRODUCT_FILE: productFile,
-  ASM_AGENT_PROVIDER: provider,
-  ASM_AGENT_MODEL: model,
-  ...(process.env.ASM_AGENT_TIMEOUT_MS ? { ASM_AGENT_TIMEOUT_MS: process.env.ASM_AGENT_TIMEOUT_MS } : {}),
-  ...(process.env.OPENAI_BASE_URL ? { OPENAI_BASE_URL: process.env.OPENAI_BASE_URL } : {}),
-  [KEY_VAR]: key,
-});
+/** The variables the server needs, set explicitly, endpoint included (tests/live/server-env.ts). */
+const serverEnv = (productFile: string, key: string) => liveServerEnv({ productFile, model, key, timeoutMs: process.env.ASM_AGENT_TIMEOUT_MS });
 
 export default defineConfig({
   testDir: "tests/live",
@@ -63,7 +50,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${LIVE_PORT}`,
       reuseExistingServer: false,
       timeout: 240_000,
-      env: serverEnv(LIVE_PRODUCT_FILE, process.env[KEY_VAR]!),
+      env: serverEnv(LIVE_PRODUCT_FILE, process.env.ANTHROPIC_API_KEY!),
     },
     {
       command: `npm run start -- -p ${BAD_KEY_PORT}`,

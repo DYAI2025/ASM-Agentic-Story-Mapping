@@ -62,6 +62,13 @@ describe("a paid submission", () => {
     expect(entry.chargedMicroUsd).toBeGreaterThanOrEqual(entry.boundMicroUsd.first + 3 * entry.boundMicroUsd.repair);
   });
 
+  it("passes on a call count above two from a mismatched answer too, and is charged for it (verifier round 4, OWNB2)", async () => {
+    await expect(paid("t", NAME, SOURCES, async () => answer({ modelCalls: 4, provider: "anthropic (claude-opus-5-5)" }))).rejects.toThrow();
+    const entry = (await openLedger(ledgerFile, 5)).entries()[0];
+    expect(entry.modelCalls).toBe(4);
+    expect(entry.chargedMicroUsd).toBeGreaterThanOrEqual(entry.boundMicroUsd.first + 3 * entry.boundMicroUsd.repair);
+  });
+
   it("settles and stops a mismatch in one write of the ledger", async () => {
     await openLedger(ledgerFile, 5, { create: true });
     let writes = 0;
@@ -97,6 +104,24 @@ describe("a paid submission", () => {
       }, { state }),
     ).rejects.toThrow(/stopped/);
     expect(sent).toBe(false);
+    // A new process (Playwright restarts its worker after a failed test) knows nothing of `state`: the stop file
+    // beside the ledger, written without the lock, stops it too (verifier round 4 on e2ce76e).
+    await expect(fs.readFile(`${ledgerFile}.stop`, "utf8")).resolves.toMatch(/claude-opus-5-5/);
+    await expect(
+      paid("t3", NAME, SOURCES, async () => {
+        sent = true;
+        return answer({ modelCalls: 1, provider: `anthropic (${MODEL})` });
+      }, { state: fresh() }),
+    ).rejects.toThrow(/stopped/);
+    expect(sent).toBe(false);
+  });
+
+  it("does not put key-shaped text from the server's answer into the ledger", async () => {
+    const shaped = `anthropic (${"sk-ant-api03-"}${"G".repeat(60)})`;
+    await expect(paid("t", NAME, SOURCES, async () => answer({ modelCalls: 1, provider: shaped }))).rejects.toThrow();
+    const text = await fs.readFile(ledgerFile, "utf8");
+    expect(text).not.toContain("G".repeat(60));
+    expect(JSON.parse(text).stoppedReason).toBeTruthy();
   });
 
   it("is written down in full before it is sent", async () => {

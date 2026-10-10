@@ -264,6 +264,14 @@ export async function withLedgerLock<T>(file: string, waitMs: number, work: () =
   }
 }
 
+/** The stop file beside a ledger: written without the lock when the ledger itself cannot take a stop in time (paid.ts). */
+export const stopFileOf = (file: string) => `${file}.stop`;
+
+/** Its text, or null when there is none; a stop file that cannot be read counts as a stop. */
+async function readStopFile(file: string): Promise<string | null> {
+  return fs.readFile(stopFileOf(file), "utf8").catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? null : `unreadable (${error.code})`));
+}
+
 /** Opens the ledger. A missing ledger is created only with `create`; a ledger made for another budget, or one that cannot be read or does not add up, is refused. */
 export async function openLedger(
   file: string,
@@ -272,6 +280,10 @@ export async function openLedger(
   options: { create?: boolean; lockWaitMs?: number; onWrite?: (file: string) => Promise<void> | void } = {},
 ): Promise<Ledger> {
   checkBudget(budgetUsd);
+  // A write replaces the file by renaming; through a link it would replace the link and leave the ledger it pointed
+  // to without the reservation (review round 4 on e2ce76e).
+  const link = await fs.lstat(file).then((st) => st.isSymbolicLink(), (error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? false : true));
+  if (link) throw new BudgetRefusal(`the ledger at ${file} is a symbolic link or cannot be looked at; name the ledger file itself`);
   let state = await withLedgerLock(file, options.lockWaitMs ?? LOCK_WAIT_MS, async () => {
     const found = await readLedger(file, budgetUsd);
     if (found) return found;
@@ -283,11 +295,11 @@ export async function openLedger(
   });
 
   /** Reads the ledger on disk under the lock, applies a change, writes it back: another run's reservations count, and none is lost. */
-  const update = <T>(waitMs: number, change: (current: LedgerFile) => { next: LedgerFile; result: T }) =>
+  const update = <T>(waitMs: number, change: (current: LedgerFile, stopFile: string | null) => { next: LedgerFile; result: T }) =>
     withLedgerLock(file, waitMs, async () => {
       const current = await readLedger(file, budgetUsd);
       if (!current) throw new BudgetRefusal(`the ledger at ${file} is gone`);
-      const { next, result } = change(current);
+      const { next, result } = change(current, await readStopFile(file));
       if (next !== current) {
         await write(file, next);
         await options.onWrite?.(file);
@@ -303,7 +315,9 @@ export async function openLedger(
     spentUsd: () => spent(state) / 1_000_000,
     entries: () => state.entries,
     reserve: (bound, meta, reserveOptions = {}) =>
-      update(reserveOptions.lockWaitMs ?? options.lockWaitMs ?? LOCK_WAIT_MS, (current) => {
+      update(reserveOptions.lockWaitMs ?? options.lockWaitMs ?? LOCK_WAIT_MS, (current, stopFile) => {
+        if (stopFile !== null)
+          throw new BudgetRefusal(`the ledger is stopped by ${stopFileOf(file)} (${stopFile.trim()}); a human removes that file after looking`);
         for (const amount of [bound.firstCallUsd, bound.repairCallUsd, bound.totalUsd])
           if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0)
             throw new BudgetRefusal(`${meta.label}: a bound of ${amount} USD is not an amount; not sent`);
