@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { promises as fs, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { promises as fs, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -43,6 +43,10 @@ afterAll(async () => {
 });
 
 function run(name: string, body: string): { status: number | null; output: string } {
+  // A fresh product/ per run, so that what one run left behind cannot decide the next (verifier, candidate e4531f6).
+  rmSync(path.join(root, "product"), { recursive: true, force: true });
+  mkdirSync(path.join(root, "product"));
+  copyFileSync(path.join(REPO, "product", "asm.product.yaml"), path.join(root, "product", "asm.product.yaml"));
   const file = path.join(root, "tests", `${name}.test.ts`);
   writeFileSync(file, body);
   const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: "1" };

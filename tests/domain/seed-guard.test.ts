@@ -26,6 +26,12 @@ describe("no unit test writes the repository's own map", () => {
     expect(guard()).toBeDefined();
   });
 
+  it("is wired into this repository's test configuration, the backstop included (verifier, candidate e4531f6)", async () => {
+    const { default: config } = await import(path.join(process.cwd(), "vitest.config.mts"));
+    expect(config.test.setupFiles).toContain("tests/seed-guard.setup.ts");
+    expect(config.test.globalSetup).toContain("tests/seed-guard.global.ts");
+  });
+
   it("refuses a save that falls back to the repository's map, which stays byte for byte as it was", async () => {
     // Checked before anything is written: without the guard this test would itself write the map.
     expect(guard()).toBeDefined();
@@ -52,6 +58,18 @@ describe("no unit test writes the repository's own map", () => {
     await expect(fs.appendFile(SEED, "x")).rejects.toThrow(/seed guard/);
     await expect(fs.open(SEED, "a")).rejects.toThrow(/seed guard/);
     expect(guard()!.take()).toHaveLength(4);
+  });
+
+  it("refuses a file moved into product/ from anywhere else (verifier, candidate e4531f6)", async () => {
+    expect(guard()).toBeDefined();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "asm-seed-guard-"));
+    try {
+      await fs.writeFile(path.join(dir, "moved.yaml"), "x");
+      await expect(fs.rename(path.join(dir, "moved.yaml"), path.join("product", "moved.yaml"))).rejects.toThrow(/seed guard/);
+      expect(guard()!.take()).toHaveLength(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("lets the map be opened for reading", async () => {
