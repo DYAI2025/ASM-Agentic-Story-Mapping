@@ -115,7 +115,8 @@ describe("the seed guard, run in a disposable copy", () => {
       ].join("\n"),
     );
     expect(result.output).toContain("Test timed out in 100ms");
-    expect(result.output).toMatch(/seed guard: this file tried to write the repository's own map: writeFile \S*asm\.product\.yaml\.[0-9a-f-]+\.tmp/);
+    // Any characters up to the file name: a temporary directory may hold spaces, and its real path may differ from os.tmpdir() (review round 8).
+    expect(result.output).toMatch(/seed guard: this file tried to write the repository's own map: writeFile [^\n]*asm\.product\.yaml\.[0-9a-f-]+\.tmp/);
     expect(result.status).toBe(1);
     expect(readFileSync(path.join(root, "product", "asm.product.yaml")).equals(before)).toBe(true);
   }, 120_000);
