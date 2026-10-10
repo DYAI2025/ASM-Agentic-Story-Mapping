@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SYSTEM_PROMPT } from "../../src/agent/prompt";
+import { SYSTEM_PROMPT, repairSection } from "../../src/agent/prompt";
 
 /**
  * ASM-34 §11 (PO decision 2026-10-10, after the battery 3/5 on 7f561e0): on
@@ -34,6 +34,18 @@ describe("a first product always gets a proposed goal (ASM-34 §11)", () => {
   it("names the goal of a first product as the exception to the rules that would leave it out (review round 7)", () => {
     expect(SYSTEM_PROMPT).toMatch(/leave an item out when no passage supports it \(the goal of a first product is the one exception/);
     expect(SYSTEM_PROMPT).toMatch(/Prefer an unresolved question over a guess \(for the goal of a first product, give both/);
+  });
+
+  it("keeps the exception on the repair request, which otherwise tells the model to leave out what it cannot quote (verifier, candidate e4531f6)", () => {
+    expect(repairSection({ problems: ["goal.source.snippet: not found in src-1"], omitted: 0 })).toMatch(
+      /if you cannot find an exact passage for an item, leave the item out; the goal of a first product is the one exception: it is always proposed, as described above\)/,
+    );
+  });
+
+  it("says nowhere else in its rules that a goal may be left null (verifier, candidate e4531f6)", () => {
+    const rules = SYSTEM_PROMPT.slice(0, SYSTEM_PROMPT.indexOf("Output format"));
+    const goalAndNull = rules.split("\n").filter((line) => /\bgoal\b/i.test(line) && /\bnull\b/.test(line));
+    expect(goalAndNull.map((line) => line.slice(0, 30))).toEqual(["- goal: a changed goal stateme", "- Use empty arrays where there"]);
   });
 
   it("keeps the rule for an existing map: a new goal only when the text clearly restates it", () => {
