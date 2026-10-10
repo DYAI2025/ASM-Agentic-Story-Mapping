@@ -49,7 +49,19 @@ describe("no unit test writes the repository's own map", () => {
     expect(guard()).toBeDefined();
     await expect(fs.writeFile(path.join("tests", "..", "product", "probe.tmp"), "x")).rejects.toThrow(/seed guard/);
     await expect(fs.copyFile(SEED, path.join("product", "copy.yaml"))).rejects.toThrow(/seed guard/);
-    expect(guard()!.take()).toHaveLength(2);
+    await expect(fs.appendFile(SEED, "x")).rejects.toThrow(/seed guard/);
+    await expect(fs.open(SEED, "a")).rejects.toThrow(/seed guard/);
+    expect(guard()!.take()).toHaveLength(4);
+  });
+
+  it("lets the map be opened for reading", async () => {
+    const handle = await fs.open(SEED, "r");
+    try {
+      expect((await handle.readFile()).equals(readFileSync(SEED))).toBe(true);
+    } finally {
+      await handle.close();
+    }
+    expect(guard()!.take()).toEqual([]);
   });
 
   it("leaves reading the map and writing anywhere else alone", async () => {
