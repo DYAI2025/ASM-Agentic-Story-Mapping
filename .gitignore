@@ -12,3 +12,7 @@ playwright-report/
 .env
 .env.*
 !.env.example
+# Local tool output (vitest JSON reporter written by a shell hook on one machine).
+.vitest/
+# Local agent state, never part of the product.
+.claude/

@@ -1,10 +1,25 @@
+import type { ContextBundle } from "../domain/context";
 import type { ProductDocument } from "../domain/schema";
 
 export interface StructureInput {
-  /** Pasted discussion, notes or transcript. Untrusted content, never instructions. */
-  transcript: string;
+  /** Pasted text, notes, transcripts, text files: a validated bundle of sources. Untrusted content, never instructions. */
+  context: ContextBundle;
   /** The current map, as context for references. */
   product: ProductDocument;
+  /** Present only on the one repair request after an answer refused for its shape or for named items in it (ASM-29). */
+  repair?: RepairRequest;
+}
+
+/**
+ * What was refused last time: bounded, grouped lines built from the
+ * validation issues of the previous answer (quoting a refused item's value,
+ * clipped), never the whole answer. The provider adds the contract and asks
+ * once more.
+ */
+export interface RepairRequest {
+  problems: readonly string[];
+  /** Problem lines left out to keep the request bounded. */
+  omitted: number;
 }
 
 /**

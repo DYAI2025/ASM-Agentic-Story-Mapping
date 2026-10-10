@@ -226,6 +226,158 @@ textarea {
   background: var(--worst-bg);
 }
 
+/* ASM-30: the technical list of an unreadable answer, closed until asked for. */
+.failure-details summary {
+  cursor: pointer;
+}
+
+.failure-details ul {
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* Context bundle: the files added next to the pasted text. */
+.context-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+
+.context-files .sources {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.context-files .sources li {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.context-files .sources button.link {
+  margin-left: 8px;
+}
+
+.marker-hint summary {
+  cursor: pointer;
+}
+
+/* Tutorial: how ASM is used, one step at a time. Browser state only. */
+.panel.tutorial {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.panel.tutorial h2 {
+  margin: 4px 0 6px;
+}
+
+.tutorial-progress {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tutorial-replay {
+  justify-content: flex-end;
+  margin: -6px 0 6px;
+}
+
+.guide-lead {
+  margin: -4px 0 8px;
+  font-size: 13px;
+}
+
+/* Proposal review: product meaning in sections, each item used, edited or rejected on its own. */
+.proposal-section {
+  margin: 14px 0;
+}
+
+.proposal-section h3 {
+  margin: 0 0 6px;
+}
+
+.proposal-section .diff {
+  margin: 0;
+}
+
+.diff-entry .use {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--best-bg, #e8f3ea);
+}
+
+.diff-entry.excluded .use {
+  background: var(--worst-bg);
+}
+
+.goal-choice {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0 0 8px;
+}
+
+.goal-choice legend {
+  font-weight: 600;
+}
+
+.item-actions {
+  margin-top: 4px;
+}
+
+details.source {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+details.source summary {
+  cursor: pointer;
+  color: var(--muted, #666);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+button.chip {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+}
+
+/* Destructive: start over. Same red as a worst case, so it reads as what it is. */
+.panel.danger {
+  border-color: var(--worst);
+  background: var(--worst-bg);
+}
+
+button.danger {
+  border-color: var(--worst);
+  background: var(--worst);
+}
+
+button.secondary.danger {
+  background: var(--surface);
+  color: var(--worst);
+}
+
 .card {
   position: relative;
   padding: 10px 12px;

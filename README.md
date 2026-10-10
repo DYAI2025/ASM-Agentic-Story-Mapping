@@ -65,11 +65,76 @@ name + own words -> proposal against a blank draft -> preview -> accept
   bring an existing product file, put it at the configured path.
 - A proposal that does not say what the product is for is refused
   (`goal_required`). The accepted goal also becomes the product's summary line.
+  For a first product the model is asked to always propose a goal, taken from
+  the passage that comes closest to saying what the product is for and quoted
+  from it, with any other reading as an alternative to choose; whether a model
+  does so is measured by the live intake battery, not by the unit tests.
 - The result is always proposed. Approval stays the separate human action.
 - With the `fake` provider (the default, no model) the text has to use one
   line per item (`Goal:`, `Persona:`, `Actor:`, `Need (name):`, `Step:`);
-  the start screen shows the format. Free text without such lines needs the
-  `anthropic` provider, which has only been tested against a stubbed client.
+  the format is a collapsed note under the field. Free text without such lines needs a
+  model provider (see [Providers](#providers)); the live runs under
+  [Checks](#checks) measure it with `anthropic`.
+
+### Clear input and start over
+
+Two different actions, so that throwing away a draft is never confused with
+throwing away the map.
+
+- **Clear input** (workshop panel, start screen) empties the text field and
+  drops a proposal under review. Both only ever existed in the browser; the
+  product file and the work state are not involved and stay byte-identical.
+- **Start over…** (editor toolbar) asks first, inline, with no undo. Confirmed,
+  `POST /api/product/reset` with `{ "confirm": "start over" }` removes the
+  product file and its work state (`resetProduct` in `src/server/store.ts`);
+  the page then reloads and, with no product, shows the start screen. No server
+  restart. Cancel, or a request without those words (400), changes nothing.
+- Order and failure: the work state goes first, the product last, and the store
+  re-checks that neither file is there before it answers `ok`. The start screen
+  can only appear once the product file is gone, so a reset that fails half-way
+  (500, `reset_failed`) leaves the old map on screen with the reason; it never
+  leaves a stored people check or selection behind that a later product could
+  pick up as stale state. The two files are not removed atomically; the order
+  is what makes it fail closed.
+- The repository's own map is not a user workspace: with no `ASM_PRODUCT_FILE`,
+  or one that resolves to `product/asm.product.yaml`, the reset is refused
+  (409, `seed_protected`) and nothing is touched. Start over works on the
+  workspace path you set.
+- The work-state target is removed first, so it has to be a work state: an
+  `ASM_WORK_STATE_FILE` that is not named `*.work-state.json`, that is the
+  product file or the seed (by name or by what a symlink resolves to), or that
+  holds anything but a valid work state, or holds a people check or a
+  selection made for another product (its `productId`), is refused
+  (`work_state_path_invalid`) before anything is touched. An empty work state
+  belongs to nobody and may go; an owned one whose product cannot be read is
+  refused too. The seed check on the product path follows
+  symlinks too: a path that reaches `product/asm.product.yaml` through a
+  linked directory is the seed.
+- What the reset's checks defend against, and what not: a mistaken
+  configuration (the seed as the product or as the work state, a path that
+  leads to the seed through a link, an override that is not a work state) and
+  a request a browser was made to send. They do not defend against a hostile
+  process on the same machine: one that can swap a parent directory into a
+  symlink between the check and the unlink can delete the seed directly, and
+  the route adds nothing to what it already has. The checks are by pathname
+  and resolve the path twice; a descriptor-bound delete would need a trusted
+  workspace root, which this prototype does not define.
+- Store mutations (save, work state, create, reset) run one at a time within
+  the server process, and a save or a work-state write finding no product at
+  commit time is refused (`no_product`): a reset that answered "fresh" is not
+  undone by a write that was already on its way. Every writing route runs its
+  whole read → check → write as one such transaction (`transaction` in
+  `src/server/store.ts`), so two accepts built on the same revision cannot
+  both land: the second re-reads the file and is refused as stale. There is
+  no lock across processes.
+- Every route that changes something (and the two that spend a model call)
+  refuses a request the browser marks as coming from another site
+  (`Sec-Fetch-Site` other than `same-origin`/`none`, or an `Origin` that is
+  not this host): 403 `cross_site_request`, before the body is read
+  (`src/server/same-origin.ts`). Without it a page on any other site could
+  make a visitor's browser post a reset, an approval or a selection to the
+  app on localhost. It is not authentication: a client that is not a browser
+  sends no such marks.
 
 ## From discussion to map
 
@@ -80,9 +145,29 @@ pasted text (untrusted) -> Narrative Builder -> MapPatch
 ```
 
 In the **Workshop input** panel, paste a discussion, notes or a transcript and
-press *Structure discussion*. You get a list of proposed changes, each with the
-quoted source line, a rationale and a confidence, and the map shows what it
-would look like. Accept all or some of it, edit the wording first, or reject it.
+press *Structure discussion*. You get the proposal as product meaning, in
+sections (`src/domain/proposal-view.ts`, a projection over the patch): Goal,
+Personas, Other actors and roles, Needs, Suggested main path, Open questions,
+Other changes. Every item is used, edited or rejected on its own (*Use* is the
+box, *Rejected* is the box unchecked, *Edit* opens that item's fields; *Edit
+all* opens every one). The source — which pasted text or file, confidence,
+rationale, the quote — sits behind a disclosure on each item. While editing,
+chips offer the quote as written and, for the goal, the other readings; a chip
+only fills the field in the proposal draft.
+
+When the text supports more than one reading of what the product is for, the
+provider says so (`goalAlternatives`) and the goal becomes a choice: radio
+buttons with nothing chosen, "ASM does not choose for you". Until exactly one
+reading is chosen, *Accept* is unavailable and the review says in words that
+the goal is the choice still missing — on a first product and on an existing
+one alike (`goalChoiceOpen` in `src/domain/proposal-view.ts`, ASM-31). On an
+existing product validity cannot stand in for this: the old goal keeps a
+proposal valid with every reading left out. Choosing again before *Accept*
+replaces the earlier choice. A patch that still carries two goals is refused
+by `applyMapPatch` (`conflicting_goal`), so no client and no provider can get
+two goals accepted; a client that leaves out every reading is not stopped by
+the server (see "What a green run does not prove"). The map shows what the
+proposal would look like; nothing is written until *Accept*.
 
 ![Reviewing a proposal](docs/screenshots/asm-proposal-review.png)
 
@@ -91,6 +176,41 @@ personas to steps, suggest an order, and raise unresolved questions. It cannot
 approve, decide or delete anything: the patch format has no way to say so.
 Unresolved questions become *open* decisions.
 
+### Context bundle: pasted text and text files
+
+What a proposal is built from is a *context bundle* (`src/domain/context.ts`):
+the pasted text, if any, plus `.txt` and `.md` files added next to it, at most
+8 sources and 60 000 characters in all. Each source has a transient id
+(`src-1`, `src-2`, …) and a label (`Pasted text` or the file name), is listed
+before sending and can be removed. The bundle is input state, never part of the
+product: nothing of it is stored except, for every accepted item, the id and
+label of the source its quote came from (`provenance[].sourceId`,
+`sourceLabel`; both optional, so older maps load unchanged).
+
+- A file is read in the browser as UTF-8 text. Another type, undecodable
+  bytes, an empty file or one over the limit is reported by name and not added.
+  The server validates the bundle again before any provider sees it (empty,
+  binary, type, size, shape) and refuses with 422; nothing is written.
+- The provider receives every source in its own delimited block, headed by its
+  id; the tag around a block is a hash of the label and the text plus a nonce
+  chosen after the sources arrived, so no source can contain its own closing
+  tag, by accident or on purpose. The provider has to say for each item which
+  source it quotes (`sourceId`). With one
+  source the attribution is implied; with several it is required
+  (`source_required`). The quote is checked against that one source: a snippet
+  that only exists in another source, or across the boundary between two, is
+  refused (`snippet_not_in_source`, `unknown_source`).
+- The routes accept `{ context: { sources: [...] } }` and still accept
+  `{ transcript: "…" }` as a one-source bundle.
+- The primary copy asks for what the user already has: meeting notes, a
+  transcript, a product description, requirements or rough thoughts. The marker
+  format of the `fake` provider is a collapsed note under the field while that
+  provider is active; it is not the instruction.
+- The product name is the map's identity (ids and the proposal's fingerprint
+  derive from it), so it has to exist before a proposal is built. The button is
+  not disabled for it: asking without a name says so in one sentence and moves
+  the focus to the name field; the text stays.
+
 ### Providers
 
 `src/agent/provider.ts` defines a small `AgentProvider` interface. The domain
@@ -98,18 +218,129 @@ code does not know which provider produced a proposal.
 
 | `ASM_AGENT_PROVIDER` | What it is |
 |---|---|
-| `fake` (default) | No model. A deterministic parser for explicit markers (`Persona:`, `Need (…):`, `Step:`, `Assign:`, `Move:`, `Goal:`, `Question:`), documented in `src/agent/fake-provider.ts`. All tests use it. |
-| `anthropic` | Claude through the Anthropic API. Needs `ANTHROPIC_API_KEY` in the environment; optional `ASM_AGENT_MODEL`. |
+| `fake` (default) | No model. A deterministic parser for explicit markers (`Persona:`, `Actor:`, `Need (…):`, `Step:`, `Assign:`, `Move:`, `Goal:`, `Question:`), documented in `src/agent/fake-provider.ts`. All tests use it. |
+| `anthropic` | Claude through the Anthropic SDK (`src/agent/anthropic-provider.ts`). Needs `ANTHROPIC_API_KEY`; optional `ASM_AGENT_MODEL` (default `claude-opus-5-5`). The reference configuration of the live runs is `claude-haiku-5-5`, set explicitly (ASM-34, see "Paid runs and their budget"). |
+| `openai` | OpenAI through the Responses API with a strict JSON schema (`src/agent/openai-provider.ts`, plain `fetch`). Needs `OPENAI_API_KEY`; optional `ASM_AGENT_MODEL` (default `gpt-6-astra`), `OPENAI_BASE_URL`. |
+| `openrouter` | OpenRouter chat completions with a strict JSON schema and `require_parameters` (`src/agent/openrouter-provider.ts`, plain `fetch`). Needs `OPENROUTER_API_KEY` and `ASM_AGENT_MODEL` (no default is guessed). |
 
 Copy `.env.example` to `.env.local` to configure. No credentials belong in the
-repository.
+repository. `ASM_AGENT_TIMEOUT_MS` (default 120 000) bounds every call.
 
-## The guide
+All four sit behind the same two interfaces and the same rules:
 
-A panel above the toolbar walks a first-time user through the same flow the
-expert UI offers. It is a projection (`deriveGuide` in `src/domain/guide.ts`):
-it reads the product document and the work state and keeps no progress of its
-own.
+- A provider receives the context bundle and the map, and returns `unknown`.
+  The domain (`resolveProposal`, `resolveReview`) decides what of it is a
+  proposal; nothing under `src/agent/` imports the store, the file system or
+  a route (a static test says so), so no provider can write anything.
+- The sources are data. The instructions never contain them; each source sits
+  in its own delimited block. A model that obeys "approve this", "select this
+  slice" or "write to the map" can only produce output the schemas cannot
+  express, which is refused (`tests/agent/live-providers.test.ts`).
+- Failures are visible and closed: missing key, rejected credentials (401),
+  rate limit (429), timeout or unreachable API, refusal or content filter,
+  truncated answer, non-JSON, schema-invalid output. There is no fallback to
+  another provider or model: the Anthropic adapter deliberately does not send
+  the server-side `fallbacks` option, so a safety decline is an error, not a
+  different model answering.
+- Keys are sent in one header and never logged. Every provider call crosses
+  one boundary on its way out (`contained` in `src/agent/http.ts`): whatever
+  was thrown inside — an adapter's own message, an SDK's exception with
+  upstream text in it, a transport failure — leaves as one error whose
+  message went through the redactor, which knows the key's raw, JSON-escaped
+  (once and twice) and URL-encoded spellings. Model output that contains the
+  key — in any decoded string or key — is discarded whole before the domain
+  sees it. The Anthropic SDK's own logging is off whatever `ANTHROPIC_LOG`
+  says, since at debug it prints bodies. The oracle for all of this is
+  `tests/agent/secret-containment.test.ts`: every channel an adapter reads
+  from upstream (output values and keys recursively, envelope metadata,
+  error bodies, the SDK's parsing exception, a network failure), four
+  spellings of the key, all three adapters (Anthropic through the real SDK),
+  proposals and reviews, looking for the key's plain tail in the result and
+  in everything written to the console meanwhile. Exact-value matching,
+  secrets of four characters or more; a secret under four characters is not
+  looked for.
+- The request-side schema (`src/agent/json-schema.ts`) is the zod contract as
+  strict JSON Schema: every property required, nothing additional, optional
+  fields nullable. It is a courtesy to the model; the app relies only on its
+  own validation of what comes back.
+- One repair, and only one (ASM-29). External QA measured the reference model of
+  that time (`qwen/qwen3-235b-a22b-2507` through OpenRouter) ignoring that schema: the
+  source fields flattened onto each item, needs as `id`/`text`. When an answer
+  parsed but was refused — for its shape (`AgentOutputSchema`), or for named
+  items in it of the kinds the PO decided on 2026-10-06: a quote that does not
+  occur in the source it names, an unknown or missing source, a `new:` ref that
+  is malformed, duplicated or undeclared, an id not on the map, a role outside
+  the list — `buildProposal` asks the same provider once more, with the
+  contract as JSON Schema text and a bounded list of what was refused (shape
+  problems grouped by position, a refused item with its position and its value
+  quoted, each part redacted for key-shaped text and then clipped, at most 20
+  lines). The whole previous answer is not sent back. The second answer is
+  untrusted like the first and goes through `resolveProposal` from scratch:
+  the rules are unchanged, a refused value is never accepted as it was, and
+  nothing in ASM rewrites one. A quote counts as occurring in its source when
+  it does so with runs of whitespace (spaces, line breaks) counted as one space
+  — the rule `resolveProposal` has applied since the walking skeleton; case,
+  punctuation and words must match. Not repaired: a provider failure
+  (credentials, rate limit, timeout, network, refusal, content filter, cut-off,
+  non-JSON, a key in the output), any other refusal of the answer (an empty
+  answer, a text limit, a confidence out of range, a placement), and any
+  refusal from applying the proposal to the map (`resolveProposal` marks those
+  `stage: "apply"`, e.g. a need for someone who is not a persona). Those are
+  refused after the first call. There is no loop, so a submission makes one
+  model call or two, never three, and each call is one HTTP request: the
+  Anthropic SDK's own retries are off (`maxRetries: 0`), the other adapters
+  never had any. With the Anthropic adapter the SDK itself parses the answer
+  against the contract before ASM sees it, so there a wrong shape is a
+  provider error and is not repaired (fail closed, one call).
+  `/api/proposal` and `/api/bootstrap` report the number as `modelCalls`
+  (0 when the request was refused before any call). The instructions of every
+  proposal request state the contract as well, with the exact-quote rule, the
+  `new:` ref syntax and the closed role list spelled out. The oracle is
+  `tests/agent/schema-repair.test.ts` (built from the shape QA recorded, red on
+  the code before each change) and, in the browser,
+  `tests/e2e/schema-repair.spec.ts` against a scripted model on localhost
+  (`tests/e2e/model-stub-server.ts`) through the real `openai` adapter.
+- What a human reads when the answer is refused for its shape (ASM-30). The
+  contract raises one issue per misplaced field, so External QA saw 45–134
+  of them per failure. If any issue is `agent_output_*`, the panel says in a
+  few fixed sentences that the model's answer could not be read safely and was
+  not used, that nothing was changed, and what to try: again; with a shorter
+  or split text; with another model set on the server. The same sentences
+  appear whatever the count. The full list (path, message, code) sits behind a
+  disclosure that starts closed, and the 422 body still carries every issue
+  (`unreadableAnswer` in `src/domain/proposal-failure.ts`, rendered by
+  `src/ui/ProposalIssues.tsx` on the start screen and in the workshop). Every
+  other refusal keeps its own words, path and code, because it already says
+  what is wrong: a provider failure (credentials, rate limit, timeout,
+  refusal, cut-off, a key in the output), a quote not in its source, a file
+  that cannot be read, nothing structured. The oracle:
+  `tests/ui/proposal-issues.test.ts`, and in the browser
+  `tests/e2e/proposal-failure.spec.ts` (each line of the box checked for legible
+  ink on the pixels, presence not completeness, `tests/e2e/on-screen.ts`), where an answer with 74 issues meets
+  the stub and the stub also answers 401, 429, a quote still wrong after the
+  repair, and an answer carrying the key.
+- CI has no keys: the adapters are tested against a stubbed `fetch`. The live
+  smoke (`npm run smoke:live`, see Checks) is run by hand with a real key.
+
+## The tutorial and the Product Flow
+
+Two different things, kept apart on purpose.
+
+The **tutorial** (`src/ui/Tutorial.tsx`) says how ASM is used, in four
+steps, one at a time: *Bring what you already have* · *Review, don't rewrite*
+· *Check the story* · *Turn understanding into work*. It shows on a browser's
+first visit (start screen and map), can be skipped, finished with Back/Next,
+closed with Escape, and replayed with *Show tutorial*. Its only state is the
+browser key `asm.tutorial` (`done`). It imports nothing from the domain and
+calls no route (a static test says so), so it cannot move the Product Flow,
+the product or the work state.
+
+The **Product Flow** (the panel above the toolbar, `GuidePanel` in the code)
+says where this product stands. It is a projection (`deriveGuide` in
+`src/domain/guide.ts`): it reads the product document and the work state and
+keeps no progress of its own. The identifiers under the hood still say
+`guide` (test ids `guide-*`, the key `asm.guide`, the module name); the
+visible name is Product Flow.
 
 | Step | Done when |
 |---|---|
@@ -141,8 +372,9 @@ own.
   badges and a one-line summary, so it is visible with the guide hidden. Nothing is deleted or selected again.
 - Three markers appear when their state is reached: a readable map (step 3),
   an approved story with the approver's name (step 4), a work order (step 7).
-- *Hide guide* / *Show guide* is a per-browser preference in `localStorage`
-  (`asm.guide`). It is not product or work state.
+- *Hide product flow* / *Show product flow* is a per-browser preference in
+  `localStorage` (`asm.guide`). It is not product or work state, and it is a
+  different key from the tutorial's.
 
 ## People: roles and persona
 
@@ -396,6 +628,148 @@ npm run docs:refresh       # same browser tests, writing into docs/
 fails if the run changed a tracked file, and uploads `.e2e-artifacts/` named
 by that commit.
 
+### Paid runs and their budget
+
+Every run below calls a real model and costs money. The reference
+configuration since ASM-34 (PO decision 2026-10-10) is the Anthropic adapter
+with `claude-haiku-5-5`; a run names its model, the ledger it is counted in
+and that ledger's budget, or it does not start:
+
+```bash
+export ASM_AGENT_PROVIDER=anthropic ASM_AGENT_MODEL=claude-haiku-5-5 ANTHROPIC_API_KEY=…
+export ASM_LIVE_LEDGER=.e2e-artifacts/live/budget/ASM-34-ledger.json ASM_LIVE_BUDGET_USD=5
+# ASM_LIVE_LEDGER_CREATE=1 only for the very first run of a new ledger
+```
+
+`tests/live/budget.ts` is the guard. Before a submission is sent it reserves
+the most that submission can cost, for the first call and for the one repair
+call: the whole 16 000-token output budget, and an input bound made of the
+bytes of the request the adapter's own `buildRequest` makes for the same
+sources, the schema once more and a fixed allowance of 8 192 tokens, at the
+model's list price times 1.1 (a workspace that defaults to US inference pays
+that much more without the request saying so). The input bound rests on two
+assumptions, not on a guarantee from the API: that a token of this text-only
+request is at least one byte of it (for prose, bytes run at about three to
+four times the tokens), and that what the API adds around a structured-output
+request fits in the schema plus the allowance. A request with images, files
+or tools would need another bound.
+
+The reservation is written to the ledger before the request goes out, and the
+submission keeps it: what the server answers (how many model calls, which
+provider and model) is recorded but never lowers the charge, and only a call
+count above the two a submission may make raises it. Every reservation reads the ledger on disk while it holds a lock
+file beside it, so two runs cannot both spend the same headroom. The next
+submission is refused when it could take the ledger past its budget, when the
+budget is above the PO's ceiling of 5.00 USD, when the provider is not
+`anthropic` or `ANTHROPIC_BASE_URL` points anywhere (the prices are
+Anthropic's, for its own endpoint, which the live server is started with
+explicitly so that `.env.local` cannot change it), when the ledger file is a
+symbolic link, when the guard has no price for the model
+(only `claude-haiku-5-5` has one), when there is no ledger, when
+the ledger cannot be read or an entry in it does not add up (a bound whose
+parts exceed its total, a charge below the entry's bound, a call count that is
+not a whole number, a bound below what one call of its model costs at least,
+a model without a price, ids out of order), when it was made
+for another budget, when another run holds the lock, and when the ledger is
+stopped. The server's answer names the provider and the model it was
+configured to request; when that is not the model the run named (another
+model, or none named after a call), the ledger is stopped in the same write
+that records the answer, and before that in a stop file beside the ledger
+(`<ledger>.stop`, written without the lock, so a ledger another run holds, or a
+Playwright worker that restarts after the failed test, stops all the same): no
+further submission is sent, in this run or a later one, until a human looks and
+removes the stop file and `stoppedReason`. The server's provider text goes into
+the ledger only after the key check. The 5.00 USD ceiling holds per ledger
+file; two ledgers would be two budgets, which is why a ledger is created only
+on purpose. The
+charge of that one submission is a `claude-haiku-5-5` bound; when a dearer
+model answered (the code's default is `claude-opus-5-5`), it may have cost
+more, up to two calls at that model's price, which is why nothing else is sent. So neither the code's default nor
+`.env.local` decides what is paid for. The app reads no token usage, so the
+ledger holds bounds, not measured cost; the measured cost is in the Anthropic
+console. Every record a paid run writes, and every accepted map it copies, is
+checked first for real key shapes and for the values of the keys in the
+environment (`tests/live/key-shapes.ts`); the screenshots are not checked. A
+ledger edited by hand is checked for entries that contradict themselves or
+their model's prices, not against what was really spent. The app itself discards a model
+answer that carries the configured key; other key-shaped text in an answer
+(a key of another provider that the human pasted into their own material, for
+example) is not filtered and lands in the map if the human accepts it.
+
+### The live provider smoke
+
+```bash
+npm run smoke:live
+```
+
+`playwright.live.config.ts` starts the built app twice: once with the
+provider and key from the shell, once with the same provider and a key that
+cannot work. `tests/live/provider-smoke.spec.ts` pastes ordinary meeting notes
+(no markers), waits for the real model, checks that the proposal has a goal,
+people, needs, a path and open questions, accepts it as a human would and reads
+revision 1 back from disk, with every snippet found in the notes and attributed
+to the pasted source; the second server has to show the credential failure in
+the browser and write nothing. Where the model reads more than one goal into
+the notes, the smoke picks the first reading, as a person would. Screenshots,
+`record.json` (commit, provider and model the server reported, model calls,
+what the ledger charged, seconds to proposal, counts, what was accepted) and the accepted map go to
+`.e2e-artifacts/live/`; the record is checked to contain no key. CI never runs
+this; the evidence is recorded on the ticket.
+
+### The live intake battery
+
+```bash
+npm run battery:live
+```
+
+The External-QA submissions of 2026-10-04 (`tests/live/fixtures/qa/`, checksums
+in `SHA256SUMS`): A2 product description, A3 meeting transcript, A4 at about
+5 000 words and near the 60 000-character limit, A5 three sources (pasted
+text, `.txt`, `.md`). `tests/live/intake-battery.spec.ts` submits each from the
+start screen of a fresh workspace, one minute apart (`BATTERY_PAUSE_MS`),
+records per submission the HTTP status, `modelCalls`, issue codes, seconds and
+whether a file appeared, accepts the first valid proposal as a human would and
+checks every recorded snippet against its source, then asserts at least four of
+five valid. When the provider answers 429, the submission is made again after
+`BATTERY_RETRY_AFTER_MS` (75 s by default, chosen for the earlier OpenRouter
+reference, whose shared upstream pool asked for 60 s on 2026-10-06; no
+Anthropic 429 has been measured), up to three times, as
+the product's "try again shortly" tells the human to; the attempts of a case
+are recorded when the case completes (a case that ends early, through a model
+mismatch, a failed send or a budget refusal, leaves its paid attempts in the
+ledger only; a refusal is never sent and leaves nothing), and the record counts
+valid submissions both ways (`valid`,
+`validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit,
+whether `src/` had uncommitted changes, the model the run named, the
+provider and model the server reported on every recorded attempt, what the ledger
+charged per attempt and the ledger after the run. Each run is a sample of a
+non-deterministic model; the results per commit are recorded on the ticket.
+
+### The live real-input intake
+
+```bash
+npm run intake:live
+```
+
+`tests/live/real-intake.spec.ts` (ASM-28) takes the External-QA kickoff
+transcript (A3: five people in different roles, no markers) through the
+configured model to the review, and then does what a human reviewer does,
+by a fixed rule so a rerun does the same: picks the first reading of the goal
+where there is a choice, rejects the last item of the proposed path where
+there are at least two, edits the first need where there is one. Nothing is
+written before Accept; after it, revision 1 holds the chosen goal and the
+edit, a rejected step with a title of its own is not on the map, and every
+kept quote occurs in the transcript. What the proposal did not offer, and a
+rejected item that cannot be checked that way (an assignment, a step sharing
+its title), is listed in the record as not possible or not checked, instead of
+passing silently.
+`.e2e-artifacts/live/intake/` gets the screenshots (input, review, corrected,
+accepted map), `record.json` (input checksum, what was proposed by group,
+what the human chose, rejected and edited, the accepted goal, personas and
+other actors, needs, steps and open questions) and the accepted map. Whether
+the proposal is any good is not something the test judges: that is the human
+verdict on the exact commit.
+
 ### The whole first-time path in one test
 
 `tests/e2e/first-time-user.spec.ts` starts with no product file and walks the
@@ -406,6 +780,20 @@ state and the way back. It also runs a small accessibility check on the start
 screen, the map, the review panel and the slice drawer: every control has a
 name a screen reader can say, every button has text, headings exist. Its
 screenshots are the review gallery [docs/first-time-user.md](docs/first-time-user.md).
+
+### The full user flow in one test
+
+`tests/e2e/full-user-flow.spec.ts` (ASM-28) runs the whole slice on an isolated
+workspace: fresh start with the tutorial, pasted prose plus a markdown file,
+the grouped proposal with a goal choice, a chip edit, a rejection, accept,
+first map, Product Flow, review and a worst case, approval, the people check
+(server gate proven), candidates (reads choose nothing), selection, the work
+order as JSON and Markdown read back and bound to the map and candidate
+fingerprints, Start over, the fresh start screen with every read answering
+`no_product`, and a second product started at once with no old state. It runs
+an accessibility smoke on four screens. Its screenshots are the review
+gallery [docs/full-user-flow.md](docs/full-user-flow.md); the provider-error
+state there comes from the live harness.
 
 ### What the tests have been shown to catch
 
@@ -436,17 +824,101 @@ table says which.
 | Dropping `sequence` while the narrative is still sorted by it | ASM-20, `6972e89` | equivalent mutant (behaviour unchanged); replaced by sorting by id, which is red |
 | Against the first-time-user test at its first version: people gate removed from `selectSlice`; GET `/api/slices` selects when nothing is selected; fingerprint blind to the goal; bootstrap accept ignores the exclusion | ASM-21, `8eac934` | **three of four survived** (the gate was asserted only as a disabled button; no read happened before the selection; the reopen hid the fingerprint); the fourth red |
 | Same four, plus an unnamed button inside a label and a button whose only text is hidden from assistive technology | ASM-21, the spec's second version | all red |
+| Seed never protected (both conditions); only the unset-variable condition dropped; path compared as a string instead of resolved (`product/./asm.product.yaml`); only the work state removed; only the product removed; every failure reported as success (unlink errors and the final existence check ignored) | ASM-23, `tests/domain/reset.test.ts` | all red (the first seed mutant deleted the real seed in the working tree before the test was moved to a scratch copy of the repository layout; the string-comparison mutant survived until the test used a path spelled differently) |
+| Reset deriving the work-state path as the product's sibling instead of reading `ASM_WORK_STATE_FILE` | ASM-23, verifier's own mutant on `bed6109` | **survived the whole suite** — no test set the override; closed by a test that moves the work state elsewhere and expects it gone |
+| Snippet checked against all sources joined instead of the named one; missing `sourceId` defaulting to the first source with several present; unknown source tolerated; source identity dropped from provenance | ASM-24, `tests/domain/context.test.ts` | all red |
+| Verifier on `7594e6e`: binary check dropped; total-size check dropped; type check never firing; per-source tag suffix dropped | ASM-24, `7594e6e` | all red (the tag one only through a one-source assertion) |
+| Verifier's own: the model prompt carrying only the first source; the fake provider stamping a question with the first source's id | ASM-24, `7594e6e` | **both survived the unit suite** (the second fails closed in `resolveProposal`, so the browser spec would catch it; the first was observed by nothing) — closed by a prompt test over two sources and a question-stamp test |
+| Unknown provider name falling back to the fake; missing `OPENAI_API_KEY` falling back to the fake; HTTP error from OpenAI swallowed into an empty answer; refusal returned as an empty proposal; schema builder not strict; key redaction removed; a provider importing the store; truncation ignored | ASM-25, `tests/agent/live-providers.test.ts` | all red (the redaction mutant survived until the test used a 400 with a verbatim message — the 401 path has fixed text) |
+| Verifier on `5ed740f`: unknown name → fake; OpenAI 429 → `{}`; OpenRouter error-in-200 ignored; `buildProposal` falling back to the fake on any provider error; Anthropic `fallbacks` restored; `postJson` without the abort signal | ASM-25, `5ed740f` | all red (31 failures for the silent fallback); `additionalProperties = false` removed from the schema builder was an equivalent mutant — zod 4.6.5 already emits it for every `strictObject`, measured on all 25 object nodes |
+| Verifier's own: the OpenRouter review sent with the proposal's instructions; `ASM_AGENT_TIMEOUT_MS` bounds dropped | ASM-25, `5ed740f` | **both survived** — closed by asserting the review system message and by refusing `0`, `999`, `600001`, `1.5`, `-5000` |
+| Two goals applied with the last one winning; the dry run on the whole patch instead of per option; actors grouped as personas; the goal suggesting itself; the primary goal untagged in a choice | ASM-26, `tests/domain/proposal-view.test.ts` | all red |
+| Verifier on `1d44fc9`: `conflicting_goal` removed; first goal radio always checked; no chips; questions grouped as other; quote outside the disclosure | ASM-26, `1d44fc9` | all red; the first goal pre-chosen in the panel's state is observable only by the browser spec (which CI ran) |
+| Verifier's own: a rejected item opening its edit fields under Edit all; an alternative goal's quote and source passed through unvalidated | ASM-26, `1d44fc9` | **both survived** — closed by a render test with a rejected item under Edit all and by tests for a misquoted, unattributed and orphaned alternative |
+| Tutorial not remembered after Finish | ASM-27, `tests/e2e/tutorial.spec.ts` | red (the reload assertion) |
+| Verifier on `ad76f53`: tutorial importing `deriveGuide`; Finish writing `asm.guide`; step 2 saying "ASM decides"; heading back to Guide; `deriveGuide` reading `asm.tutorial`; a reset request inside Finish | ASM-27, `ad76f53` | all red (the domain read is caught by the static test on the mere mention) |
+| Verifier's own: tutorial opening regardless of the key; Escape removed; the progress line fixed at step 1 | ASM-27, `ad76f53` | the first two are caught only by the browser spec (reload, Escape); the third **survived everything** — closed by asserting the progress line for steps 2–4 |
+| External review of `2ff9ccf` (independent model, read-only): reset unlinking whatever `ASM_WORK_STATE_FILE` names, the seed included; redaction by pattern only, a key of another shape echoed back reaches the browser; pid-named temp files; a GET written as `export const` invisible to the read-routes guard | ASM-28, `2ff9ccf` | **all four were real** — closed by the work-state path rule (name, product, seed, symlink; three mutants red), exact-value redaction (mutant red), per-call temp names, and the wider export pattern. The review's two pre-existing findings (import without the proposal path; no authentication) are recorded above as limitations of a localhost prototype |
+| External review round 13 of `24a6386` (round-12 repair fully implemented; 26 controls rendered, zero enabled while pending; **0 Blocker / 0 Critical / 0 Major**): the pending-state tests looked at `input`/`button` only, so a textarea left live would have stayed unobserved | ASM-28, `24a6386` | **real (Minor, tests only)** — both oracles widened to every control kind (`textarea`, `select` too); the browser test opens every field before accepting; a textarea mutant turns both red |
+| External review round 12 of `9b8328a` (round-11 repairs fully verified by execution; **0 Blocker / 0 Critical / 0 Major**): while an acceptance was in flight, Reject and every edit control stayed live, so a human could be told "rejected" while the acceptance committed | ASM-28, `9b8328a` | **real (Minor)** — the review carries a pending state: every include box, goal radio, Edit, chip, textarea, and the Reject/Edit-all buttons are disabled while the acceptance is being written, and the action row says so; a browser test holds the accept response and checks that nothing inside the review is enabled; two mutants red |
+| External review round 11 of `8fa0326` (round-10 boundary verified by execution: 8,008 assertions through the real Anthropic SDK): an editor save named nothing, so a tab holding the old product replaced the product made after a start-over; the Anthropic SDK also sent an ambient `ANTHROPIC_AUTH_TOKEN` as a bearer token, a credential ASM never chose and could not contain; an error object without a `message` string, or a choice-level error beside `finish_reason: "stop"`, passed as a successful proposal | ASM-28, `8fa0326` | **all real** — a save names the map fingerprint in `If-Match` (`GET` reports it as `ETag`), refused 409 `stale_save` inside the transaction; the SDK client is built with `authToken: null` (the request's headers are checked through the real SDK with the token in the environment); error presence is judged apart from message extraction, and a choice carrying an error is an error whatever its finish reason; three mutants red. The round-11 reviewer also noted the earlier "card edits last-writer-wins" sentence was wider than the mechanism — it now names what races (layout only) |
+| External review round 10 of `b71265e` (round-9 repairs executed: decoded walker fully, SDK logging fully, null alternatives fully; 1,884 containment checks passed): the secret still left through error channels — a status / finish / stop reason serialized before redaction, the Anthropic SDK's own parsing exception reflecting the response, an upstream error body; and the positional oracle was hand-picked (nine placements, two adapters) | ASM-28, `b71265e` | **all real** — fourth round on the class, so the second strategy change: redaction moved out of every adapter into one boundary that every provider call crosses, knowing the key's raw, escaped and URL-encoded spellings; the oracle became `tests/agent/secret-containment.test.ts` (channels × four spellings × three adapters, placements generated recursively from real proposal and review outputs, Anthropic through the real SDK, console watched); mutants: raw-only redaction, boundary without redaction, walker on escaped text — all red |
+| External review round 9 of `4d96d1c` (round-8 repairs executed: exception fully, Anthropic deadline through the real SDK with a stalled body, secret containment partially): the output scan compared a re-serialization, so a key containing a quote or a backslash passed it escaped; the Anthropic SDK at `ANTHROPIC_LOG=debug` printed the body before the adapter rejected it; a schema-valid `goalAlternatives: null` was refused by the domain | ASM-28, `4d96d1c` | **all real** — third round in a row on the secrets class, so the oracle changed rather than the patch: a positional test puts four spellings of the secret (plain, quote, backslash, non-ASCII) into every string position and key of a valid output across all adapters and looks for the secret's plain tail, which survives any escaping; the scan walks decoded values and keys; SDK logging pinned off and tested through the real SDK client with a spied console; `null` alternatives normalised; four mutants red |
+| External review round 8 of `3197694` (round-7 repairs verified by execution: approval and reset fully, exception and redaction partially, deadline fully for `postJson`): a value exception named only its candidate id, a reading name reused across revisions, so an old exception could land after another browser changed, approved and reselected; model output carrying the key reached the domain unredacted (validation messages, accepted rationales); the Anthropic adapter's deadline was the SDK's, which ends at the headers | ASM-28, `3197694` | **all real** — the exception names the map fingerprint too (refused 409 inside the transaction; tested across a changed, approved and reselected map with an unresolved slice); model output containing a configured secret is discarded whole in all three adapters; the Anthropic call runs under the adapter's own abortable deadline; three mutants red |
+| External review round 7 of `c914240` (round-6 repairs verified by targeted execution): approval, value exception and start-over confirmation carrying no identity of what the human saw, so under the queue they could land on a different revision, selection or product; status / finish / stop reasons interpolated unredacted; the HTTP deadline ending at the headers; temporary files left after a failed rename | ASM-28, `c914240` | **all real** — closed by binding each action to its displayed target (map fingerprint, candidate id, product id + fingerprint; refused 409 inside the transaction; route-level tests in both orders), by redacting every API-derived value, by keeping the deadline through the body, and by cleaning the temporary file in `finally`; five mutants red |
+| External review round 6 of `01ea9c1`: a work-state override holding another workspace's valid work state deleted by a reset; the content-derived delimiter forgeable by a crafted self-consistent hash | ASM-28, `01ea9c1` | **both real** — closed by binding an owned work state to the product's id before any unlink (mutant red) and by a per-request random nonce in every source tag (mutant red) |
+| External review round 5 of `24dcb33` (0 Blocker / 0 Critical): a file label spelling its own block's closing tag (the delimiter hashed only the text); Anthropic and OpenRouter passing an unknown or missing terminal state with valid JSON; the README overclaiming that a racing selection is refused | ASM-28, `24dcb33` | **all real** — closed by hashing label and text into the delimiter, by whitelisting `end_turn` / `stop`, and by stating that a newer explicit selection supersedes |
+| External review round 4 of `76ba4c2`: two accepts on one revision both landing (checked before either saved); a compatible OpenAI endpoint answering 200 with a status other than `completed` and valid JSON; the file label in the prompt preamble rather than inside the data block | ASM-28, `76ba4c2` | **all real** — closed by running every writing route's read → check → write inside the store queue (two mutants red: transaction not serialized; the accept loading outside it), by requiring `status: "completed"`, and by moving the label into the delimited block. The reviewer judged the reset threat model plain and honest; the provenance-at-accept boundary stays documented |
+| External review round 3 of `f4b5804`: a save in flight during a reset recreating the old product; the alias-export GET guard examining only the export clause | ASM-28, `f4b5804` | **both real** — closed by the in-process mutex plus the existence check at commit time (three mutants red: save recreates, orphan work state, no mutex) and by examining the whole file for an aliased GET. The round's Blocker — a hostile local process swapping a parent directory into a symlink between realpath and unlink — is not patched: it is outside the threat model written above (that process can delete the seed itself) and is recorded as an accepted limitation for the PO |
+| External review round 2 of `b0fe88c`: the seed reached through a directory symlink; a work-state override holding something else; a cross-site `text/plain` POST resetting or approving on localhost; OpenRouter's provider-level failover left on; the Anthropic key not passed to the redactor; `export { handler as GET }` | ASM-28, `b0fe88c` | **all real** — closed by the realpath seed check, the work-state content check, the same-origin refusal on all twelve writing/model routes, `allow_fallbacks: false`, the key passed through, and the wider pattern; six mutants red (seed check, content check, unlink order, fetch metadata, Origin, fallbacks). Two pre-existing findings stay documented limitations: concurrent accepts are last-writer-wins; a client can hand the accept route a patch whose source fields it changed |
+| Verifier on `cd9ba8a` (ASM-29): no repair; a retry loop; repair of every refusal; no contract in the repair; no redaction; the first answer's result returned after the repair; no `modelCalls`; Anthropic SDK retries back; refused values not quoted; quotes not repairable | ASM-29, `cd9ba8a` | all ten red. The verifier's own two **survived**: the whole previous answer sent back; `startProposal` asking again after a refusal for a missing goal — closed by tests in `44acfc6` (red in round 2) |
+| Verifier round 2 on `ba119a7` (ASM-29): excluded kinds back in the repairable set; the dry-run stage tag dropped; `modelCalls: 0` dropped | ASM-29, `ba119a7` | all red. **Survived**: `every` → `some` in the repairability check; four excluded codes (text limit, count limit, alternative without goal, placement without a step) without a test; redact-before-clip without a test; the stage guard (equivalent at the time); two `modelCalls: 0` branches — closed by tests in the following commit; external review round 2 (codex) found the 403 refusals without `modelCalls`, closed there too |
+| A goal choice left open on an existing product (ASM-31): the Accept button back to `busy || !result?.ok`; the rule counting "more than one kept" instead of "not exactly one"; the rule blind to two readings; the gate forced off; the missing-choice notice removed; `conflicting_goal` disabled | ASM-31, `3ad14bb` | all red (the first is the defect External QA reproduced; the new browser test was also red on `3acc12a` before the fix). Removing only the guard inside `accept()` **survived** — an equivalent mutant through the browser, since the disabled button is its only caller; kept as a second line |
+| Verifier on `0b5b787` (ASM-31): four of the mutants above (the button, the "more than one" count, the notice, `conflicting_goal`); its own: a second choice not excluding the first, the gate on the Workshop only, the gate only when a product has no goal, readings not left open at the start, the first reading pre-chosen, the rule evaluated on the already-filtered patch | ASM-31, `0b5b787` | all red. **Survived**: a choice carried into the next proposal (both `close()` and `structure()` keeping it); the notice without its `status` role — closed by tests in `bedfb5b` (both red); the guard inside `accept()` again, equivalent (React does not dispatch a click on a disabled button, even one re-enabled in the DOM). Verifier round 2 on `5be266d`: those two red; its completeness critic found the work state proven only by a grep and no Bootstrap test that accepts a chosen reading — closed in `7db0790` (a proposal route that touches an existing work state, and an accept that sends every reading, both red) |
+| An unreadable answer shown as a wall of issues (ASM-30): the bounded message never chosen; the technical list open by default; "Nothing was changed." removed; every refusal treated as unreadable (provider errors and quotes lose their own words); the list also outside the disclosure; one shape issue among others no longer enough (`some` → `every`); the details cut to the first ten | ASM-30, `1b76611` | all red, each mutant type-checked (the first is the defect; on `4bab8e0` before the fix the two 50+ issue browser tests were red, the four specific-message tests green when run one at a time, as guards should be; the file is serial, so a whole-file run stops at the first red). The `every` mutant is caught by the unit test only: no browser case mixes a shape issue with another refusal |
+| Verifier on `14e9006` (ASM-30): three of the mutants above (never unreadable, details open, every refusal unreadable) and eight of its own | ASM-30, `14e9006` | the three red. Of its own, red: the issue list fed raw issues instead of the shown ones, the secret guard off, the summary hidden by CSS, the next steps cut to one. **Survived**: `role="alert"` removed; the "No proposal." / "cannot be accepted" heading inverted (no browser test read the heading); "Nothing was changed." moved inside the closed disclosure (the browser test read text content, not what is on screen); the details or the count limited to shape issues on a mixed list; object keys no longer checked for the key (the stub put the key in name and value). All closed by tests in the following commit: each red there, the mixed-list two in the unit test only (a mixed list cannot reach the browser today). A React key changed to the issue code survived as harmless. Verifier round 2 on `b2c8071`: those six red; of its own, a hidden "No proposal." heading and two of the three next steps hidden **survived** — the same class a second time (a sentence in the markup, not on screen). Strategy changed instead of another patch: the browser tests now compare the box's `innerText` line by line with the expected lines (it leaves out `hidden`, `display:none`, `visibility:hidden` and a closed disclosure), and the unit test refuses `hidden` or inline `style` in the markup. Both survivors and two more of the class red in `aad5c27`. Verifier round 3 on `aad5c27`: those red, and the line comparison stable (3 of 3 runs); **survived** the rest of the class that `innerText` cannot see in principle: transparent, `opacity:0`, `font-size:0`, off-screen, the screen-reader clip pattern, text added through `::after`, the box clipped by `overflow`, and the issue path hidden by CSS (the path was not read on screen). Third round of one class, so the oracle changed again, to what is painted (`e8dfddd`, a geometry and CSS-value check). Verifier round 4 on `e8dfddd`: the eight red; **survived** another nine of the class (`filter: opacity`, `-webkit-text-fill-color`, `opacity: 0.04`, an `oklch` colour, a dark background image, a transform under the size limit, `::marker` text, issues 2–74 of the open list, a clip on an ancestor outside the box), and two readable tints failed the check (false positives): reading CSS values cannot close this class. Fourth change, to the pixels: `tests/e2e/on-screen.ts` scrolls each line into view as a reader could, checks it lies in the viewport and the box with a line box of at least 12 px and is cut off by no ancestor up to the document, refuses `::before`/`::after`/`::marker` text, and photographs the line twice, as painted and with only its glyphs transparent: at least 12 pixels must differ at 3:1 contrast or more. Every line of the open list is checked. Round-4 survivors, the round-3 ones and the false-positive tints re-run: twenty mutants red, each for its named reason, the tints and a darker text green. Verifier round 5 on `29a41d1`: those nine red; **survived** six that hide only part of a line (an overlay over part of it, `text-overflow: ellipsis`, a clip or mask over part, `scaleX`, a strike-through bar), because the check is one of presence (12 legible pixels per line), not completeness; text painted only by `text-shadow` fails although readable. Fifth round of one class, all on the test oracle, none on the product code (src unchanged since `14e9006`), and each widening of the oracle had opened a new gap. So the claim was narrowed to what is measured instead of widening the oracle again: `tests/e2e/on-screen.ts` states that it checks presence on the pixels and lists what it does not detect (part of a line covered, clipped, ellipsized, masked, squeezed or struck through; glyphs that are not the words; blur; later changes; contrast between 3:1 and 4.5:1). Whether the whole message reads well is the human visual verdict on the gallery, on the exact commit |
 
 The full lists with the failing test names are in the evidence comments on the tickets.
 
 ### What a green run does not prove
 
-The deterministic provider has no understanding; the Anthropic provider has
-only ever run against a stubbed client. The store is last-writer-wins for two
-writes from one browser. An imported file keeps the approval it records. The
-accessibility check is a smoke test, not an audit. The visual and usability
-verdict is a human's, on one exact commit, and is recorded on the ticket, not
-in this repository.
+The deterministic provider has no understanding; the live providers have only
+run against stubbed transports except for the recorded live smoke and the
+live intake battery. The battery on the earlier reference model
+(`qwen/qwen3-235b-a22b-2507` through OpenRouter) reached 2 of 5 valid
+proposals on the ASM-29 candidates `cd9ba8a` and `ba119a7` (the run on the
+final commit is recorded on ASM-29): the wrong-shape class is fixed, but on long
+inputs the model still misquotes a few of 30–60 items after the one repair, a
+proposal is refused whole for one bad item, and OpenRouter's upstream for the
+model often answers 429 (shared pool); reliability on that model is a separate
+ticket, not a property this branch has. With the Anthropic adapter the SDK
+checks the answer against the contract itself, so a wrong shape there is a
+provider error and gets no repair. A quote counts as found in its source with
+runs of whitespace treated as one space (accepted by the PO on 2026-10-06). The store is
+serialized within one server process, and every human action names what the
+human looked at — an accept carries the proposal's base fingerprint, an
+approval and a people check the map fingerprint, a selection the map
+fingerprint, a value exception the selected candidate and the map
+fingerprint, a start-over confirmation the product id and map fingerprint,
+an editor save (`PUT /api/product`) the map fingerprint in `If-Match`, as
+`GET /api/product` reports it in `ETag` — so whichever lands second on a
+map that moved is refused as stale, in either order, and a tab holding a
+product from before a start-over cannot replace the one made since; two
+selections or two people checks on the same unchanged approved map settle
+in order and a newer explicit one supersedes the earlier (the work state
+has no version of its own); two edits that change only where a card sits
+(the fingerprint covers meaning, not layout) race last-writer-wins; nothing
+serializes across processes. The accept routes take the edited patch from the browser and
+re-validate its shape and fingerprint, not its source fields: a client that
+rewrote `sourceId`/`sourceLabel` on an op would record an attribution the
+server never checked — the browser is the human's own, but it is a trust
+boundary worth naming. The goal choice is enforced in the review, not by
+the server: the accept routes refuse a patch with two goals, but a patch that
+leaves out every offered reading is indistinguishable from a proposal that had
+none, so a client other than the review can skip the choice and keep the old
+goal (on a first product it is refused for a missing goal). `POST /api/product/import` replaces the product with the file it
+is given, approval record included, without the proposal path: it is the way
+to bring your own file, and it is a human's own file, but a client on the
+network could use it the same way. Nothing authenticates a request: every
+mutation route trusts whoever can reach the port (a browser made to send a
+cross-site request is refused, see above; a direct client is not). This
+prototype is for one person on localhost; before it is exposed on a LAN or a
+VPS, the import route and the mutation routes need authentication (that is
+the next slice, not this one). The accessibility check is a smoke test, not an
+audit. The bounded failure message covers proposals only (ASM-30). Its browser test reads the words from `innerText` and checks each line for presence on the pixels, not for completeness: a line partly covered, clipped, ellipsized or struck through still passes. The
+narrative review panel still lists a refused review answer issue by issue, and
+whether the three suggested next steps actually help is a human verdict, not
+something a test measures. Start over removes the work state first and the
+product second; when the product file then cannot be removed while the work
+state could be (a product file the system will not delete, or a product whose
+directory refuses while the work state lives in another one through
+`ASM_WORK_STATE_FILE`), the reset is reported as
+failed and the map stays, but its work state (people check, selection, value
+exception) is already gone. That order is the one ASM-23 chose so that a
+failure never leaves a work state without its product; an external review on
+2026-10-10 rated it Major, and whether to restore the work state on that path
+is a PO decision, not something this branch changes. The visual and usability verdict is a human's, on one exact commit, and
+is recorded on the ticket, not in this repository.
 
 ## Not built
 

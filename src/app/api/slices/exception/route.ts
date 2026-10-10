@@ -1,6 +1,8 @@
+import { fingerprint } from "../../../../domain/fingerprint";
 import { DomainError } from "../../../../domain/operations";
 import { WORK_STATE_VERSION, acceptValueException } from "../../../../domain/work-state";
-import { loadProduct, loadWorkState, saveWorkState, loadFailureStatus } from "../../../../server/store";
+import { loadProduct, loadWorkState, saveWorkState, loadFailureStatus, transaction } from "../../../../server/store";
+import { crossSiteRefusal } from "../../../../server/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -9,33 +11,73 @@ export const dynamic = "force-dynamic";
  * no need. A separate step after selecting; written to the work state only.
  */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as { rationale?: unknown; acceptedBy?: unknown } | null;
+  const refused = crossSiteRefusal(request);
+  if (refused) return refused;
+  const body = (await request.json().catch(() => null)) as { rationale?: unknown; acceptedBy?: unknown; candidateId?: unknown; mapFingerprint?: unknown } | null;
   const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-  const stored = await loadProduct();
-  if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
-  const work = await loadWorkState();
-  if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });
-  if (!work.state.selection)
-    return Response.json(
-      { issues: [{ code: "selection_required", path: "selection", message: "no slice has been selected; select one before accepting a value exception" }] },
-      { status: 409 },
-    );
+  // One transaction: the check is against the file as it is when this writes (external review round 4).
+  return transaction(async (store) => {
+    const stored = await store.loadProduct();
+    if (!stored.ok) return Response.json({ issues: stored.issues }, { status: loadFailureStatus(stored.issues) });
+    const work = await store.loadWorkState();
+    if (!work.ok) return Response.json({ issues: work.issues }, { status: 500 });
+    if (!work.state.selection)
+      return Response.json(
+        { issues: [{ code: "selection_required", path: "selection", message: "no slice has been selected; select one before accepting a value exception" }] },
+        { status: 409 },
+      );
+    // The exception is for the slice the human looked at, on the map they looked at: the request names both,
+    // and they have to be the selection and the map as they are now, inside this transaction. A candidate id
+    // alone is not enough: ids are reading names, reused across revisions (external review rounds 7 and 8).
+    if (text(body?.mapFingerprint) === "" || text(body?.mapFingerprint) !== fingerprint(stored.product))
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "selection_changed",
+              path: "mapFingerprint",
+              message:
+                text(body?.mapFingerprint) === ""
+                  ? "say which map the exception is for: send its fingerprint"
+                  : "the map has changed since you looked at it; read the slice again before accepting an exception",
+            },
+          ],
+        },
+        { status: 409 },
+      );
+    if (text(body?.candidateId) === "" || text(body?.candidateId) !== work.state.selection.candidateId)
+      return Response.json(
+        {
+          issues: [
+            {
+              code: "selection_changed",
+              path: "candidateId",
+              message:
+                text(body?.candidateId) === ""
+                  ? "say which slice the exception is for: send its candidate id"
+                  : `the selected slice is now “${work.state.selection.candidateId}”, not “${text(body?.candidateId)}”; look at it again before accepting an exception`,
+            },
+          ],
+        },
+        { status: 409 },
+      );
 
-  try {
-    const selection = acceptValueException(stored.product, work.state.selection, {
-      rationale: text(body?.rationale),
-      acceptedBy: text(body?.acceptedBy),
-      acceptedAt: new Date().toISOString(),
-    });
-    const saved = await saveWorkState({ ...work.state, workStateVersion: WORK_STATE_VERSION, selection });
-    if (!saved.ok) return Response.json({ issues: saved.issues }, { status: 422 });
-    return Response.json({ selection: saved.state.selection });
-  } catch (error) {
-    if (!(error instanceof DomainError)) throw error;
-    return Response.json(
-      { issues: [{ code: "exception_rejected", path: "selection.valueException", message: error.message }] },
-      { status: 409 },
-    );
-  }
+    try {
+      const selection = acceptValueException(stored.product, work.state.selection, {
+        rationale: text(body?.rationale),
+        acceptedBy: text(body?.acceptedBy),
+        acceptedAt: new Date().toISOString(),
+      });
+      const saved = await store.saveWorkState({ ...work.state, workStateVersion: WORK_STATE_VERSION, selection });
+      if (!saved.ok) return Response.json({ issues: saved.issues }, { status: loadFailureStatus(saved.issues) === 404 ? 404 : 422 });
+      return Response.json({ selection: saved.state.selection });
+    } catch (error) {
+      if (!(error instanceof DomainError)) throw error;
+      return Response.json(
+        { issues: [{ code: "exception_rejected", path: "selection.valueException", message: error.message }] },
+        { status: 409 },
+      );
+    }
+  });
 }

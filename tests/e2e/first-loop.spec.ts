@@ -7,6 +7,9 @@ import { resetProductFile } from "./global-setup";
 
 const TRANSCRIPT_FILE = path.join(__dirname, "..", "fixtures", "workshop-transcript.txt");
 import { EXAMPLES, SCREENSHOTS } from "./artifacts";
+
+/** The entity tag a save has to name: the map fingerprint as GET /api/product reports it. */
+const etag = async (p: { request: { get(url: string): Promise<{ headers(): Record<string, string> }> } }) => (await p.request.get("/api/product")).headers()["etag"];
 const HUMAN = "Maya (E2E)";
 
 test.describe.configure({ mode: "serial" });
@@ -109,7 +112,7 @@ test("transcript -> map proposal -> approve -> review -> slice candidates -> sel
     revision: forged.revision.number,
     mapFingerprint: slices.mapFingerprint,
   };
-  const sneaky = await page.request.put("/api/product", { data: YAML.stringify(forged) });
+  const sneaky = await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(forged) });
   // The product document has no place for a selection: such a file is not a valid product.
   expect(sneaky.status()).toBe(422);
   expect((await sneaky.json()).issues[0].code).toBe("schema_unrecognized_keys");

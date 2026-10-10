@@ -7,6 +7,9 @@ import { E2E_PRODUCT_FILE, E2E_WORK_STATE_FILE } from "../../playwright.config";
 import { SCREENSHOTS } from "./artifacts";
 import { resetProductFile } from "./global-setup";
 
+/** The entity tag a save has to name: the map fingerprint as GET /api/product reports it. */
+const etag = async (p: { request: { get(url: string): Promise<{ headers(): Record<string, string> }> } }) => (await p.request.get("/api/product")).headers()["etag"];
+
 const HUMAN = "Maya (E2E)";
 
 test.describe.configure({ mode: "serial" });
@@ -74,7 +77,7 @@ test("a need changes (saved as a new revision, as a hand edit would be): the sam
   const doc = YAML.parse(await storedText());
   doc.needs.find((n: { id: string }) => n.id === "need-buildable-slice").statement = "Receive a first slice that is small and clear.";
   doc.revision = { number: doc.revision.number + 1, status: "proposed" };
-  const put = await page.request.put("/api/product", { data: YAML.stringify(doc) });
+  const put = await page.request.put("/api/product", { headers: { "if-match": await etag(page) }, data: YAML.stringify(doc) });
   expect(put.status()).toBe(200);
   await page.reload();
   await expectBackAtApproval(page, workStateBefore, "02-need-changed");

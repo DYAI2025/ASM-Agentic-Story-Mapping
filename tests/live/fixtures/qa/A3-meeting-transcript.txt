@@ -1,0 +1,138 @@
+RotaCare kickoff meeting — transcript
+Date: Tuesday. Present: Priya (home manager), Tomas (care worker, night shifts), Daniel (regional director), Lena (onboarding specialist), Sam (IT support). Duration: 58 minutes.
+
+Priya: Right, thanks everyone, let's get started. So — the rota. You all know the spreadsheet is killing me. Sunday nights, three, four hours sometimes. I want us to talk about what this new tool actually has to do, in what order, and who needs what. Lena, you said you need our shift patterns first?
+
+Lena: Yes, exactly. To configure a home I need three things: the roles you rota — carer, senior carer, nurse, cleaner? — the shift types, and the rules. Like, night shift needs at least one senior. That kind of rule.
+
+Priya: Okay. Roles: carers, senior carers, one nurse on days — actually the nurse is only weekdays, weekends it's senior-led. Shifts: early, late, night. Early is 7 to 3, late is 2 to 10 — no wait, late is 1:30 to 9:30 since January. Night is 9:30 to 7:30. Hmm, actually nights, let me think. Nights are 9:45? No. Tom, what time do you come in?
+
+Tomas: Ten. I come in at ten. Well — 9:45 handover, shift starts ten.
+
+Priya: Right, 9:45 handover. Anyway, roughly that. The rule for nights: minimum three staff, one must be medication-certified. Early shift minimum four, one senior. Late shift four.
+
+Daniel: Can I jump in? For my side, whatever you build, I need the monthly numbers. Agency spend, uncovered shifts, compliance. Last quarter Sunnybrook spent — what was it, Priya, eleven thousand on agency?
+
+Priya: Nine. Nine thousand four hundred, roughly. And half of that was two bad weeks in February when half the floor had flu.
+
+Daniel: Nine, fine. I need that number without phoning Priya on a Sunday. A dashboard, monthly, per home. That's my must-have.
+
+Sam: Sorry, quick one — is the wifi in the staff room even working? Because if people check rotas on their phones down there—
+
+Priya: The wifi works, Sam. We fixed it in March. Stay on topic please.
+
+Sam: Right, sorry. Yes, March. Okay.
+
+Tomas: Can I say the staff-room thing? The printout. It's awful. Last week my Thursday moved from the printout to — someone crossed it out in pen, I didn't see, I came in Thursday and they'd given my shift to agency. I lost a shift. I need — we need the phone version to be the real one. Like, whatever's on my phone is the truth. And swaps — I texted like twelve people to cover my Saturday in March. There has to be a swap thing where I offer it once and people tap accept.
+
+Priya: Swaps need my approval though. After the — after last spring, when two juniors swapped and we had no senior on late. That can't happen again.
+
+Tomas: But if it's like-for-like? Same qualification? If I swap with another night carer, nothing changes quality-wise. You approving every single one is the bottleneck. No offense.
+
+Priya: Hmm. Maybe — maybe like-for-like without approval, everything else with? I'd need to see it. Actually, you know what, let me not decide that here. Can we park the swap approval question? Park it.
+
+Lena: Parked. I'll note it as open. There's a second open thing from the pre-read: does the tool compute pay or just export hours?
+
+Daniel: Finance says compute. If the tool knows the hours and the premiums, it should produce the pay numbers, otherwise Priya still does that math somewhere.
+
+Priya: Wait, no. I don't do that math now — payroll does. I send hours, they apply premiums. If the tool starts computing pay and gets night premiums wrong, that's on us. I'd rather export clean hours and let payroll own the money. Hmm, but actually — Daniel, you said finance wants one number to check payroll against?
+
+Daniel: They want a cross-check, yes. An expected-pay figure they can compare with the payroll run.
+
+Priya: Okay so maybe compute as a draft, clearly labeled draft, payroll stays authoritative? I keep changing my mind on this. Let me think about it after. Open question, definitely open.
+
+Sam: On the export — the payroll API, is that the new cloud one or the old desktop uploader?
+
+Priya: Cloud. We moved in November. Lena, you have the API docs?
+
+Lena: I have version 2.1 of the docs. They mention premium fields but it's ambiguous who fills them. I'll confirm with the vendor.
+
+Tomas: Sorry, back to swaps for a sec — also, swaps should show the money? Like if I pick up an extra, do I see what it's worth?
+
+Priya: No. Let's not. Swaps show shifts, not pay. Pay gets messy, people pick up for the wrong reasons. Actually — hmm. Tomas, you said earlier people don't pick up shifts because they don't know the premium?
+
+Tomas: Yeah, extras at flat rate nobody wants. If Saturday late paid the premium visibly—
+
+Priya: That's a pay-display question then. I'm against showing pay on swaps. Park it? No wait — decide: swaps show shifts only. Decided. Moving on.
+
+Daniel: Fine by me. Back to my dashboard — monthly per home: uncovered shifts count, agency cost, compliance flag. And I want to compare homes. Like, why does Sunnybrook spend double what Maple House spends?
+
+Lena: Noted. That's a reporting need for the director role.
+
+Priya: Residents — are we putting residents in this? Mrs. Adeyemi's daughter complained about unfamiliar faces. Continuity matters, but is that a rota feature or just — good staffing?
+
+Lena: I'd frame it as a need of the resident: familiar faces, morning routine known. The tool serves it through continuity — e.g., preferring staff who've worked that floor recently when filling gaps. But that's fancy. Phase one could just be: the rota is stable and published early, so turnover drops.
+
+Daniel: Agree, keep continuity as a need, solve it simply first. Don't build a continuity optimizer in month one. Actually — wait. Is continuity even ours? Agency usage is a budget decision of mine. If I refuse agency, shifts go uncovered, residents get fewer staff but familiar ones. There's tension there.
+
+Priya: There is. Uncovered vs unfamiliar, we live that tradeoff weekly. The tool should show it, not resolve it. Show me: this gap, your options are agency unknown-face or redistribute and run short.
+
+Tomas: Redistribute and run short means my night gets heavier. Just saying.
+
+Priya: Noted. Okay — publishing. Monday morning I publish. Staff need it on phones by — let's say Sunday 8pm actually, earlier than now. And changes after publish notify people. Push notification? SMS for the older staff who don't do apps? Half our staff are over fifty, some don't have smartphones. Hmm, do we know that? Aisha doesn't have a smartphone, I think. Or she does now?
+
+Sam: I can survey. Actually the staff survey from January asked about smartphones — I think 80% said yes. I can dig it out.
+
+Priya: Do that. So: publish to app plus SMS fallback maybe. Open? I'd say notify-by-SMS is open until the survey.
+
+Lena: Let me recap what I'm hearing as the flow. Sunday: Priya drafts from contracts, time-off, qualifications. Publish Sunday evening. Week: swaps and sick cover with approvals. Month end: hours to payroll, Daniel's summary. Right?
+
+Priya: Yes. Plus sick calls — 6am sick call, I need cover in minutes. The tool should suggest who to call: who's qualified, under hours, worked recently. That's the killer feature for me honestly. More than the Sunday planning.
+
+Daniel: Interesting — so the Sunday plan is table stakes, the sick-cover suggestion is the delight? Noted for the pilot success criteria.
+
+Tomas: One more staff thing: time-off requests. Currently I write them in a paper diary in the office. It gets lost. I need to request in the app and see yes/no. And know my remaining allowance? Or is that payroll?
+
+Priya: Allowance is payroll's number, but showing the balance would stop half the arguments. Hmm, but if the numbers disagree — paper diary versus payroll — the tool shows the wrong balance and I'm the liar. Let's show it with the source labeled, payroll authoritative. Eh — actually no. Skip balances in phase one. Requests yes/no only. Decided.
+
+Sam: Where does the paper diary live now? The office?
+
+Priya: Sam. Not relevant. Focus.
+
+Sam: Sorry.
+
+Daniel: Priorities then. If we rank: one, Sunday planning faster. Two, publish to phones as truth. Three, sick-cover suggestions. Four, swaps. Five, my dashboard. Six, payroll export. Fair?
+
+Priya: Payroll export higher — the retyping causes pay errors, eleven corrections last quarter. That hurts trust. I'd put payroll export at three, sick-cover at four. Hmm, no wait. Sick cover saves my Tuesday mornings; payroll export saves month-end pain. Staff feel sick-cover daily. Keep Daniel's order but swap three and six? I'm confusing myself. Let's say: planning, publish, sick-cover, payroll export, swaps, dashboard. Dashboard last because Daniel survived without it so far.
+
+Daniel: Hey! Fine. Fair. Dashboard last. But-before-pilot-end though, I need one monthly number for the board in October.
+
+Priya: October board — fine, that's months away.
+
+Lena: Open questions so far: swap approval rules, pay computation vs export, SMS fallback pending the phone survey. Anything else?
+
+Tomas: Night premium visibility on extras — Priya decided no pay on swaps. But extras offered by the home, like covering sick — show the premium there? Different from swaps?
+
+Priya: ...Okay that's fair, that's different. Offering an extra is the home asking; show what it's worth. Swaps between staff: no pay shown. I'll allow that split. Decided.
+
+Daniel: And agency booking — does the tool book agency staff or just record them?
+
+Priya: Just record. Booking is phone calls and relationships. Out of scope. Decided — hmm, unless... no. Out of scope. Record only.
+
+Lena: Chronology check: anything before Sunday drafting? Contracts and time-off live where?
+
+Priya: Contracts in payroll, time-off in the paper diary — moving into the app per today. Qualifications — I hold the training matrix, spreadsheet number three. Lena, you'll need that file.
+
+Lena: Send me the training matrix. And the January phone survey, Sam.
+
+Sam: Will do. It's in the shared drive. I think.
+
+Priya: Last thing — Mrs. Adeyemi continuity. Do we promise the daughter anything?
+
+Daniel: We promise nothing to families in the tool. Internal need only. The tool helps us staff consistently; family communication stays human. Decided.
+
+Priya: Good. So unresolved: swaps approval detail, pay compute vs export, SMS fallback. Everything else we either decided or parked for phase two. Lena, does that give you enough for the first map?
+
+Lena: It does. I'll draft the map: goal, people, needs, main path Sunday to month-end, and the open questions. You'll review before anything is final.
+
+Priya: And nothing's decided by the tool, right? We decide.
+
+Lena: Exactly. Proposal only. You accept, edit or reject every item.
+
+Daniel: One more — did we decide who approves swaps for like-for-like? Parked, right?
+
+Priya: Parked. Both readings are on the table: Priya-approves-everything versus like-for-like-auto. We'll decide at the review.
+
+Sam: Should I — the wifi password for Lena's laptop—
+
+Priya: After the meeting, Sam. Thanks everyone.

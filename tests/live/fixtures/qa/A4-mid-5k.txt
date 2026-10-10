@@ -1,0 +1,210 @@
+RotaCare — shift planning for small care homes
+
+Sunnybrook House is a care home with 34 residents and about 45 care staff, most of them part-time. Every Sunday evening, the home manager, Priya, sits down with a spreadsheet and builds next week's rota. It takes her between three and five hours, and she hates it. The spreadsheet was built by her predecessor six years ago, nobody fully understands the formulas, and when someone calls in sick on a Tuesday morning the whole thing falls apart.
+
+What Priya wants is simple to say and hard to do: a rota that covers every shift with qualified staff, respects everyone's contracted hours and requested days off, and can be rebuilt in minutes when reality changes. She needs to see at a glance which shifts are uncovered and why — is it a qualification gap, like nobody with medication certification on night shift, or just a numbers gap? She also needs the rota to survive contact with the real world: shift swaps between staff, sick calls at 6am, and the regional director asking why agency spend was so high last month.
+
+The care workers themselves, people like Tomas who works three nights a week while studying, experience the rota very differently. For them it arrives as a photo of a printout pinned in the staff room, sometimes updated by hand with crossings-out. Tomas needs to know his shifts reliably and early — he plans his study schedule around them — and he needs a fair way to request swaps without texting seventeen colleagues one by one. When a swap happens, he needs to trust that the new version is the official one, not just something two people agreed over coffee that Priya never approved.
+
+Then there are the residents, like 82-year-old Mrs. Adeyemi. She never sees the rota, but she feels it. What she needs is continuity: familiar faces in the morning, someone who knows she takes tea before tablets. High staff turnover on her floor, driven partly by chaotic last-minute scheduling, shows up directly in her quality of life. Her daughter visits weekly and has complained twice about unfamiliar agency staff who didn't know the morning routine.
+
+Above Priya sits the regional director, Daniel, who oversees six homes. Daniel doesn't build rotas, but he approves agency spending and reports staffing compliance to the owners. He needs a monthly view: how many shifts went uncovered, how much agency cover cost, and whether each home stayed within its staffing budget. Twice this year he only discovered compliance risks after the fact, when the numbers were already reported.
+
+Two more parties matter. The payroll provider runs a cloud payroll system that currently receives hours by Priya retyping them from the spreadsheet every month — a process that produced eleven pay corrections last quarter. And our own onboarding specialist, Lena, who installs the product in each home over two weeks: she needs each home's roles, shift patterns and qualification rules captured quickly, because a slow onboarding is the main reason pilots stall.
+
+A typical week flows like this. On Sunday, Priya drafts the rota from contracted hours, time-off requests and qualification requirements. On Monday morning she publishes it, and staff check their shifts for the week. During the week, swap requests and sick calls come in; Priya approves or reassigns, and everyone sees the current version. At month end, approved hours flow to payroll without retyping, and Daniel gets his compliance and cost summary.
+
+Two things are genuinely unresolved. First, nobody has decided whether shift swaps need Priya's approval in all cases, or whether qualified staff can swap freely between themselves with Priya only informed. Priya leans toward approval after an incident last spring; the staff council wants autonomy. Second, it is unclear whether the product should compute pay (overtime, night premiums) or only export hours and leave pay rules to the payroll system. Finance has opinions both ways and the payroll vendor's API documentation is ambiguous about who owns premium calculations.
+
+
+RotaCare kickoff meeting — transcript
+Date: Tuesday. Present: Priya (home manager), Tomas (care worker, night shifts), Daniel (regional director), Lena (onboarding specialist), Sam (IT support). Duration: 58 minutes.
+
+Priya: Right, thanks everyone, let's get started. So — the rota. You all know the spreadsheet is killing me. Sunday nights, three, four hours sometimes. I want us to talk about what this new tool actually has to do, in what order, and who needs what. Lena, you said you need our shift patterns first?
+
+Lena: Yes, exactly. To configure a home I need three things: the roles you rota — carer, senior carer, nurse, cleaner? — the shift types, and the rules. Like, night shift needs at least one senior. That kind of rule.
+
+Priya: Okay. Roles: carers, senior carers, one nurse on days — actually the nurse is only weekdays, weekends it's senior-led. Shifts: early, late, night. Early is 7 to 3, late is 2 to 10 — no wait, late is 1:30 to 9:30 since January. Night is 9:30 to 7:30. Hmm, actually nights, let me think. Nights are 9:45? No. Tom, what time do you come in?
+
+Tomas: Ten. I come in at ten. Well — 9:45 handover, shift starts ten.
+
+Priya: Right, 9:45 handover. Anyway, roughly that. The rule for nights: minimum three staff, one must be medication-certified. Early shift minimum four, one senior. Late shift four.
+
+Daniel: Can I jump in? For my side, whatever you build, I need the monthly numbers. Agency spend, uncovered shifts, compliance. Last quarter Sunnybrook spent — what was it, Priya, eleven thousand on agency?
+
+Priya: Nine. Nine thousand four hundred, roughly. And half of that was two bad weeks in February when half the floor had flu.
+
+Daniel: Nine, fine. I need that number without phoning Priya on a Sunday. A dashboard, monthly, per home. That's my must-have.
+
+Sam: Sorry, quick one — is the wifi in the staff room even working? Because if people check rotas on their phones down there—
+
+Priya: The wifi works, Sam. We fixed it in March. Stay on topic please.
+
+Sam: Right, sorry. Yes, March. Okay.
+
+Tomas: Can I say the staff-room thing? The printout. It's awful. Last week my Thursday moved from the printout to — someone crossed it out in pen, I didn't see, I came in Thursday and they'd given my shift to agency. I lost a shift. I need — we need the phone version to be the real one. Like, whatever's on my phone is the truth. And swaps — I texted like twelve people to cover my Saturday in March. There has to be a swap thing where I offer it once and people tap accept.
+
+Priya: Swaps need my approval though. After the — after last spring, when two juniors swapped and we had no senior on late. That can't happen again.
+
+Tomas: But if it's like-for-like? Same qualification? If I swap with another night carer, nothing changes quality-wise. You approving every single one is the bottleneck. No offense.
+
+Priya: Hmm. Maybe — maybe like-for-like without approval, everything else with? I'd need to see it. Actually, you know what, let me not decide that here. Can we park the swap approval question? Park it.
+
+Lena: Parked. I'll note it as open. There's a second open thing from the pre-read: does the tool compute pay or just export hours?
+
+Daniel: Finance says compute. If the tool knows the hours and the premiums, it should produce the pay numbers, otherwise Priya still does that math somewhere.
+
+Priya: Wait, no. I don't do that math now — payroll does. I send hours, they apply premiums. If the tool starts computing pay and gets night premiums wrong, that's on us. I'd rather export clean hours and let payroll own the money. Hmm, but actually — Daniel, you said finance wants one number to check payroll against?
+
+Daniel: They want a cross-check, yes. An expected-pay figure they can compare with the payroll run.
+
+Priya: Okay so maybe compute as a draft, clearly labeled draft, payroll stays authoritative? I keep changing my mind on this. Let me think about it after. Open question, definitely open.
+
+Sam: On the export — the payroll API, is that the new cloud one or the old desktop uploader?
+
+Priya: Cloud. We moved in November. Lena, you have the API docs?
+
+Lena: I have version 2.1 of the docs. They mention premium fields but it's ambiguous who fills them. I'll confirm with the vendor.
+
+Tomas: Sorry, back to swaps for a sec — also, swaps should show the money? Like if I pick up an extra, do I see what it's worth?
+
+Priya: No. Let's not. Swaps show shifts, not pay. Pay gets messy, people pick up for the wrong reasons. Actually — hmm. Tomas, you said earlier people don't pick up shifts because they don't know the premium?
+
+Tomas: Yeah, extras at flat rate nobody wants. If Saturday late paid the premium visibly—
+
+Priya: That's a pay-display question then. I'm against showing pay on swaps. Park it? No wait — decide: swaps show shifts only. Decided. Moving on.
+
+Daniel: Fine by me. Back to my dashboard — monthly per home: uncovered shifts count, agency cost, compliance flag. And I want to compare homes. Like, why does Sunnybrook spend double what Maple House spends?
+
+Lena: Noted. That's a reporting need for the director role.
+
+Priya: Residents — are we putting residents in this? Mrs. Adeyemi's daughter complained about unfamiliar faces. Continuity matters, but is that a rota feature or just — good staffing?
+
+Lena: I'd frame it as a need of the resident: familiar faces, morning routine known. The tool serves it through continuity — e.g., preferring staff who've worked that floor recently when filling gaps. But that's fancy. Phase one could just be: the rota is stable and published early, so turnover drops.
+
+Daniel: Agree, keep continuity as a need, solve it simply first. Don't build a continuity optimizer in month one. Actually — wait. Is continuity even ours? Agency usage is a budget decision of mine. If I refuse agency, shifts go uncovered, residents get fewer staff but familiar ones. There's tension there.
+
+Priya: There is. Uncovered vs unfamiliar, we live that tradeoff weekly. The tool should show it, not resolve it. Show me: this gap, your options are agency unknown-face or redistribute and run short.
+
+Tomas: Redistribute and run short means my night gets heavier. Just saying.
+
+Priya: Noted. Okay — publishing. Monday morning I publish. Staff need it on phones by — let's say Sunday 8pm actually, earlier than now. And changes after publish notify people. Push notification? SMS for the older staff who don't do apps? Half our staff are over fifty, some don't have smartphones. Hmm, do we know that? Aisha doesn't have a smartphone, I think. Or she does now?
+
+Sam: I can survey. Actually the staff survey from January asked about smartphones — I think 80% said yes. I can dig it out.
+
+Priya: Do that. So: publish to app plus SMS fallback maybe. Open? I'd say notify-by-SMS is open until the survey.
+
+Lena: Let me recap what I'm hearing as the flow. Sunday: Priya drafts from contracts, time-off, qualifications. Publish Sunday evening. Week: swaps and sick cover with approvals. Month end: hours to payroll, Daniel's summary. Right?
+
+Priya: Yes. Plus sick calls — 6am sick call, I need cover in minutes. The tool should suggest who to call: who's qualified, under hours, worked recently. That's the killer feature for me honestly. More than the Sunday planning.
+
+Daniel: Interesting — so the Sunday plan is table stakes, the sick-cover suggestion is the delight? Noted for the pilot success criteria.
+
+Tomas: One more staff thing: time-off requests. Currently I write them in a paper diary in the office. It gets lost. I need to request in the app and see yes/no. And know my remaining allowance? Or is that payroll?
+
+Priya: Allowance is payroll's number, but showing the balance would stop half the arguments. Hmm, but if the numbers disagree — paper diary versus payroll — the tool shows the wrong balance and I'm the liar. Let's show it with the source labeled, payroll authoritative. Eh — actually no. Skip balances in phase one. Requests yes/no only. Decided.
+
+Sam: Where does the paper diary live now? The office?
+
+Priya: Sam. Not relevant. Focus.
+
+Sam: Sorry.
+
+Daniel: Priorities then. If we rank: one, Sunday planning faster. Two, publish to phones as truth. Three, sick-cover suggestions. Four, swaps. Five, my dashboard. Six, payroll export. Fair?
+
+Priya: Payroll export higher — the retyping causes pay errors, eleven corrections last quarter. That hurts trust. I'd put payroll export at three, sick-cover at four. Hmm, no wait. Sick cover saves my Tuesday mornings; payroll export saves month-end pain. Staff feel sick-cover daily. Keep Daniel's order but swap three and six? I'm confusing myself. Let's say: planning, publish, sick-cover, payroll export, swaps, dashboard. Dashboard last because Daniel survived without it so far.
+
+Daniel: Hey! Fine. Fair. Dashboard last. But-before-pilot-end though, I need one monthly number for the board in October.
+
+Priya: October board — fine, that's months away.
+
+Lena: Open questions so far: swap approval rules, pay computation vs export, SMS fallback pending the phone survey. Anything else?
+
+Tomas: Night premium visibility on extras — Priya decided no pay on swaps. But extras offered by the home, like covering sick — show the premium there? Different from swaps?
+
+Priya: ...Okay that's fair, that's different. Offering an extra is the home asking; show what it's worth. Swaps between staff: no pay shown. I'll allow that split. Decided.
+
+Daniel: And agency booking — does the tool book agency staff or just record them?
+
+Priya: Just record. Booking is phone calls and relationships. Out of scope. Decided — hmm, unless... no. Out of scope. Record only.
+
+Lena: Chronology check: anything before Sunday drafting? Contracts and time-off live where?
+
+Priya: Contracts in payroll, time-off in the paper diary — moving into the app per today. Qualifications — I hold the training matrix, spreadsheet number three. Lena, you'll need that file.
+
+Lena: Send me the training matrix. And the January phone survey, Sam.
+
+Sam: Will do. It's in the shared drive. I think.
+
+Priya: Last thing — Mrs. Adeyemi continuity. Do we promise the daughter anything?
+
+Daniel: We promise nothing to families in the tool. Internal need only. The tool helps us staff consistently; family communication stays human. Decided.
+
+Priya: Good. So unresolved: swaps approval detail, pay compute vs export, SMS fallback. Everything else we either decided or parked for phase two. Lena, does that give you enough for the first map?
+
+Lena: It does. I'll draft the map: goal, people, needs, main path Sunday to month-end, and the open questions. You'll review before anything is final.
+
+Priya: And nothing's decided by the tool, right? We decide.
+
+Lena: Exactly. Proposal only. You accept, edit or reject every item.
+
+Daniel: One more — did we decide who approves swaps for like-for-like? Parked, right?
+
+Priya: Parked. Both readings are on the table: Priya-approves-everything versus like-for-like-auto. We'll decide at the review.
+
+Sam: Should I — the wifi password for Lena's laptop—
+
+Priya: After the meeting, Sam. Thanks everyone.
+
+
+Appendix rota policy note (1): At Oakfield Lodge, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Oakfield Lodge reported 7 agency shifts last month and 3 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (2): At Willow Court, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Willow Court reported 14 agency shifts last month and 6 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (3): At Birchwood, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Birchwood reported 21 agency shifts last month and 9 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (4): At Cedar View, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Cedar View reported 5 agency shifts last month and 1 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (5): At Ashgrove, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Ashgrove reported 12 agency shifts last month and 4 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (6): At Maple House, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Maple House reported 19 agency shifts last month and 7 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (7): At Oakfield Lodge, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Oakfield Lodge reported 3 agency shifts last month and 10 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (8): At Willow Court, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Willow Court reported 10 agency shifts last month and 2 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (9): At Birchwood, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Birchwood reported 17 agency shifts last month and 5 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (10): At Cedar View, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Cedar View reported 1 agency shifts last month and 8 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (11): At Ashgrove, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Ashgrove reported 8 agency shifts last month and 0 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (12): At Maple House, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Maple House reported 15 agency shifts last month and 3 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (13): At Oakfield Lodge, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Oakfield Lodge reported 22 agency shifts last month and 6 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (14): At Willow Court, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Willow Court reported 6 agency shifts last month and 9 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (15): At Birchwood, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Birchwood reported 13 agency shifts last month and 1 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (16): At Cedar View, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Cedar View reported 20 agency shifts last month and 4 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (17): At Ashgrove, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Ashgrove reported 4 agency shifts last month and 7 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (18): At Maple House, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Maple House reported 11 agency shifts last month and 10 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (19): At Oakfield Lodge, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Oakfield Lodge reported 18 agency shifts last month and 2 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (20): At Willow Court, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Willow Court reported 2 agency shifts last month and 5 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (21): At Birchwood, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Birchwood reported 9 agency shifts last month and 8 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (22): At Cedar View, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Cedar View reported 16 agency shifts last month and 0 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (23): At Ashgrove, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Ashgrove reported 0 agency shifts last month and 3 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (24): At Maple House, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Maple House reported 7 agency shifts last month and 6 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (25): At Oakfield Lodge, the senior carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Oakfield Lodge reported 14 agency shifts last month and 9 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 
+
+Appendix rota policy note (26): At Willow Court, the carer rota follows the same pattern Priya described: early shifts need a senior present, nights need medication certification, and swaps are approved by the home manager except where local agreement says otherwise. Willow Court reported 21 agency shifts last month and 1 uncovered late shifts. The home manager wants publishing by Sunday evening and phone-based truth for staff. Payroll export stays authoritative with payroll; the tool only drafts expected figures. Open questions mirror Sunnybrook: swap approval detail, pay computation boundary, SMS fallback for staff without smartphones. 

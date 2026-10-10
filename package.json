@@ -11,7 +11,10 @@
     "validate": "tsx scripts/validate-product.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "docs:refresh": "ASM_E2E_ARTIFACTS=docs playwright test"
+    "docs:refresh": "ASM_E2E_ARTIFACTS=docs playwright test",
+    "smoke:live": "playwright test -c playwright.live.config.ts --project live --project bad-key",
+    "battery:live": "BATTERY_RUN_ID=$(date +%s) playwright test -c playwright.live.config.ts --project battery",
+    "intake:live": "playwright test -c playwright.live.config.ts --project intake"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

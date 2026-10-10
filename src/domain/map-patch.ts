@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SourceIdSchema, bundleFromTranscript, type ContextBundle } from "./context";
 import { ID_PREFIX, hasPrefix, makeId, type IdKind } from "./ids";
 import { fingerprint } from "./fingerprint";
 import { ROLE_LABEL } from "./actors";
@@ -35,6 +36,8 @@ export const AgentSource = z.strictObject({
   rationale: z.string(),
   /** 0..1. Advisory only. */
   confidence: z.number(),
+  /** Which source of the context bundle the snippet is quoted from. Implied when there is only one; null and absent are the same. */
+  sourceId: z.string().nullish(),
 });
 
 export const AgentPlacement = z.strictObject({
@@ -54,6 +57,12 @@ export const AgentPlacement = z.strictObject({
 export const AgentOutputSchema = z.strictObject({
   summary: z.string(),
   goal: z.strictObject({ statement: z.string(), source: AgentSource }).nullable(),
+  /**
+   * Other plausible readings of what the product is for, when the text
+   * supports more than one. Shown next to `goal` as a choice the human makes;
+   * never chosen by anyone else. Empty when there is one reading.
+   */
+  goalAlternatives: z.array(z.strictObject({ statement: z.string(), source: AgentSource })).nullish(),
   personas: z.array(
     z.strictObject({
       ref: z.string(),
@@ -101,6 +110,9 @@ export const PatchSourceSchema = z.strictObject({
   snippet: Text,
   rationale: OptionalText,
   confidence: z.number().min(0).max(1),
+  /** The source the snippet occurs in; resolved, never taken from the provider unchecked. Absent on patches from before bundles. */
+  sourceId: SourceIdSchema.optional(),
+  sourceLabel: Text.optional(),
 });
 
 export const PlacementSchema = z.discriminatedUnion("kind", [
@@ -112,7 +124,13 @@ export const PlacementSchema = z.discriminatedUnion("kind", [
 const opBase = { opId: z.string().regex(/^op-\d+$/), source: PatchSourceSchema };
 
 export const PatchOperationSchema = z.discriminatedUnion("op", [
-  z.strictObject({ ...opBase, op: z.literal("set_goal"), statement: Text }),
+  z.strictObject({
+    ...opBase,
+    op: z.literal("set_goal"),
+    statement: Text,
+    /** Present when this goal is one of several the proposal offers: the human keeps exactly one. */
+    choice: z.literal("goal").optional(),
+  }),
   z.strictObject({
     ...opBase,
     op: z.literal("add_persona"),
@@ -215,19 +233,29 @@ export function allIds(p: ProductDocument): Set<string> {
 
 // ------------------------------------------------------------ resolve proposal
 
-export type ProposalResult = { ok: true; patch: MapPatch } | { ok: false; issues: Issues };
+/**
+ * A refusal from the dry run (applying the proposal to the map) says so with `stage: "apply"`; a refusal of the
+ * answer itself (its shape, its items) has no stage. The issues are the same either way; the tag only tells the
+ * caller which check refused (ASM-29: only the answer's own problems are named in a repair request).
+ */
+export type ProposalResult = { ok: true; patch: MapPatch } | { ok: false; issues: Issues; stage?: "apply" };
 
 /**
  * Turn raw provider output into a MapPatch, or into a list of reasons why
  * not. Everything a provider says is checked here: shape, text limits,
- * that every quoted snippet really occurs in the pasted text, and that every
- * reference points at something that exists. Ids for new items are derived
- * from their text, never taken from the provider.
+ * that every quoted snippet really occurs in the source it is attributed to,
+ * and that every reference points at something that exists. Ids for new items
+ * are derived from their text, never taken from the provider.
+ *
+ * The context is a bundle of sources; a plain string is the one-source case.
+ * With one source the attribution is implied, with several the provider has
+ * to say which, and a snippet is checked against that source alone: a quote
+ * that only exists across a boundary, or in another source, is not a quote.
  */
 export function resolveProposal(
   product: ProductDocument,
   rawOutput: unknown,
-  transcript: string,
+  context: string | ContextBundle,
   provider: string,
 ): ProposalResult {
   const parsed = AgentOutputSchema.safeParse(rawOutput);
@@ -243,7 +271,8 @@ export function resolveProposal(
   }
   if (issues.length > 0) return { ok: false, issues };
 
-  const haystack = normalizeSpace(transcript);
+  const bundle = typeof context === "string" ? bundleFromTranscript(context) : context;
+  const sources = new Map(bundle.sources.map((s) => [s.id, { label: s.label, haystack: normalizeSpace(s.text) }]));
   const text = (path: string, value: string, required = true): string => {
     const trimmed = value.trim();
     if (required && trimmed === "") add("empty_text", path, "must not be empty");
@@ -253,11 +282,23 @@ export function resolveProposal(
   };
   const source = (path: string, s: z.infer<typeof AgentSource>) => {
     const snippet = text(`${path}.snippet`, s.snippet);
-    if (snippet !== "" && !haystack.includes(normalizeSpace(snippet)))
-      add("snippet_not_in_source", `${path}.snippet`, "the quoted snippet does not occur in the pasted text");
+    let sourceId = s.sourceId ?? undefined;
+    if (sourceId === undefined) {
+      if (bundle.sources.length === 1) sourceId = bundle.sources[0].id;
+      else add("source_required", `${path}.sourceId`, "with several sources, say which one the snippet is quoted from");
+    }
+    const known = sourceId !== undefined ? sources.get(sourceId) : undefined;
+    if (sourceId !== undefined && !known) add("unknown_source", `${path}.sourceId`, `"${sourceId}" is not a source of this context`);
+    if (known && snippet !== "" && !known.haystack.includes(normalizeSpace(snippet)))
+      add("snippet_not_in_source", `${path}.snippet`, `the quoted snippet does not occur in “${known.label}”`);
     if (!(s.confidence >= 0 && s.confidence <= 1))
       add("invalid_confidence", `${path}.confidence`, "confidence must be between 0 and 1");
-    return { snippet, rationale: text(`${path}.rationale`, s.rationale, false), confidence: s.confidence };
+    return {
+      snippet,
+      rationale: text(`${path}.rationale`, s.rationale, false),
+      confidence: s.confidence,
+      ...(known && sourceId !== undefined ? { sourceId, sourceLabel: known.label } : {}),
+    };
   };
 
   const taken = allIds(product);
@@ -307,6 +348,9 @@ export function resolveProposal(
 
   const operations: PatchOperation[] = [];
   const nextOpId = () => `op-${operations.length + 1}`;
+  // With alternatives, every goal is tagged as one of a choice; the alternatives come last so earlier ops keep their ids.
+  const alternatives = out.goalAlternatives ?? [];
+  const hasChoice = alternatives.length > 0;
 
   if (out.goal) {
     operations.push({
@@ -314,6 +358,7 @@ export function resolveProposal(
       op: "set_goal",
       statement: text("goal.statement", out.goal.statement),
       source: source("goal.source", out.goal.source),
+      ...(hasChoice ? { choice: "goal" as const } : {}),
     });
   }
 
@@ -417,6 +462,18 @@ export function resolveProposal(
     });
   });
 
+  alternatives.forEach((alternative, i) => {
+    const path = `goalAlternatives[${i}]`;
+    if (!out.goal) add("alternative_without_goal", path, "an alternative goal needs a goal to be an alternative to");
+    operations.push({
+      opId: nextOpId(),
+      op: "set_goal",
+      statement: text(`${path}.statement`, alternative.statement),
+      source: source(`${path}.source`, alternative.source),
+      choice: "goal",
+    });
+  });
+
   if (operations.length === 0)
     add("empty_proposal", "(root)", "the discussion did not yield any proposed change or question");
   if (issues.length > 0) return { ok: false, issues: sorted(issues) };
@@ -431,8 +488,13 @@ export function resolveProposal(
   };
 
   // Dry run: a proposal that could not be accepted as it stands is not shown as one.
-  const dryRun = applyMapPatch(product, patch);
-  if (!dryRun.ok) return { ok: false, issues: dryRun.issues };
+  // With a goal choice, each option is tried on its own; the patch with all of them is not acceptable by design.
+  const goals = operations.filter((o) => o.op === "set_goal");
+  const variants = goals.length > 1 ? goals.map((keep) => ({ ...patch, operations: operations.filter((o) => o.op !== "set_goal" || o.opId === keep.opId) })) : [patch];
+  for (const variant of variants) {
+    const dryRun = applyMapPatch(product, variant);
+    if (!dryRun.ok) return { ok: false, issues: dryRun.issues, stage: "apply" };
+  }
   return { ok: true, patch };
 }
 
@@ -482,6 +544,12 @@ export function applyMapPatch(product: ProductDocument, patchInput: unknown): Ap
   }
   if (patch.operations.length === 0)
     return { ok: false, issues: [{ code: "empty_patch", path: "operations", message: "nothing to accept" }] };
+  // Two goals are a choice the human has not made yet. Nothing here picks one.
+  if (patch.operations.filter((o) => o.op === "set_goal").length > 1)
+    return {
+      ok: false,
+      issues: [{ code: "conflicting_goal", path: "operations", message: "the proposal offers more than one goal; keep exactly one" }],
+    };
 
   const issues: Issues = [];
   const revision = product.revision.number + 1;

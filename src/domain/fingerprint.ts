@@ -71,6 +71,9 @@ export function canonicalize(p: ProductDocument): ProductDocument {
       confidence: e.confidence,
       provider: e.provider,
       revision: e.revision,
+      // Only when recorded, so a map from before bundles keeps its fingerprint.
+      ...(e.sourceId !== undefined ? { sourceId: e.sourceId } : {}),
+      ...(e.sourceLabel !== undefined ? { sourceLabel: e.sourceLabel } : {}),
     })),
     layout: { cards: layoutCards },
   };
