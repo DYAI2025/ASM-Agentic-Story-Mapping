@@ -65,11 +65,16 @@ name + own words -> proposal against a blank draft -> preview -> accept
   bring an existing product file, put it at the configured path.
 - A proposal that does not say what the product is for is refused
   (`goal_required`). The accepted goal also becomes the product's summary line.
+  For a first product the model is asked to always propose a goal, taken from
+  the passage that comes closest to saying what the product is for and quoted
+  from it, with any other reading as an alternative to choose; whether a model
+  does so is measured by the live intake battery, not by the unit tests.
 - The result is always proposed. Approval stays the separate human action.
 - With the `fake` provider (the default, no model) the text has to use one
   line per item (`Goal:`, `Persona:`, `Actor:`, `Need (name):`, `Step:`);
-  the format is a collapsed note under the field. Free text without such lines needs the
-  `anthropic` provider, which has only been tested against a stubbed client.
+  the format is a collapsed note under the field. Free text without such lines needs a
+  model provider (see [Providers](#providers)); the live runs under
+  [Checks](#checks) measure it with `anthropic`.
 
 ### Clear input and start over
 
