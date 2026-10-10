@@ -258,8 +258,8 @@ All four sit behind the same two interfaces and the same rules:
   strict JSON Schema: every property required, nothing additional, optional
   fields nullable. It is a courtesy to the model; the app relies only on its
   own validation of what comes back.
-- One repair, and only one (ASM-29). External QA measured the reference model
-  (`qwen/qwen3-235b-a22b-2507` through OpenRouter) ignoring that schema: the
+- One repair, and only one (ASM-29). External QA measured the reference model of
+  that time (`qwen/qwen3-235b-a22b-2507` through OpenRouter) ignoring that schema: the
   source fields flattened onto each item, needs as `id`/`text`. When an answer
   parsed but was refused — for its shape (`AgentOutputSchema`), or for named
   items in it of the kinds the PO decided on 2026-10-06: a quote that does not
@@ -649,21 +649,26 @@ four times the tokens), and that what the API adds around a structured-output
 request fits in the schema plus the allowance. A request with images, files
 or tools would need another bound.
 
-The reservation is written to the ledger before the request goes out; when
-the server answers, the submission is charged the bound of the model calls it
-reported, and the whole bound when the answer does not say how many calls
-were made. Every reservation reads the ledger on disk while it holds a lock
+The reservation is written to the ledger before the request goes out, and the
+submission keeps it: what the server answers (how many model calls, which
+provider and model) is recorded but never lowers the charge, and only a call
+count above the two a submission may make raises it. Every reservation reads the ledger on disk while it holds a lock
 file beside it, so two runs cannot both spend the same headroom. The next
 submission is refused when it could take the ledger past its budget, when the
 budget is above the PO's ceiling of 5.00 USD, when the guard has no price for
 the model (only `claude-haiku-5-5` has one), when there is no ledger, when
-the ledger cannot be read or does not add up entry by entry, when it was made
+the ledger cannot be read or an entry in it does not add up (a bound whose
+parts exceed its total, a charge below the entry's bound, a call count that is
+not a whole number, ids out of order), when it was made
 for another budget, when another run holds the lock, and when the ledger is
 stopped. The server's answer names the provider and the model it was
-configured to request; when that is not the model the run named, the
-submission is charged its whole bound and the ledger is stopped: no further
-submission is sent, in this run or a later one, until a human removes
-`stoppedReason` from the ledger file. So neither the code's default nor
+configured to request; when that is not the model the run named (another
+model, or none named after a call), the ledger is stopped in the same write
+that records the answer: no further submission is sent, in this run or a
+later one, until a human removes `stoppedReason` from the ledger file. The
+charge of that one submission is a `claude-haiku-5-5` bound; when a dearer
+model answered (the code's default is `claude-opus-5-5`), it may have cost
+more, up to two calls at that model's price, which is why nothing else is sent. So neither the code's default nor
 `.env.local` decides what is paid for. The app reads no token usage, so the
 ledger holds bounds, not measured cost; the measured cost is in the Anthropic
 console. Every record a paid run writes is checked first for real key shapes
@@ -832,7 +837,7 @@ The full lists with the failing test names are in the evidence comments on the t
 
 The deterministic provider has no understanding; the live providers have only
 run against stubbed transports except for the recorded live smoke and the
-live intake battery. The battery on the reference model
+live intake battery. The battery on the earlier reference model
 (`qwen/qwen3-235b-a22b-2507` through OpenRouter) reached 2 of 5 valid
 proposals on the ASM-29 candidates `cd9ba8a` and `ba119a7` (the run on the
 final commit is recorded on ASM-29): the wrong-shape class is fixed, but on long
@@ -877,9 +882,10 @@ audit. The bounded failure message covers proposals only (ASM-30). Its browser t
 narrative review panel still lists a refused review answer issue by issue, and
 whether the three suggested next steps actually help is a human verdict, not
 something a test measures. Start over removes the work state first and the
-product second; when the product file then cannot be removed (a file the
-system will not delete in a directory it may write, or a work state kept in
-another directory through `ASM_WORK_STATE_FILE`), the reset is reported as
+product second; when the product file then cannot be removed while the work
+state could be (a product file the system will not delete, or a product whose
+directory refuses while the work state lives in another one through
+`ASM_WORK_STATE_FILE`), the reset is reported as
 failed and the map stays, but its work state (people check, selection, value
 exception) is already gone. That order is the one ASM-23 chose so that a
 failure never leaves a work state without its product; an external review on

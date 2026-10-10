@@ -93,7 +93,10 @@ async function readOutcomes(): Promise<Outcome[]> {
 
 async function writeRecord(outcome: Outcome) {
   await fs.mkdir(ARTIFACTS, { recursive: true });
-  await fs.writeFile(path.join(ARTIFACTS, `${outcome.id}.json`), JSON.stringify({ runId: RUN_ID, ...outcome }, null, 2));
+  // Checked before it is written, like the summary below: nothing of a paid run reaches the disk unchecked.
+  const caseText = JSON.stringify({ runId: RUN_ID, ...outcome }, null, 2);
+  assertNoSecretInRecord(caseText);
+  await fs.writeFile(path.join(ARTIFACTS, `${outcome.id}.json`), caseText);
   const outcomes = await readOutcomes();
   const record = {
     runId: RUN_ID,

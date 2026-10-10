@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { buildRequest } from "../../src/agent/anthropic-provider";
@@ -13,7 +14,9 @@ import { PASTED_LABEL, type ContextBundle } from "../../src/domain/context";
  * no ledger to count against or the ledger cannot be read or does not add up,
  * when another run holds the ledger, and once a run has stopped it. The app
  * reads no token usage, so the ledger counts bounds, never measured cost; the
- * measured cost is in the Anthropic console.
+ * measured cost is in the Anthropic console. A charge only ever goes up: a
+ * submission keeps its whole reservation whatever the server reports, so no
+ * settlement and no edited entry can give headroom back (review round 2).
  *
  * The bound of one model call rests on two assumptions, stated rather than
  * proven: a token of this text-only request is at least one byte of it (for
@@ -164,15 +167,20 @@ export type Ledger = {
   /** Reserves the whole bound of a submission and writes it down before the submission is sent, against the ledger as it is on disk. */
   reserve(bound: Pick<SubmissionBound, "firstCallUsd" | "repairCallUsd" | "totalUsd">, meta: { label: string; commit: string; model: string }, options?: { lockWaitMs?: number }): Promise<number>;
   /**
-   * Charges what the server reported: no call nothing, one call the first bound, two the first and the repair, each
-   * further call the repair bound; unreported, or `wholeBound`, the whole bound (never less than the reservation's parts).
+   * Records what the server reported. The charge stays the whole reservation; only a call count above the two a
+   * submission may make raises it (each further call at the repair bound). With `stop`, the ledger is stopped in
+   * the same write.
    */
-  settle(id: number, outcome: { modelCalls: number | null; serverProvider: string | null; wholeBound?: boolean }): Promise<void>;
+  settle(id: number, outcome: { modelCalls: number | null; serverProvider: string | null; stop?: string }): Promise<void>;
   /** Stops the ledger: no further submission is reserved until a human removes `stoppedReason` from the file. */
   stop(reason: string): Promise<void>;
 };
 
 const isMicro = (value: unknown): value is Micro => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/** The least a submission is charged: its whole bound, and each call beyond the two a submission may make at the repair bound. */
+const chargeFor = (b: { first: Micro; repair: Micro; total: Micro }, calls: number | null): Micro =>
+  Math.max(b.total, typeof calls === "number" && calls > 2 ? b.first + (calls - 1) * b.repair : 0);
 
 /** The ledger as it is on disk, checked entry by entry; null when there is no file. Anything else that does not read or add up is refused. */
 async function readLedger(file: string, budgetUsd: number): Promise<LedgerFile | null> {
@@ -192,7 +200,7 @@ async function readLedger(file: string, budgetUsd: number): Promise<LedgerFile |
   const bad = (why: string) => new BudgetRefusal(`the ledger at ${file} does not add up: ${why}; refusing rather than counting it as nothing`);
   if (typeof state !== "object" || state === null || !Array.isArray(state.entries) || state.currency !== "USD") throw bad("not a budget ledger");
   if (state.budgetUsd !== budgetUsd) throw new BudgetRefusal(`the ledger at ${file} was made for ${state.budgetUsd} USD, not ${budgetUsd} USD`);
-  if (state.stoppedReason !== undefined && typeof state.stoppedReason !== "string") throw bad("stoppedReason is not text");
+  if (state.stoppedReason !== undefined && (typeof state.stoppedReason !== "string" || state.stoppedReason.trim() === "")) throw bad("stoppedReason is there but says nothing");
   state.entries.forEach((entry, i) => {
     if (typeof entry !== "object" || entry === null) throw bad(`entry ${i} is not an entry`);
     if (entry.id !== i) throw bad(`entry ${i} has id ${JSON.stringify(entry.id)}`);
@@ -202,17 +210,18 @@ async function readLedger(file: string, budgetUsd: number): Promise<LedgerFile |
     if (!isMicro(entry.chargedMicroUsd)) throw bad(`entry ${i} has no charge in whole micro-dollars`);
     if (entry.status === "reserved" && entry.chargedMicroUsd !== b.total) throw bad(`entry ${i} is reserved for less than its bound`);
     const calls = entry.modelCalls;
-    if (entry.status === "settled") {
-      if (calls === null && entry.chargedMicroUsd < b.total) throw bad(`entry ${i} reported no call count and is charged less than its bound`);
-      if (calls !== null && (!Number.isInteger(calls) || calls < 0)) throw bad(`entry ${i} has a call count that is not a whole number`);
-      if (typeof calls === "number" && calls >= 1 && entry.chargedMicroUsd < b.first) throw bad(`entry ${i} made calls and is charged less than one`);
-    }
+    if (calls !== null && (typeof calls !== "number" || !Number.isInteger(calls) || calls < 0)) throw bad(`entry ${i} has a call count that is not a whole number`);
+    if (entry.chargedMicroUsd < chargeFor(b, calls)) throw bad(`entry ${i} is charged less than its bound`);
   });
   return state;
 }
 
-/** Runs `work` while this run alone holds the ledger: a lock file created exclusively beside it, removed afterwards. */
-async function withLock<T>(file: string, waitMs: number, work: () => Promise<T>): Promise<T> {
+/**
+ * Runs `work` while this run alone holds the ledger: a lock file created exclusively beside it, holding a token of
+ * this run, removed afterwards only if it still holds that token (a lock a human removed and another run took again
+ * is not this run's to remove).
+ */
+export async function withLedgerLock<T>(file: string, waitMs: number, work: () => Promise<T>): Promise<T> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const lock = `${file}.lock`;
   const deadline = Date.now() + waitMs;
@@ -226,34 +235,45 @@ async function withLock<T>(file: string, waitMs: number, work: () => Promise<T>)
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+  const token = `${process.pid} ${new Date().toISOString()} ${randomUUID()}\n`;
   try {
-    await handle.writeFile(`${process.pid} ${new Date().toISOString()}\n`);
+    await handle.writeFile(token);
     return await work();
   } finally {
     await handle.close();
-    await fs.rm(lock, { force: true });
+    const still = await fs.readFile(lock, "utf8").catch(() => null);
+    if (still === token) await fs.rm(lock, { force: true });
   }
 }
 
 /** Opens the ledger. A missing ledger is created only with `create`; a ledger made for another budget, or one that cannot be read or does not add up, is refused. */
-export async function openLedger(file: string, budgetUsd: number, options: { create?: boolean; lockWaitMs?: number } = {}): Promise<Ledger> {
+export async function openLedger(
+  file: string,
+  budgetUsd: number,
+  /** `onWrite` is for tests: it runs right after each write of the ledger, while the lock is still held. */
+  options: { create?: boolean; lockWaitMs?: number; onWrite?: (file: string) => Promise<void> | void } = {},
+): Promise<Ledger> {
   checkBudget(budgetUsd);
-  let state = await withLock(file, options.lockWaitMs ?? LOCK_WAIT_MS, async () => {
+  let state = await withLedgerLock(file, options.lockWaitMs ?? LOCK_WAIT_MS, async () => {
     const found = await readLedger(file, budgetUsd);
     if (found) return found;
     if (!options.create) throw new BudgetRefusal(`no ledger at ${file}; create it deliberately (ASM_LIVE_LEDGER_CREATE=1) rather than start from zero by accident`);
     const created: LedgerFile = { ledger: path.basename(file), budgetUsd, currency: "USD", createdAt: new Date().toISOString(), entries: [] };
     await write(file, created);
+    await options.onWrite?.(file);
     return created;
   });
 
   /** Reads the ledger on disk under the lock, applies a change, writes it back: another run's reservations count, and none is lost. */
   const update = <T>(waitMs: number, change: (current: LedgerFile) => { next: LedgerFile; result: T }) =>
-    withLock(file, waitMs, async () => {
+    withLedgerLock(file, waitMs, async () => {
       const current = await readLedger(file, budgetUsd);
       if (!current) throw new BudgetRefusal(`the ledger at ${file} is gone`);
       const { next, result } = change(current);
-      if (next !== current) await write(file, next);
+      if (next !== current) {
+        await write(file, next);
+        await options.onWrite?.(file);
+      }
       state = next;
       return result;
     });
@@ -266,6 +286,9 @@ export async function openLedger(file: string, budgetUsd: number, options: { cre
     entries: () => state.entries,
     reserve: (bound, meta, reserveOptions = {}) =>
       update(reserveOptions.lockWaitMs ?? LOCK_WAIT_MS, (current) => {
+        for (const amount of [bound.firstCallUsd, bound.repairCallUsd, bound.totalUsd])
+          if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0)
+            throw new BudgetRefusal(`${meta.label}: a bound of ${amount} USD is not an amount; not sent`);
         if (current.stoppedReason)
           throw new BudgetRefusal(`the ledger is stopped (${current.stoppedReason}); a human removes "stoppedReason" from ${file} after looking`);
         const first = micro(bound.firstCallUsd);
@@ -292,18 +315,11 @@ export async function openLedger(file: string, budgetUsd: number, options: { cre
       update(LOCK_WAIT_MS, (current) => {
         const entry = current.entries[id];
         if (!entry || entry.status !== "reserved") throw new BudgetRefusal(`no open reservation ${id} in ${file}`);
-        const { first, repair, total } = entry.boundMicroUsd;
-        const calls = outcome.modelCalls;
-        const charged =
-          outcome.wholeBound || calls === null || !Number.isInteger(calls) || calls < 0
-            ? Math.max(total, typeof calls === "number" && calls > 2 ? first + (calls - 1) * repair : 0)
-            : calls === 0
-              ? 0
-              : calls === 1
-                ? first
-                : Math.max(total, first + (calls - 1) * repair);
+        const calls = typeof outcome.modelCalls === "number" && Number.isInteger(outcome.modelCalls) && outcome.modelCalls >= 0 ? outcome.modelCalls : null;
+        const charged = Math.max(entry.chargedMicroUsd, chargeFor(entry.boundMicroUsd, calls));
         const settled: LedgerEntry = { ...entry, status: "settled", modelCalls: calls, serverProvider: outcome.serverProvider, chargedMicroUsd: charged };
-        return { next: { ...current, entries: current.entries.map((e) => (e.id === id ? settled : e)) }, result: undefined };
+        const stoppedReason = current.stoppedReason ?? outcome.stop;
+        return { next: { ...current, ...(stoppedReason ? { stoppedReason } : {}), entries: current.entries.map((e) => (e.id === id ? settled : e)) }, result: undefined };
       }),
     stop: (reason) =>
       update(LOCK_WAIT_MS, (current) => ({ next: current.stoppedReason ? current : { ...current, stoppedReason: reason }, result: undefined })),

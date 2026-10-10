@@ -17,6 +17,7 @@ import {
   expectServerModel,
   liveSettings,
   openLedger,
+  withLedgerLock,
 } from "../live/budget";
 
 /**
@@ -77,6 +78,8 @@ describe("the most one submission can cost", () => {
   });
 
   it("adds the schema and a fixed allowance on top of the request bytes, for both calls", () => {
+    // The README names the allowance; this keeps the two the same.
+    expect(API_ALLOWANCE_TOKENS).toBe(8_192);
     const bound = boundForContext(MODEL, "RotaCare", sources);
     expect(bound.schemaBytes).toBeGreaterThan(1_000);
     expect(bound.firstCallUsd).toBe(callBoundUsd(MODEL, bound.firstRequestBytes + bound.schemaBytes + API_ALLOWANCE_TOKENS));
@@ -165,30 +168,35 @@ describe("the ledger", () => {
     await expect(ledger.reserve(bound(0.5), meta)).resolves.toBeDefined();
   });
 
-  it("settles a submission at the bound of the calls the server reported, the full bound when it reported none", async () => {
+  // The charge only ever goes up (review round 2 on e4fb12a): a submission keeps its whole reservation whatever the
+  // server reports, so no settlement and no edited entry can give headroom back.
+  it("settling records what the server reported and never lowers the charge", async () => {
     const ledger = await openLedger(file, 5, { create: true });
-    const one = await ledger.reserve(bound(0.4), meta);
-    await ledger.settle(one, { modelCalls: 1, serverProvider: `anthropic (${MODEL})` });
-    expectCharged(ledger.spentUsd(), 0.1);
-    const two = await ledger.reserve(bound(0.4), meta);
-    await ledger.settle(two, { modelCalls: 2, serverProvider: `anthropic (${MODEL})` });
-    expectCharged(ledger.spentUsd(), 0.5);
-    const unknown = await ledger.reserve(bound(0.4), meta);
-    await ledger.settle(unknown, { modelCalls: null, serverProvider: null });
-    expectCharged(ledger.spentUsd(), 0.9);
-    const none = await ledger.reserve(bound(0.4), meta);
-    await ledger.settle(none, { modelCalls: 0, serverProvider: null });
-    expectCharged(ledger.spentUsd(), 0.9);
-    const reopened = await openLedger(file, 5);
-    expectCharged(reopened.spentUsd(), 0.9);
+    for (const modelCalls of [1, 2, null, 0]) {
+      const id = await ledger.reserve(bound(0.4), meta);
+      await ledger.settle(id, { modelCalls, serverProvider: modelCalls ? `anthropic (${MODEL})` : null });
+      expect(ledger.entries()[id]).toMatchObject({ status: "settled", modelCalls });
+    }
+    expectCharged(ledger.spentUsd(), 1.6);
+    expectCharged((await openLedger(file, 5)).spentUsd(), 1.6);
   });
 
-  it("charges more than the bound, never less, for a call count it did not expect: every call beyond the first at the repair bound", async () => {
+  it("charges more than the bound for a call count it did not expect: every call beyond the first at the repair bound", async () => {
     const ledger = await openLedger(file, 5, { create: true });
     const odd = await ledger.reserve(bound(0.4), meta);
     await ledger.settle(odd, { modelCalls: 3, serverProvider: null });
     // first 0.1 + two more calls at 0.3 each.
     expectCharged(ledger.spentUsd(), 0.7);
+  });
+
+  it("stops in the same write that settles, when asked to", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    const id = await ledger.reserve(bound(0.4), meta);
+    await ledger.settle(id, { modelCalls: 1, serverProvider: "anthropic (claude-opus-5-5)", stop: "another model answered" });
+    const onDisk = JSON.parse(await fs.readFile(file, "utf8"));
+    expect(onDisk.stoppedReason).toBe("another model answered");
+    expect(onDisk.entries[0]).toMatchObject({ status: "settled", serverProvider: "anthropic (claude-opus-5-5)" });
+    await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
   });
 
   it("keeps an existing ledger when it is asked to create one", async () => {
@@ -218,6 +226,9 @@ describe("the ledger", () => {
     ["a negative charge", (entry) => ({ ...entry, chargedMicroUsd: -1 })],
     ["a charge that is not a whole number of micro-dollars", (entry) => ({ ...entry, chargedMicroUsd: 1.5 })],
     ["a reservation charged less than its bound", (entry) => ({ ...entry, chargedMicroUsd: 1 })],
+    ["a settled entry charged less than its bound", (entry) => ({ ...entry, status: "settled", modelCalls: 2, chargedMicroUsd: (entry.boundMicroUsd as { first: number }).first })],
+    ["a settled entry with more calls charged less than they cost", (entry) => ({ ...entry, status: "settled", modelCalls: 5, chargedMicroUsd: (entry.boundMicroUsd as { total: number }).total })],
+    ["a call count that is not a whole number", (entry) => ({ ...entry, status: "settled", modelCalls: 1.5 })],
     ["a bound whose parts do not add up", (entry) => ({ ...entry, boundMicroUsd: { first: 10, repair: 10, total: 5 } })],
     ["an unknown status", (entry) => ({ ...entry, status: "paid" })],
     ["an id out of order", (entry) => ({ ...entry, id: 7 })],
@@ -259,6 +270,62 @@ describe("the ledger", () => {
     }
     await expect(ledger.reserve(bound(0.1), meta)).resolves.toBeDefined();
     await expect(fs.access(`${file}.lock`)).rejects.toThrow();
+  });
+
+  it("lets only one of two runs reserving at the same moment take headroom both cannot have", async () => {
+    // Two handles on one ledger, as two runs would hold: the lock has to cover reading, checking and writing.
+    for (let round = 0; round < 5; round++) {
+      await fs.rm(file, { force: true });
+      const one = await openLedger(file, 1, { create: true });
+      const other = await openLedger(file, 1);
+      const results = await Promise.allSettled([one.reserve(bound(0.6), meta), other.reserve(bound(0.6), meta)]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+      const onDisk = JSON.parse(await fs.readFile(file, "utf8"));
+      expect(onDisk.entries).toHaveLength(1);
+    }
+  });
+
+  it("writes every change while it still holds the lock", async () => {
+    const lock = `${file}.lock`;
+    const held: boolean[] = [];
+    const onWrite = async () => {
+      held.push(await fs.access(lock).then(() => true, () => false));
+    };
+    const ledger = await openLedger(file, 5, { create: true, onWrite });
+    const id = await ledger.reserve(bound(0.4), meta);
+    await ledger.settle(id, { modelCalls: 1, serverProvider: `anthropic (${MODEL})` });
+    await ledger.stop("checked");
+    expect(held).toEqual([true, true, true, true]);
+  });
+
+  it("refuses a bound that is not a finite, non-negative amount, and writes nothing", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    const before = await fs.readFile(file, "utf8");
+    for (const spoiled of [
+      { firstCallUsd: Number.NaN, repairCallUsd: 0.1, totalUsd: 0.2 },
+      { firstCallUsd: 0.1, repairCallUsd: -0.1, totalUsd: 0 },
+      { firstCallUsd: 0.1, repairCallUsd: 0.1, totalUsd: Number.POSITIVE_INFINITY },
+    ])
+      await expect(ledger.reserve(spoiled, meta)).rejects.toThrow(BudgetRefusal);
+    expect(await fs.readFile(file, "utf8")).toBe(before);
+  });
+
+  it.each([null, false, 0, ""])("refuses a ledger whose stoppedReason is %s: a stop is text, or it is not there", async (value) => {
+    await openLedger(file, 5, { create: true });
+    const state = JSON.parse(await fs.readFile(file, "utf8"));
+    await fs.writeFile(file, JSON.stringify({ ...state, stoppedReason: value }));
+    await expect(openLedger(file, 5)).rejects.toThrow(BudgetRefusal);
+  });
+
+  it("does not remove a lock it no longer holds", async () => {
+    const lock = `${file}.lock`;
+    await withLedgerLock(file, 1_000, async () => {
+      // A human removed this run's lock and another run took a new one meanwhile.
+      await fs.writeFile(lock, "another run's lock");
+    });
+    expect(await fs.readFile(lock, "utf8")).toBe("another run's lock");
+    await fs.rm(lock, { force: true });
   });
 
   it("takes no submission once it is stopped, not even after it is opened again", async () => {

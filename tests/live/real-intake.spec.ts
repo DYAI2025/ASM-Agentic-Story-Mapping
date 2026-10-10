@@ -142,10 +142,12 @@ test("@intake realistic meeting transcript -> real provider -> human review with
   const stored = YAML.parse(await fs.readFile(LIVE_PRODUCT_FILE, "utf8"));
   expect(stored.revision).toEqual({ number: 1, status: "proposed" });
   if (human.edited) expect(stored.needs.map((n: { statement: string }) => n.statement)).toContain((human.edited as { after: string }).after);
-  // The rejected step is not on the map, unless another kept step has the same title.
+  // The rejected item is not on the map. Checked by title for a step whose title no other step shares; anything else
+  // rejected (an assignment, a step sharing its title) is named in the record as not checked.
   const rejected = human.rejected as { op?: string; text?: string | null; opId?: string } | undefined;
   if (rejected?.op === "add_step" && rejected.text && operations.filter((o) => o.op === "add_step" && o.text === rejected.text).length === 1)
     expect(stored.narrative.map((step: { title: string }) => step.title)).not.toContain(rejected.text);
+  else if (rejected) notPossible.push(`check that the rejected ${rejected.op ?? "item"} is absent: not a step with a title of its own`);
   if (human.goalChoice) expect(stored.goal.statement).toBe(((human.goalChoice as { chosen: { text?: string } }).chosen.text));
   // Every quote the map keeps occurs in the transcript, runs of whitespace counted as one space.
   const flat = transcript.replace(/\s+/g, " ");

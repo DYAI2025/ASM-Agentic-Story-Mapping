@@ -12,7 +12,7 @@ export const REAL_KEY_SHAPES = [
   /sk-ant-api\d\d-[A-Za-z0-9_-]{40,}/, // Anthropic
   /sk-or-v1-[0-9a-f]{32,}/, // OpenRouter
   /sk-proj-[A-Za-z0-9_-]{40,}/, // OpenAI project key
-  /\bsk-[A-Za-z0-9]{40,}/, // OpenAI legacy key: no hyphen after sk-
+  /sk-[A-Za-z0-9]{40,}/, // OpenAI legacy key: no hyphen after sk-; no word boundary, a key can follow "cache_"
 ];
 
 export const KEY_NAMES = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] as const;

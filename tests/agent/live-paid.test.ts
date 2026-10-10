@@ -51,12 +51,11 @@ describe("a paid submission", () => {
     expect(seenWhileSending).toBeGreaterThanOrEqual(bound.totalUsd);
   });
 
-  it("is charged the bound of the calls the server reported, and records what the server named", async () => {
+  it("is charged its whole bound, whatever the server reported, and records what the server named", async () => {
     const paid = await paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 1, provider: `anthropic (${MODEL})` }));
     expect(paid.serverProvider).toBe(`anthropic (${MODEL})`);
     expect(paid.modelCalls).toBe(1);
-    expect(paid.chargedUsd).toBeGreaterThanOrEqual(bound.firstCallUsd);
-    expect(paid.chargedUsd).toBeLessThan(bound.totalUsd);
+    expect(paid.chargedUsd).toBeGreaterThanOrEqual(bound.totalUsd);
     const entry = (await openLedger(ledgerFile, 5)).entries()[0];
     expect(entry).toMatchObject({ status: "settled", modelCalls: 1, serverProvider: `anthropic (${MODEL})`, model: MODEL, label: "t" });
     expect(entry.commit).toMatch(/^[0-9a-f]{40}$/);
@@ -101,8 +100,25 @@ describe("a paid submission", () => {
     expect(ledger.spentUsd()).toBeGreaterThanOrEqual(bound.totalUsd);
   });
 
-  it("stops the run when the server made a call and named no model", async () => {
+  it("stops the run and the ledger when the server made a call and named no model", async () => {
     await expect(paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 1 }, 502))).rejects.toThrow();
+    const onDisk = JSON.parse(await fs.readFile(ledgerFile, "utf8"));
+    expect(onDisk.stoppedReason).toMatch(/null/);
+    let sent = false;
+    await expect(
+      paidSubmission("t2", NAME, SOURCES, async () => {
+        sent = true;
+        return answer({ modelCalls: 1, provider: `anthropic (${MODEL})` });
+      }),
+    ).rejects.toThrow(/stopped/);
+    expect(sent).toBe(false);
+  });
+
+  it("settles and stops in one write: the stop is on disk together with the mismatched entry", async () => {
+    await expect(paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 2, provider: "anthropic (claude-opus-5-5)" }))).rejects.toThrow();
+    const onDisk = JSON.parse(await fs.readFile(ledgerFile, "utf8"));
+    expect(onDisk.entries[0]).toMatchObject({ status: "settled", modelCalls: 2, serverProvider: "anthropic (claude-opus-5-5)" });
+    expect(onDisk.stoppedReason).toMatch(/claude-opus-5-5/);
   });
 
   it("charges the whole bound for an answer that does not say how many calls it made", async () => {
@@ -124,8 +140,8 @@ describe("a paid submission", () => {
     expect(sent).toBe(false);
   });
 
-  it("charges nothing for an answer that made no call, such as a refusal before the provider was asked", async () => {
+  it("keeps the whole bound even for an answer that made no call: the charge never goes down", async () => {
     const paid = await paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 0 }, 409));
-    expect(paid.chargedUsd).toBe(0);
+    expect(paid.chargedUsd).toBeGreaterThanOrEqual(bound.totalUsd);
   });
 });

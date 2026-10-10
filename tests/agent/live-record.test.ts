@@ -25,6 +25,8 @@ describe("a live record is checked for keys, not for words that look like them",
   it("refuses a record with text in the shape of a real provider key, built at run time so this file holds none", () => {
     expect(() => assertNoSecretInRecord(`x ${"sk-ant-api03-"}${"C".repeat(60)} y`, {})).toThrow();
     expect(() => assertNoSecretInRecord(`x ${"sk-or-v1-"}${"c".repeat(64)} y`, {})).toThrow();
+    // A legacy key right after a word character (review round 2 on e4fb12a): no word boundary is required.
+    expect(() => assertNoSecretInRecord(`cache_${"sk-"}${"D".repeat(48)}`, {})).toThrow();
   });
 
   it("refuses a record holding the value of a key set in the environment, whatever its shape, without repeating it", () => {

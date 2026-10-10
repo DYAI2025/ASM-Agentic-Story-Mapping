@@ -28,13 +28,11 @@ export async function paidSubmission(label: string, name: string, sources: reado
   } catch (error) {
     mismatch = error as Error;
   }
-  // A model the run did not name has no price here: the whole bound is the most the guard knows how to count.
-  await ledger.settle(id, { modelCalls, serverProvider, wholeBound: mismatch !== null });
-  if (mismatch) {
-    // Another model answered by name: no further submission is sent, in this run or the next, until a human looks.
-    if (serverProvider !== null) await ledger.stop(mismatch.message);
-    throw mismatch;
-  }
+  // The charge stays the whole reservation. When the server did not answer as the model the run named (another model,
+  // or none named after a call), the ledger is stopped in the same write: no further submission is sent, in this run
+  // or the next, until a human looks (review round 2 on e4fb12a).
+  await ledger.settle(id, { modelCalls, serverProvider, ...(mismatch ? { stop: mismatch.message } : {}) });
+  if (mismatch) throw mismatch;
   const entry = ledger.entries()[id];
   return { ...answer, serverProvider, modelCalls, boundUsd: entry.boundMicroUsd.total / 1e6, chargedUsd: entry.chargedMicroUsd / 1e6, ledgerSpentUsd: ledger.spentUsd() };
 }
