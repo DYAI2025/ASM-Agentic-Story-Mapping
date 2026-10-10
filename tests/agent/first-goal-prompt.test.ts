@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SYSTEM_PROMPT, repairSection, structureMessage } from "../../src/agent/prompt";
 import { blankProduct } from "../../src/domain/bootstrap";
-import { bundleFromTranscript } from "../../src/domain/context";
+import { buildRequest } from "../../src/agent/anthropic-provider";
 
 /**
  * ASM-34 §11 (PO decision 2026-10-10, after the battery 3/5 on 7f561e0): on
@@ -16,7 +16,10 @@ import { bundleFromTranscript } from "../../src/domain/context";
  * measured by the battery, not here.
  *
  * The golden file holds everything the model is told on a first-product
- * request and its repair request, the output contract included. Any change to what the model is told, in any part and in
+ * request and its repair request, for a pasted source and a file, and the
+ * request the Anthropic provider sends with its own output schema. The
+ * OpenAI and OpenRouter adapters send the same texts and OUTPUT_CONTRACT; the
+ * name they wrap the schema in is not held here. Any change to what the model is told, in any part and in
  * any words, fails until that file is changed with it, on purpose, in the same
  * commit: looking for particular words left the next wording through three
  * times (external review round 7; the verifier on e4531f6, 4eef537, a8866d5).
@@ -52,18 +55,40 @@ describe("a first product always gets a proposed goal (ASM-34 §11)", () => {
     );
   });
 
-  it("pins, word for word, everything the model is told on a first-product request and on its repair request", async () => {
+  it("pins, word for word, everything the model is told on a first-product request and its repair request, as the reference provider sends it", async () => {
     const blank = blankProduct("Rota Care");
     if (!blank.ok) throw new Error(JSON.stringify(blank.issues));
-    const request = structureMessage(
-      {
-        context: bundleFromTranscript("Kick-off notes. Maya: the night shift keeps swapping by text message and nobody knows who is on."),
-        product: blank.product,
-        repair: { problems: ["goal.source.snippet: not found in src-1"], omitted: 0 },
+    // One pasted source and one file: part of what the model is told appears only for a file or for several sources (verifier, d673646).
+    const input = {
+      context: {
+        sources: [
+          { id: "src-1", label: "Pasted text", kind: "pasted" as const, text: "Kick-off notes. Maya: the night shift keeps swapping by text message and nobody knows who is on." },
+          { id: "src-2", label: "rota-rules.md", kind: "file" as const, text: "Nurses may swap a shift up to 24 hours before it starts." },
+        ],
       },
-      "0123456789abcdef",
-    );
-    const told = ["=== system prompt", SYSTEM_PROMPT, "", "=== request, with the repair section", request, ""].join("\n");
+      product: blank.product,
+      repair: { problems: ["goal.source.snippet: not found in src-1"], omitted: 0 },
+    };
+    const nonce = "0123456789abcdef";
+    const request = structureMessage(input, nonce);
+    // The request the Anthropic provider sends (the reference path since ASM-34), with its own output schema;
+    // each call draws a fresh delimiter nonce, which is the one part set to the fixed value here.
+    const sent = buildRequest(input, "claude-haiku-5-5");
+    const sentMessage = sent.messages[0].content.replace(/(<\/?transcript-[0-9a-f]{8}-)[0-9a-f]{16}(-src-\d+>)/g, `$1${nonce}$2`);
+    expect(sent.system).toBe(SYSTEM_PROMPT);
+    expect(sentMessage).toBe(request);
+    const shape = JSON.stringify({ ...sent, system: "<the system prompt above>", messages: [{ role: sent.messages[0].role, content: "<the request above>" }] }, null, 2);
+    const told = [
+      "=== system prompt",
+      SYSTEM_PROMPT,
+      "",
+      "=== request, with the repair section",
+      request,
+      "",
+      "=== as the Anthropic provider sends it",
+      shape,
+      "",
+    ].join("\n");
     await expect(told).toMatchFileSnapshot("./golden/model-instructions.golden.txt");
   });
 
