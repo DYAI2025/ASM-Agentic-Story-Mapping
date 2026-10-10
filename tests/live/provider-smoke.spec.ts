@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { BAD_KEY_PRODUCT_FILE, LIVE_PRODUCT_FILE } from "../../playwright.live.config";
+import { assertNoSecretInRecord } from "./key-shapes";
 import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
@@ -123,7 +124,7 @@ test("@live ordinary meeting text -> real provider -> proposal -> human accept -
     accepted: { revision: stored.revision, goal: stored.goal.statement, personas: stored.personas.map((p: { name: string }) => p.name), steps: stored.narrative.map((s: { title: string }) => s.title), openQuestions: stored.decisions.map((d: { title: string }) => d.title) },
   };
   const text = JSON.stringify(record, null, 2);
-  expect(text).not.toMatch(/sk-[A-Za-z0-9_-]{8,}/);
+  assertNoSecretInRecord(text);
   await fs.writeFile(path.join(ARTIFACTS, "record.json"), text);
   await fs.copyFile(LIVE_PRODUCT_FILE, path.join(ARTIFACTS, "accepted.product.yaml"));
 });

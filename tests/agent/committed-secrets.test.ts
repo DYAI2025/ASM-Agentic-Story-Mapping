@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { matchesRealKeyShape } from "../live/key-shapes";
 
 /**
  * ASM-28 (no credentials in committed files): every file git tracks is read
@@ -14,13 +15,7 @@ import { describe, expect, it } from "vitest";
  * across lines, binary files, and anything outside what git tracks.
  */
 const ROOT = path.join(__dirname, "..", "..");
-const REAL_KEY_SHAPES = [
-  /sk-ant-api\d\d-[A-Za-z0-9_-]{40,}/, // Anthropic
-  /sk-or-v1-[0-9a-f]{32,}/, // OpenRouter
-  /sk-proj-[A-Za-z0-9_-]{40,}/, // OpenAI project key
-  /\bsk-[A-Za-z0-9]{40,}/, // OpenAI legacy key: no hyphen after sk-
-];
-const matches = (text: string) => REAL_KEY_SHAPES.some((shape) => shape.test(text));
+const matches = matchesRealKeyShape;
 
 function trackedTextFiles(): { file: string; text: string }[] {
   const files = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT }).toString("utf8").split("\0").filter(Boolean);

@@ -22,8 +22,19 @@ export async function paidSubmission(label: string, name: string, sources: reado
   const answer = await send();
   const modelCalls = typeof answer.body.modelCalls === "number" ? answer.body.modelCalls : null;
   const serverProvider = typeof answer.body.provider === "string" ? answer.body.provider : null;
-  await ledger.settle(id, { modelCalls, serverProvider });
-  expectServerModel(settings.provider, settings.model, serverProvider, modelCalls);
+  let mismatch: Error | null = null;
+  try {
+    expectServerModel(settings.provider, settings.model, serverProvider, modelCalls);
+  } catch (error) {
+    mismatch = error as Error;
+  }
+  // A model the run did not name has no price here: the whole bound is the most the guard knows how to count.
+  await ledger.settle(id, { modelCalls, serverProvider, wholeBound: mismatch !== null });
+  if (mismatch) {
+    // Another model answered by name: no further submission is sent, in this run or the next, until a human looks.
+    if (serverProvider !== null) await ledger.stop(mismatch.message);
+    throw mismatch;
+  }
   const entry = ledger.entries()[id];
   return { ...answer, serverProvider, modelCalls, boundUsd: entry.boundMicroUsd.total / 1e6, chargedUsd: entry.chargedMicroUsd / 1e6, ledgerSpentUsd: ledger.spentUsd() };
 }

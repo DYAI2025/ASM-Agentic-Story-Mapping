@@ -5,6 +5,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import YAML from "yaml";
 import { LIVE_PRODUCT_FILE } from "../../playwright.live.config";
+import { assertNoSecretInRecord } from "./key-shapes";
 import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
@@ -22,7 +23,9 @@ import { ledgerSummary, paidSubmission } from "./paid";
  *
  * The human's decisions follow a fixed rule so a rerun does the same thing:
  * the first reading of the goal where there is a choice, the last proposed
- * step rejected when there are at least two, the first need edited.
+ * step rejected when there are at least two, the first need edited when there
+ * is one. Whatever the proposal did not offer is named in the record
+ * (`human.notPossible`) instead of passing silently.
  */
 const ARTIFACTS = path.join(__dirname, "..", "..", ".e2e-artifacts", "live", "intake");
 const FIXTURE = path.join(__dirname, "fixtures", "qa", "A3-meeting-transcript.txt");
@@ -74,7 +77,7 @@ test("@intake realistic meeting transcript -> real provider -> human review with
   };
   const write = async (record: object) => {
     const text = JSON.stringify(record, null, 2);
-    expect(text).not.toMatch(/(sk|or)-[A-Za-z0-9_-]{8,}/);
+    assertNoSecretInRecord(text);
     await fs.writeFile(path.join(ARTIFACTS, "record.json"), text);
   };
 
@@ -92,9 +95,11 @@ test("@intake realistic meeting transcript -> real provider -> human review with
   for (const group of GROUPS) sections[group] = await page.getByTestId(`proposal-section-${group}`).locator("[data-testid^='diff-op-']").count();
   await page.screenshot({ path: shot("02-review"), fullPage: true });
 
-  const human: Record<string, unknown> = {};
+  const human: Record<string, unknown> = { notPossible: [] as string[] };
+  const notPossible = human.notPossible as string[];
   // 1. A reading of the goal, where there is a choice.
   const choice = page.getByTestId("goal-choice");
+  if (!(await choice.count())) notPossible.push("choose a goal reading: the proposal offers one goal only");
   if (await choice.count()) {
     const reading = choice.locator("[data-testid^='diff-op-']").first();
     const opId = (await reading.getAttribute("data-testid"))!.replace(/^diff-/, "");
@@ -109,7 +114,7 @@ test("@intake realistic meeting transcript -> real provider -> human review with
     await page.getByLabel(`Include ${opId}`, { exact: true }).uncheck();
     await expect(last).toHaveAttribute("data-state", "rejected");
     human.rejected = operations.find((o) => o.opId === opId) ?? { opId };
-  }
+  } else notPossible.push("reject a step: the proposal has fewer than two path items");
   // 3. Edit the first need.
   const needs = page.getByTestId("proposal-section-needs").locator("[data-testid^='diff-op-']");
   if (await needs.count()) {
@@ -122,7 +127,7 @@ test("@intake realistic meeting transcript -> real provider -> human review with
     await page.getByTestId(`edit-${opId}`).click();
     await expect(first).toContainText(EDIT.trim());
     human.edited = { opId, before, after: `${before}${EDIT}` };
-  }
+  } else notPossible.push("edit a need: the proposal has no need");
   // Nothing is written while the human reviews.
   expect(await exists(LIVE_PRODUCT_FILE)).toBe(false);
   expect(await exists(WORK_STATE_FILE)).toBe(false);

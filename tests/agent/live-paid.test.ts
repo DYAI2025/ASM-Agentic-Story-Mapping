@@ -93,14 +93,35 @@ describe("a paid submission", () => {
     expect(ledger.spentUsd()).toBeGreaterThanOrEqual(bound.totalUsd);
   });
 
-  it("stops the run when the server answered as another model, after charging it", async () => {
-    await expect(paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 2, provider: "anthropic (claude-opus-5-5)" }))).rejects.toThrow(/claude-opus-5-5/);
-    const entry = (await openLedger(ledgerFile, 5)).entries()[0];
-    expect(entry).toMatchObject({ status: "settled", modelCalls: 2, serverProvider: "anthropic (claude-opus-5-5)" });
+  it("stops the run when the server answered as another model, after charging it the whole bound", async () => {
+    await expect(paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 1, provider: "anthropic (claude-opus-5-5)" }))).rejects.toThrow(/claude-opus-5-5/);
+    const ledger = await openLedger(ledgerFile, 5);
+    expect(ledger.entries()[0]).toMatchObject({ status: "settled", modelCalls: 1, serverProvider: "anthropic (claude-opus-5-5)" });
+    // One call reported, but by a model the guard has no price for: the whole bound, the most it knows how to count.
+    expect(ledger.spentUsd()).toBeGreaterThanOrEqual(bound.totalUsd);
   });
 
   it("stops the run when the server made a call and named no model", async () => {
     await expect(paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 1 }, 502))).rejects.toThrow();
+  });
+
+  it("charges the whole bound for an answer that does not say how many calls it made", async () => {
+    await expect(paidSubmission("t", NAME, SOURCES, async () => answer({}, 502))).rejects.toThrow();
+    const ledger = await openLedger(ledgerFile, 5);
+    expect(ledger.entries()[0]).toMatchObject({ status: "settled", modelCalls: null });
+    expect(ledger.spentUsd()).toBeGreaterThanOrEqual(bound.totalUsd);
+  });
+
+  it("stops the ledger when the server answered as another model: the next submission is not sent", async () => {
+    await expect(paidSubmission("t", NAME, SOURCES, async () => answer({ modelCalls: 1, provider: "anthropic (claude-opus-5-5)" }))).rejects.toThrow();
+    let sent = false;
+    await expect(
+      paidSubmission("t2", NAME, SOURCES, async () => {
+        sent = true;
+        return answer({ modelCalls: 1, provider: `anthropic (${MODEL})` });
+      }),
+    ).rejects.toThrow(/stopped/);
+    expect(sent).toBe(false);
   });
 
   it("charges nothing for an answer that made no call, such as a refusal before the provider was asked", async () => {

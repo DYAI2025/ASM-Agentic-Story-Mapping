@@ -637,21 +637,37 @@ export ASM_LIVE_LEDGER=.e2e-artifacts/live/budget/ASM-34-ledger.json ASM_LIVE_BU
 ```
 
 `tests/live/budget.ts` is the guard. Before a submission is sent it reserves
-the most that submission can cost: the bytes of the request the adapter would
-send bound its input tokens (every token is at least one byte), the schema and
-a fixed allowance are added for what the API puts around a structured-output
-request, and the whole 16 000-token output budget is counted, at the model's
-list price, for the first call and for the one repair call. The reservation is
-written to the ledger before the request goes out; when the server answers,
-the submission is charged the bound of the model calls it reported (the whole
-bound when it reported none). The next submission is refused when it could
-take the ledger past its budget, when the guard has no price for the model
-(only `claude-haiku-5-5` has one), when there is no ledger, or when the
-ledger was made for another budget. The server's answer names the provider
-and model it used; a run stops when that is not the model it named, so neither
-the code's default nor `.env.local` decides what is paid for. The app reads no
-token usage, so the ledger holds bounds, not measured cost; the measured cost
-is in the Anthropic console.
+the most that submission can cost, for the first call and for the one repair
+call: the whole 16 000-token output budget, and an input bound made of the
+bytes of the request the adapter's own `buildRequest` makes for the same
+sources, the schema once more and a fixed allowance of 8 192 tokens, at the
+model's list price times 1.1 (a workspace that defaults to US inference pays
+that much more without the request saying so). The input bound rests on two
+assumptions, not on a guarantee from the API: that a token of this text-only
+request is at least one byte of it (for prose, bytes run at about three to
+four times the tokens), and that what the API adds around a structured-output
+request fits in the schema plus the allowance. A request with images, files
+or tools would need another bound.
+
+The reservation is written to the ledger before the request goes out; when
+the server answers, the submission is charged the bound of the model calls it
+reported, and the whole bound when the answer does not say how many calls
+were made. Every reservation reads the ledger on disk while it holds a lock
+file beside it, so two runs cannot both spend the same headroom. The next
+submission is refused when it could take the ledger past its budget, when the
+budget is above the PO's ceiling of 5.00 USD, when the guard has no price for
+the model (only `claude-haiku-5-5` has one), when there is no ledger, when
+the ledger cannot be read or does not add up entry by entry, when it was made
+for another budget, when another run holds the lock, and when the ledger is
+stopped. The server's answer names the provider and the model it was
+configured to request; when that is not the model the run named, the
+submission is charged its whole bound and the ledger is stopped: no further
+submission is sent, in this run or a later one, until a human removes
+`stoppedReason` from the ledger file. So neither the code's default nor
+`.env.local` decides what is paid for. The app reads no token usage, so the
+ledger holds bounds, not measured cost; the measured cost is in the Anthropic
+console. Every record a paid run writes is checked first for real key shapes
+and for the values of the keys in the environment (`tests/live/key-shapes.ts`).
 
 ### The live provider smoke
 
@@ -687,9 +703,10 @@ start screen of a fresh workspace, one minute apart (`BATTERY_PAUSE_MS`),
 records per submission the HTTP status, `modelCalls`, issue codes, seconds and
 whether a file appeared, accepts the first valid proposal as a human would and
 checks every recorded snippet against its source, then asserts at least four of
-five valid. When the provider answers 429 (measured: OpenRouter's upstream for
-the reference model rate-limits a shared pool and asks for 60 s), the
-submission is made again after `BATTERY_RETRY_AFTER_MS`, up to three times, as
+five valid. When the provider answers 429, the submission is made again after
+`BATTERY_RETRY_AFTER_MS` (75 s by default, chosen for the earlier OpenRouter
+reference, whose shared upstream pool asked for 60 s on 2026-10-06; no
+Anthropic 429 has been measured), up to three times, as
 the product's "try again shortly" tells the human to; every attempt is
 recorded, and the record counts valid submissions both ways (`valid`,
 `validFirstAttempt`). `battery.json` in `.e2e-artifacts/live/battery/` names the commit,
@@ -708,9 +725,12 @@ npm run intake:live
 transcript (A3: five people in different roles, no markers) through the
 configured model to the review, and then does what a human reviewer does,
 by a fixed rule so a rerun does the same: picks the first reading of the goal
-where there is a choice, rejects the last proposed step, edits the first need.
-Nothing is written before Accept; after it, revision 1 holds the edit and not
-the rejected step, and every kept quote occurs in the transcript.
+where there is a choice, rejects the last proposed step where there are at
+least two, edits the first need where there is one; what the proposal did not
+offer is listed in the record as not possible, instead of passing silently.
+Nothing is written before Accept; after it, revision 1 holds the chosen goal
+and the edit and not a rejected step, and every kept quote occurs in the
+transcript.
 `.e2e-artifacts/live/intake/` gets the screenshots (input, review, corrected,
 accepted map), `record.json` (input checksum, what was proposed by group,
 what the human chose, rejected and edited, the accepted goal, personas and
@@ -856,7 +876,15 @@ the next slice, not this one). The accessibility check is a smoke test, not an
 audit. The bounded failure message covers proposals only (ASM-30). Its browser test reads the words from `innerText` and checks each line for presence on the pixels, not for completeness: a line partly covered, clipped, ellipsized or struck through still passes. The
 narrative review panel still lists a refused review answer issue by issue, and
 whether the three suggested next steps actually help is a human verdict, not
-something a test measures. The visual and usability verdict is a human's, on one exact commit, and
+something a test measures. Start over removes the work state first and the
+product second; when the product file then cannot be removed (a file the
+system will not delete in a directory it may write, or a work state kept in
+another directory through `ASM_WORK_STATE_FILE`), the reset is reported as
+failed and the map stays, but its work state (people check, selection, value
+exception) is already gone. That order is the one ASM-23 chose so that a
+failure never leaves a work state without its product; an external review on
+2026-10-10 rated it Major, and whether to restore the work state on that path
+is a PO decision, not something this branch changes. The visual and usability verdict is a human's, on one exact commit, and
 is recorded on the ticket, not in this repository.
 
 ## Not built

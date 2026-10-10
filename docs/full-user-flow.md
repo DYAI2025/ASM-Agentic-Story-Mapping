@@ -236,7 +236,7 @@ From `tests/e2e/proposal-failure.spec.ts` too: the scripted model keeps the
 request open and never answers. The app's own deadline ends the call (8 seconds
 in this test; 120 seconds by default, `ASM_AGENT_TIMEOUT_MS`), the message says
 so and what to try, and nothing is written. Sent again, the same material
-reaches the review.
+without the stub's marker reaches the review.
 
 ### 23. A model that does not answer in time
 

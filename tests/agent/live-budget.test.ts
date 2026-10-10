@@ -7,7 +7,9 @@ import { repairRequest } from "../../src/agent/narrative-builder";
 import { blankProduct } from "../../src/domain/bootstrap";
 import { bundleFromTranscript } from "../../src/domain/context";
 import {
+  API_ALLOWANCE_TOKENS,
   BudgetRefusal,
+  MAX_BUDGET_USD,
   MAX_OUTPUT_TOKENS,
   MAX_REPAIR_LINE_UNITS,
   boundForContext,
@@ -27,15 +29,18 @@ import {
  */
 const MODEL = "claude-haiku-5-5";
 
+// A workspace whose default inference region is the US pays 1.1 times the list price without the request saying so.
+const US = 1.1;
+
 describe("the most one model call can cost", () => {
-  it("is the input bound at the input price plus the full output budget at the output price", () => {
+  it("is the input bound at the input price plus the full output budget at the output price, times the US-inference factor", () => {
     // claude-haiku-5-5 list price for prompts up to 100k tokens: $0.10 / $0.50 per million tokens.
-    expect(callBoundUsd(MODEL, 50_000)).toBeCloseTo(50_000 * 0.1e-6 + 16_000 * 0.5e-6, 12);
+    expect(callBoundUsd(MODEL, 50_000)).toBeCloseTo((50_000 * 0.1e-6 + 16_000 * 0.5e-6) * US, 12);
   });
 
   it("uses the long-prompt price for both sides once the input bound passes 100k tokens", () => {
-    expect(callBoundUsd(MODEL, 100_000)).toBeCloseTo(100_000 * 0.1e-6 + 16_000 * 0.5e-6, 12);
-    expect(callBoundUsd(MODEL, 100_001)).toBeCloseTo(100_001 * 0.5e-6 + 16_000 * 2.5e-6, 12);
+    expect(callBoundUsd(MODEL, 100_000)).toBeCloseTo((100_000 * 0.1e-6 + 16_000 * 0.5e-6) * US, 12);
+    expect(callBoundUsd(MODEL, 100_001)).toBeCloseTo((100_001 * 0.5e-6 + 16_000 * 2.5e-6) * US, 12);
   });
 
   it("counts the output budget the adapter actually asks for", () => {
@@ -69,6 +74,13 @@ describe("the most one submission can cost", () => {
     expect(bound.repairRequestBytes).toBeGreaterThan(bound.firstRequestBytes);
     expect(bound.repairCallUsd).toBeGreaterThan(bound.firstCallUsd);
     expect(bound.totalUsd).toBeCloseTo(bound.firstCallUsd + bound.repairCallUsd, 12);
+  });
+
+  it("adds the schema and a fixed allowance on top of the request bytes, for both calls", () => {
+    const bound = boundForContext(MODEL, "RotaCare", sources);
+    expect(bound.schemaBytes).toBeGreaterThan(1_000);
+    expect(bound.firstCallUsd).toBe(callBoundUsd(MODEL, bound.firstRequestBytes + bound.schemaBytes + API_ALLOWANCE_TOKENS));
+    expect(bound.repairCallUsd).toBe(callBoundUsd(MODEL, bound.repairRequestBytes + bound.schemaBytes + API_ALLOWANCE_TOKENS));
   });
 
   it("grows with the input: a longer text has a higher bound", () => {
@@ -171,11 +183,90 @@ describe("the ledger", () => {
     expectCharged(reopened.spentUsd(), 0.9);
   });
 
-  it("charges more than the bound, never less, for a call count it did not expect", async () => {
+  it("charges more than the bound, never less, for a call count it did not expect: every call beyond the first at the repair bound", async () => {
     const ledger = await openLedger(file, 5, { create: true });
     const odd = await ledger.reserve(bound(0.4), meta);
     await ledger.settle(odd, { modelCalls: 3, serverProvider: null });
-    expect(ledger.spentUsd()).toBeGreaterThanOrEqual(0.4);
+    // first 0.1 + two more calls at 0.3 each.
+    expectCharged(ledger.spentUsd(), 0.7);
+  });
+
+  it("keeps an existing ledger when it is asked to create one", async () => {
+    const first = await openLedger(file, 5, { create: true });
+    await first.reserve(bound(0.4), meta);
+    const again = await openLedger(file, 5, { create: true });
+    expectCharged(again.spentUsd(), 0.4);
+    expect(again.entries()).toHaveLength(1);
+  });
+
+  it("refuses a ledger it cannot read, even when asked to create one, and leaves it as it was", async () => {
+    if (process.getuid?.() === 0) return; // root reads any file
+    const ledger = await openLedger(file, 5, { create: true });
+    await ledger.reserve(bound(0.4), meta);
+    const before = await fs.readFile(file, "utf8");
+    await fs.chmod(file, 0o000);
+    try {
+      await expect(openLedger(file, 5, { create: true })).rejects.toThrow(BudgetRefusal);
+    } finally {
+      await fs.chmod(file, 0o600);
+    }
+    expect(await fs.readFile(file, "utf8")).toBe(before);
+  });
+
+  it.each<[string, (entry: Record<string, unknown>) => unknown]>([
+    ["a charge that is missing", ({ chargedMicroUsd: _drop, ...rest }) => rest],
+    ["a negative charge", (entry) => ({ ...entry, chargedMicroUsd: -1 })],
+    ["a charge that is not a whole number of micro-dollars", (entry) => ({ ...entry, chargedMicroUsd: 1.5 })],
+    ["a reservation charged less than its bound", (entry) => ({ ...entry, chargedMicroUsd: 1 })],
+    ["a bound whose parts do not add up", (entry) => ({ ...entry, boundMicroUsd: { first: 10, repair: 10, total: 5 } })],
+    ["an unknown status", (entry) => ({ ...entry, status: "paid" })],
+    ["an id out of order", (entry) => ({ ...entry, id: 7 })],
+  ])("refuses a ledger with %s, instead of counting it as nothing", async (_name, spoil) => {
+    const ledger = await openLedger(file, 5, { create: true });
+    await ledger.reserve(bound(0.4), meta);
+    const state = JSON.parse(await fs.readFile(file, "utf8"));
+    state.entries[0] = spoil(state.entries[0]);
+    await fs.writeFile(file, JSON.stringify(state));
+    await expect(openLedger(file, 5)).rejects.toThrow(BudgetRefusal);
+    await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(BudgetRefusal);
+  });
+
+  it("refuses a budget above the PO's ceiling, and takes any budget up to it", async () => {
+    expect(MAX_BUDGET_USD).toBe(5);
+    await expect(openLedger(file, 5.01, { create: true })).rejects.toThrow(BudgetRefusal);
+    await expect(fs.access(file)).rejects.toThrow();
+    await expect(openLedger(file, 2, { create: true })).resolves.toBeDefined();
+  });
+
+  it("counts what another run reserved after it was opened: every reservation reads the ledger on disk", async () => {
+    const one = await openLedger(file, 1, { create: true });
+    const other = await openLedger(file, 1);
+    await one.reserve(bound(0.6), meta);
+    await expect(other.reserve(bound(0.6), meta)).rejects.toThrow(BudgetRefusal);
+    expectCharged((await openLedger(file, 1)).spentUsd(), 0.6);
+  });
+
+  it("refuses while another run holds the ledger, and touches nothing", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    const before = await fs.readFile(file, "utf8");
+    await fs.writeFile(`${file}.lock`, "held by another run");
+    try {
+      await expect(ledger.reserve(bound(0.1), meta, { lockWaitMs: 200 })).rejects.toThrow(/lock/);
+      expect(await fs.readFile(file, "utf8")).toBe(before);
+      expect(await fs.readFile(`${file}.lock`, "utf8")).toBe("held by another run");
+    } finally {
+      await fs.rm(`${file}.lock`, { force: true });
+    }
+    await expect(ledger.reserve(bound(0.1), meta)).resolves.toBeDefined();
+    await expect(fs.access(`${file}.lock`)).rejects.toThrow();
+  });
+
+  it("takes no submission once it is stopped, not even after it is opened again", async () => {
+    const ledger = await openLedger(file, 5, { create: true });
+    await ledger.stop("the server answered as anthropic (claude-opus-5-5)");
+    await expect(ledger.reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
+    await expect((await openLedger(file, 5)).reserve(bound(0.1), meta)).rejects.toThrow(/stopped/);
+    expect(JSON.parse(await fs.readFile(file, "utf8")).entries).toEqual([]);
   });
 
   it("counts a refused submission's reservation as soon as the next one asks", async () => {
@@ -199,9 +290,10 @@ describe("a paid run's settings", () => {
     expect(() => liveSettings({ ...env, ASM_AGENT_MODEL: undefined })).toThrow(BudgetRefusal);
   });
 
-  it("refuse a run without a ledger or without a positive budget", () => {
+  it("refuse a run without a ledger or without a positive budget, or with a budget above the PO's ceiling", () => {
     expect(() => liveSettings({ ...env, ASM_LIVE_LEDGER: undefined })).toThrow(BudgetRefusal);
-    for (const budget of [undefined, "", "0", "-1", "five"]) expect(() => liveSettings({ ...env, ASM_LIVE_BUDGET_USD: budget })).toThrow(BudgetRefusal);
+    for (const budget of [undefined, "", "0", "-1", "five", "5.01", "6"]) expect(() => liveSettings({ ...env, ASM_LIVE_BUDGET_USD: budget })).toThrow(BudgetRefusal);
+    expect(liveSettings({ ...env, ASM_LIVE_BUDGET_USD: "4.5" }).budgetUsd).toBe(4.5);
   });
 });
 

@@ -103,17 +103,25 @@ test("start over the disk refuses: the map stays with the reason, nothing is hal
   const dir = path.dirname(E2E_PRODUCT_FILE);
   const mode = (await fs.stat(dir)).mode & 0o777;
   await fs.chmod(dir, 0o555);
+  // Every page load after the refusal is counted: the reason has to stay on the screen, not flash and go.
+  let loads = 0;
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) loads++;
+  });
   try {
     await page.getByTestId("start-over").click();
     const answer = page.waitForResponse((r) => r.url().endsWith("/api/product/reset") && r.request().method() === "POST");
     await page.getByTestId("start-over-confirm").click();
-    const response = await answer;
-    expect(response.status()).toBe(500);
-    expect((await response.json()).issues.map((issue: { code: string }) => issue.code)).toEqual(["reset_failed"]);
+    expect((await answer).status()).toBe(500);
     // The map stays, with the reason; no start screen pretends a fresh state the server does not have.
     await expect(page.getByTestId("issues")).toContainText("reset_failed");
     await expect(page.getByTestId("product-name")).toBeVisible();
     await expect(page.getByTestId("start-screen")).toHaveCount(0);
+    // And it is still so a moment later: no reload took the reason away (verifier round 1 on 69bf7d4).
+    await page.waitForTimeout(3_000);
+    expect(loads).toBe(0);
+    await expect(page.getByTestId("issues")).toContainText("reset_failed");
+    await expect(page.getByTestId("product-name")).toBeVisible();
     // Never into docs/: the reason names the workspace path on this machine, home directory included.
     await page.screenshot({ path: path.join(__dirname, "..", "..", ".e2e-artifacts", "screenshots", "reset-04-start-over-refused.png"), fullPage: true });
   } finally {

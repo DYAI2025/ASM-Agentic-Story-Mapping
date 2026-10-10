@@ -6,6 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 import YAML from "yaml";
 import { LIVE_PRODUCT_FILE } from "../../playwright.live.config";
 import { liveSettings } from "./budget";
+import { assertNoSecretInRecord } from "./key-shapes";
 import { ledgerSummary, paidSubmission } from "./paid";
 
 /**
@@ -113,7 +114,7 @@ async function writeRecord(outcome: Outcome) {
     outcomes,
   };
   const text = JSON.stringify(record, null, 2);
-  expect(text).not.toMatch(/(sk|or)-[A-Za-z0-9_-]{8,}/);
+  assertNoSecretInRecord(text);
   await fs.writeFile(path.join(ARTIFACTS, "battery.json"), text);
 }
 
